@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "kind": "podcast",
+      "collectionId": 1490732024,
+      "trackId": 1490732024,
+      "collectionName": "大鹏说中文 - Speak Chinese with Da Peng",
+      "trackName": "大鹏说中文 - Speak Chinese with Da Peng",
+      "feedUrl": "https://rss.buzzsprout.com/688918.rss",
+      "releaseDate": "2026-09-05T10:00:00Z",
+      "trackTimeMillis": 1019
+    },
+    {
+      "trackTimeMillis": 889000,
+      "episodeUrl": "https://www.buzzsprout.com/688918/episodes/19793450-daily-chinese-expression-364-chinese-podcast-speak-chinese-with-da-peng.mp3",
+      "releaseDate": "2026-09-13T10:00:00Z",
+      "trackId": 1000789324203,
+      "trackName": "Daily Chinese Expression 364「“我们”和“咱们”」 Chinese podcast -Speak Chinese with Da Peng #汉语俗语和习惯用语",
+      "collectionId": 1490732024,
+      "collectionName": "大鹏说中文 - Speak Chinese with Da Peng",
+      "feedUrl": "https://rss.buzzsprout.com/688918.rss",
+      "kind": "podcast-episode",
+      "episodeGuid": "Buzzsprout-19793450"
+    }
+  ]
+}
