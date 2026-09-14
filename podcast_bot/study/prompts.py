@@ -17,6 +17,10 @@ For other languages return empty pinyin strings (never invent Chinese romanizati
 Translate each complete block naturally as a semantic paragraph into the native language, close
 enough for comparison. Preserve culturally useful target-language terms in parentheses. Do not
 literarily domesticate cultural references or omit difficult sentences.
+CRITICAL: translation, example_translation and meaning are written in the NATIVE language, never
+in the target language. Repeating or lightly rewording the target-language source in place of a
+translation is rejected, and so is a meaning explained in the target language. If the native
+language is ru, those fields are Russian prose; only quoted terms may stay in the target script.
 
 Curate vocabulary for the configured learner level. Prefer valuable chunks, collocations,
 spoken expressions, pragmatic usage and idioms over isolated easy dictionary words. At HSK3,

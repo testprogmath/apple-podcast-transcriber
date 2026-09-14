@@ -24,6 +24,12 @@ def no_network(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def no_default_dictionary(monkeypatch, tmp_path):
+    """Results must not depend on whether a CC-CEDICT database was built locally."""
+    monkeypatch.setenv("READER_DICTIONARY", str(tmp_path / "no-dictionary.sqlite3"))
+
+
 @pytest.fixture
 def store(tmp_path):
     storage = Storage(tmp_path / "data")

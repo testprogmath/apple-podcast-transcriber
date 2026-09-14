@@ -19,6 +19,8 @@ For Mandarin with Russian as the learner's native language, the bot sends these 
 
 A ZIP containing these files plus validated `study.json` is created automatically. `/zip` sends the most recently completed archive. Whisper SRT, when available, is also preserved and delivered.
 
+Meanings, translations and usage notes are written in the configured native language, and that is now enforced rather than merely requested. A model that answers in Chinese — repeating the source in place of a translation, or explaining a word in Chinese — fails validation and the chunk is retried. The Reader applies the same rule to already-generated packs: a "translation" that is just the source again is dropped rather than shown, so a Hanly note falls back to `原文：` alone instead of printing the Chinese twice.
+
 Chinese speech recognition does not translate. The text-processing stage derives all learning files from the saved transcript. It never rewrites that source, even when it suspects an ASR error. The current correction policy is deliberately **suggestions only**; confidence and reasons appear in study notes and metadata, with no silent replacement in quotations or Mosaic sentences.
 
 For every source language other than `zh`, the bot generates only `transcript.txt` and `vocabulary.md`: selected useful words/expressions with meanings, usage and translated examples. It does not generate a full translation, reading guide, pinyin, grammar/culture notes or importer CSVs, and never uploads those episodes to Hanly or Mandarin Mosaic. Available SRT is preserved. `/zip` contains the minimal files plus internal metadata/JSON. Old non-Chinese study packages require `/regenerate` to switch to this format, without repeating transcription.
@@ -69,6 +71,8 @@ Two destinations, deliberately different:
 
 **Mandarin Mosaic gets sentences.** Tap anywhere in a sentence that is not a word, or its ◎ marker, and the whole sentence is selected. Uploading sends those complete sentences through the existing Mandarin Mosaic sentence API with the existing jieba segmentation. Whole documents are never uploaded.
 
+**Words carry a definition.** The sheet shows the study pack's own contextual meaning when it has one for that exact term. Otherwise it falls back to a local CC-CEDICT definition, labelled `CC-CEDICT` so the two are never confused. When neither knows the word the sheet shows glyph and pinyin only, with no empty label. Dictionary membership is never a gate: a chunk CC-CEDICT has never heard of stays tappable and uploadable, which matters because Hanly accepts arbitrary Chinese strings.
+
 **Pinyin is a toggle.** `拼音 OFF / ON` in the header adds interlinear tone-mark pinyin above every Chinese lexical item using `<ruby>`, never over punctuation or Latin text. It is off by default and remembered per browser in `localStorage`; if site data is unavailable the Reader simply starts with it off. The pinyin sits in the DOM either way, so toggling is instant and line spacing does not shift while it is off. The lexical sheet always shows pinyin regardless of the toggle.
 
 Both baskets are local until you press upload. Open a basket from its counter to review the items, remove any of them, then upload.
@@ -96,7 +100,7 @@ Each uploaded glyph then gets a study note at `personalizedStories/<glyph>`, so 
 Перевод：Они получили премию Филдса.
 ```
 
-Nothing in that note is generated. The glyph's meaning and the sentence translation are reused from the study pack when it already has them for that exact term and that exact sentence, and omitted otherwise, with no empty labels left behind. The label is `原文` rather than `例句` because the sentence is the real one from the source. A direct-text document has no study pack, so its notes carry `原文：` alone. Opening the Reader never triggers translation, and this change adds no model call anywhere.
+Nothing in that note is generated. Its first line uses the same meaning the Reader showed you: the study pack's contextual meaning, or a CC-CEDICT definition when the pack has none, so a card never says less than the popup did. The sentence translation comes only from the study pack for that exact sentence, and is omitted otherwise, with no empty labels left behind. The label is `原文` rather than `例句` because the sentence is the real one from the source. A direct-text document has no study pack, so its notes carry `原文：` alone. Opening the Reader never triggers translation, and this change adds no model call anywhere.
 
 Mandarin Mosaic: the document owns one stable pack. Sentence payloads and their UUIDs are committed to SQLite before the first request, so a retry re-sends the same identifiers instead of creating duplicates, and a sentence already staged for that pack is never staged twice. `SuccessfulUpdates` / `UnsuccessfulUpdates` are reconciled as before, and the Mini App reports exactly which sentences failed and keeps them selected.
 
@@ -221,6 +225,7 @@ Both item counts are preferences, not quotas. Short or low-value episodes may yi
 | `READER_HOST` | `127.0.0.1`; Compose sets `0.0.0.0` inside the container |
 | `READER_PORT` | `8081` |
 | `READER_DEV_MODE` | `false`; `true` accepts browser requests without Telegram init data |
+| `READER_DICTIONARY` | Path to the generated CC-CEDICT database; defaults to one beside `reader/` |
 
 Set all three study price overrides together. Invalid/incomplete or unknown pricing simply disables the estimate; it does not block generation. Environment variables override `.env`. Persisted Telegram preferences override level/language defaults until changed again through commands. Queued jobs retain their study settings snapshot.
 
@@ -275,7 +280,19 @@ Leave both empty to disable direct upload. Never paste credentials into Telegram
 
 JWTs are kept in memory, refreshed with a 30-second expiry margin under an async lock, and replaced once after HTTP 401 before exactly one retry. Returned refresh credentials are reused and saved atomically in private configuration at `DATA_DIR/mosaic-session.json` (mode `0600`); JWTs are never persisted. Keep this file on the existing persistent data volume. A changed environment credential pair replaces the saved session on next startup. Do not share this file or its backups. A lost refresh response can still require replacement credentials if the server invalidated the previous pair.
 
-Reader pinyin comes from [pypinyin](https://github.com/mozillazg/python-pinyin) in `reader/pinyin.py`: local, deterministic, tone marks, no network and no model call. Each lexical item is converted as a whole so phrase context resolves polyphonic characters (银行 → `yín háng`, 行走 → `xíng zǒu`). Characters whose reading depends on wider sentence context than the lexical item itself can still be wrong; the study pack's own LLM pinyin remains the source for `reader.md` and `transcript_pinyin.md` and is unchanged.
+### Dictionary and pronunciation
+
+Reader lookups are entirely local. Tapping a word makes no request of any kind: every definition and pronunciation is already in the document response, resolved once per distinct glyph when the document is served.
+
+Pinyin resolves in order: the study pack's own pronunciation for its curated terms, then an exact CC-CEDICT entry, then [pypinyin](https://github.com/mozillazg/python-pinyin) as the local fallback. The dictionary step matters for polyphones a character-by-character fallback gets wrong. Meaning resolves in order: the study pack's contextual meaning, then a CC-CEDICT definition, then nothing — a contextual meaning is never replaced by a generic one, and the API reports which source won.
+
+CC-CEDICT stores several entries for a written form when it has several readings. The lowest source id is the deterministic primary, supplying the displayed pronunciation; definitions merge across the homographs in source order, deduplicated, and the popup shows at most three. The alternatives stay available in `reader/dictionary.py` rather than being discarded.
+
+Lookup is one indexed SQLite query per document, not one per tap: 125,061 entries in a 14.6 MB read-only database, adding roughly 0.6 ms to a full episode's response and 0.2 ms to a short one, measured interleaved on a warm process. The response grows from about 82 KB to 181 KB for a full episode, which the reverse proxy compresses. Without the database the Reader still works and simply shows no definitions.
+
+Simplified and traditional forms are both indexed and looked up exactly. Source text is never rewritten, and Hanly receives the exact glyph selected from the source.
+
+The pinned snapshot, its checksum, the build command and the update procedure are in [`dictionary/README.md`](dictionary/README.md). CC-CEDICT is published by MDBG under **CC BY-SA 4.0**; the generated database is an adaptation and carries the same licence, which is why [`dictionary/LICENSE-CC-CEDICT.txt`](dictionary/LICENSE-CC-CEDICT.txt) ships beside it in the image and the Reader footer credits it. That licence covers the dictionary data only, not this repository's code.
 
 Chinese words are segmented locally with [jieba in its default accurate mode](https://github.com/fxsjy/jieba); `mosaic/segmentation.py` is the replaceable adapter. Segmentation is checked to preserve all non-whitespace characters. Original Mandarin and the selected English translation are uploaded unchanged. Segmentation may differ from the official client's dictionary; no claim of identical token boundaries is made.
 
@@ -378,6 +395,7 @@ Modules: `resolver/`, `transcription/`, `reader/` (sentence parsing, lexical seg
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing)
 - [Telegram BotFather](https://core.telegram.org/bots/features#botfather)
 - [Telegram Mini Apps and initData validation](https://core.telegram.org/bots/webapps)
+- [CC-CEDICT, published by MDBG under CC BY-SA 4.0](https://www.mdbg.net/chinese/dictionary?page=cc-cedict)
 
 - [Firestore PATCH and update masks](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/patch)
 - [Firestore update-time preconditions](https://firebase.google.com/docs/firestore/reference/rest/v1/Precondition)

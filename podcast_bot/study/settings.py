@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from ..config import language_code
 from ..models import UserError
 
-PROMPT_VERSION = "study-v2-mosaic"
+PROMPT_VERSION = "study-v3-native-translations"
 DEFAULT_COLUMNS = ("Chinese", "Pinyin", "Russian", "Example", "ExampleTranslation", "Tags")
 COLUMN_ROLES = {
     "Chinese": "term",

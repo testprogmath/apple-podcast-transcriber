@@ -122,7 +122,12 @@ class StudyService:
                     "blocks": [asdict(b) for b in group],
                 },
                 validate=lambda material, group=group: (
-                    validate_chunk(material, group, settings.target_language)
+                    validate_chunk(
+                        material,
+                        group,
+                        settings.target_language,
+                        settings.native_language,
+                    )
                     if settings.target_language == "zh"
                     else validate_lexical(material, group)
                 ),

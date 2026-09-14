@@ -1,0 +1,32 @@
+CC-CEDICT
+Community maintained free Chinese-English dictionary.
+
+Published by MDBG.
+Referenced works: CEDICT - Copyright (C) 1997, 1998 Paul Andrew Denisowski.
+
+Licensed under the Creative Commons Attribution-ShareAlike 4.0 International
+License (CC BY-SA 4.0).
+
+    https://creativecommons.org/licenses/by-sa/4.0/
+
+Source and further information:
+
+    https://www.mdbg.net/chinese/dictionary?page=cc-cedict
+    https://cc-cedict.org/wiki/
+
+MODIFICATIONS MADE BY THIS PROJECT
+
+`cedict_ts.u8.gz` in this directory is the unmodified upstream snapshot.
+
+`podcast_bot/reader/cedict.py` converts it into a SQLite database
+(`cedict.sqlite3`) for read-only lookup. The conversion is a format change only:
+traditional form, simplified form, numeric pinyin and the definition list are
+carried across verbatim, in source order. No entry is edited, added or removed.
+Tone-marked pinyin is derived for display at runtime and is not stored.
+
+That generated database is an adaptation of CC-CEDICT and is therefore itself
+made available under CC BY-SA 4.0, the same licence as the source data.
+
+This licence applies to the dictionary data and to the database generated from
+it. It does not apply to the rest of this repository's source code, which merely
+queries the data and is not an adaptation of it.

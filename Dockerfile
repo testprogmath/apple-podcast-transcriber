@@ -7,6 +7,13 @@ COPY requirements.lock requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.lock
 COPY pyproject.toml README.md ./
 COPY podcast_bot ./podcast_bot
+COPY dictionary ./dictionary
+# CC-CEDICT (CC BY-SA 4.0) is converted offline from the pinned snapshot; the
+# licence travels with the generated database. See dictionary/README.md.
+RUN python -m podcast_bot.reader.cedict dictionary/cedict_ts.u8.gz \
+        podcast_bot/reader/cedict.sqlite3 \
+    && cp dictionary/LICENSE-CC-CEDICT.txt podcast_bot/reader/LICENSE-CC-CEDICT.txt \
+    && rm -rf dictionary
 RUN pip install --no-cache-dir --no-deps . \
     && useradd --uid 1000 --create-home bot \
     && mkdir -p /app/data && chown bot:bot /app/data

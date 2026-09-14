@@ -15,6 +15,7 @@ from pathlib import Path
 from ..identity import collection_name, hanly_identity
 from ..models import UserError
 from ..storage import now
+from ..study.translations import untranslated, wrong_language
 from .sentences import Sentence, paragraphs, parse_sentences
 from .tokens import HAN, Token, tokenize
 
@@ -51,6 +52,18 @@ class ReaderDocument:
             return {}
         return material if isinstance(material, dict) else {}
 
+    def native_language(self) -> str:
+        """The native language the study pack was generated for; empty for direct text."""
+        if not self.source_reference:
+            return ""
+        try:
+            metadata = json.loads(
+                (Path(self.source_reference) / "metadata.json").read_text(encoding="utf-8")
+            )
+            return str(metadata.get("study_settings", {}).get("native_language", ""))
+        except (OSError, ValueError, AttributeError):
+            return ""
+
     def known_chunks(self) -> frozenset[str]:
         """Reuse study-pipeline vocabulary and patterns; never call a model when opening."""
         material = self.material()
@@ -67,8 +80,9 @@ class ReaderDocument:
         }
 
     def glyph_meanings(self) -> dict[str, str]:
-        """Contextual meanings the study pipeline already wrote, keyed by the exact term."""
+        """Contextual meanings the study pipeline wrote, dropping any left in the target language."""
         material = self.material()
+        native = self.native_language()
         pairs = [(i.get("term"), i.get("meaning")) for i in material.get("vocabulary", [])]
         pairs += [(i.get("pattern"), i.get("meaning")) for i in material.get("patterns", [])]
         return {
@@ -77,7 +91,18 @@ class ReaderDocument:
             if isinstance(term, str)
             and isinstance(meaning, str)
             and term.strip()
-            and meaning.strip()
+            and not wrong_language(meaning, native)
+        }
+
+    def glyph_pronunciations(self) -> dict[str, str]:
+        """Pinyin the study pipeline already produced for its own curated terms."""
+        return {
+            item["term"].strip(): item["pinyin"].strip()
+            for item in self.material().get("vocabulary", [])
+            if isinstance(item.get("term"), str)
+            and isinstance(item.get("pinyin"), str)
+            and item["term"].strip()
+            and item["pinyin"].strip()
         }
 
     def sentence_translations(self) -> dict[str, str]:
@@ -89,13 +114,14 @@ class ReaderDocument:
             for item in material.get(kind, [])
         ]
         pairs += [(i.get("source"), i.get("translation")) for i in material.get("passages", [])]
+        native = self.native_language()
         return {
             source.strip(): translation.strip()
             for source, translation in pairs
             if isinstance(source, str)
             and isinstance(translation, str)
             and source.strip()
-            and translation.strip()
+            and not untranslated(source, translation, native)
         }
 
     def tokens(self, sentences: list[Sentence]) -> list[list[Token]]:
