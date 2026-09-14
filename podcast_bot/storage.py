@@ -98,6 +98,12 @@ class Storage:
         CREATE TABLE IF NOT EXISTS study_cache (key TEXT PRIMARY KEY, path TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS study_steps (key TEXT NOT NULL, step TEXT NOT NULL,
           result TEXT NOT NULL, PRIMARY KEY(key,step));
+        CREATE TABLE IF NOT EXISTS hanly_glyph_notes (
+          glyph TEXT PRIMARY KEY, story TEXT NOT NULL, updated TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS reader_documents (
+          id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, title TEXT NOT NULL,
+          source_type TEXT NOT NULL, source_reference TEXT NOT NULL, raw_text TEXT NOT NULL,
+          hanly_key TEXT NOT NULL, mosaic_key TEXT NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS study_usage (id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL,
           key TEXT NOT NULL, step TEXT NOT NULL, model TEXT NOT NULL, input_chars INTEGER NOT NULL,
           input_tokens INTEGER, cached_input_tokens INTEGER, output_tokens INTEGER,
@@ -388,3 +394,54 @@ class Storage:
             "SELECT count(*) FROM jobs WHERE state IN ('queued','running') AND id<=?", (identifier,)
         ).fetchone()[0]
         return identifier, position, duplicate
+
+    def save_reader_document(self, document) -> None:
+        with self.db:
+            self.db.execute(
+                """INSERT INTO reader_documents
+                (id,chat_id,title,source_type,source_reference,raw_text,hanly_key,mosaic_key,created)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET title=excluded.title,
+                  source_reference=excluded.source_reference, raw_text=excluded.raw_text""",
+                (
+                    document.id,
+                    document.chat_id,
+                    document.title,
+                    document.source_type,
+                    document.source_reference,
+                    document.raw_text,
+                    document.hanly_key,
+                    document.mosaic_key,
+                    document.created,
+                ),
+            )
+
+    def reader_document(self, identifier: str):
+        from .reader.documents import ReaderDocument
+
+        row = self.db.execute("SELECT * FROM reader_documents WHERE id=?", (identifier,)).fetchone()
+        return (
+            ReaderDocument(**{k: row[k] for k in ReaderDocument.__dataclass_fields__})
+            if row
+            else None
+        )
+
+    def recent_reader_document(self, chat_id: int):
+        row = self.db.execute(
+            "SELECT id FROM reader_documents WHERE chat_id=? ORDER BY created DESC, rowid DESC LIMIT 1",
+            (chat_id,),
+        ).fetchone()
+        return self.reader_document(row[0]) if row else None
+
+    def hanly_note(self, glyph: str) -> str | None:
+        """The note this integration last wrote for a glyph, or None if it never wrote one."""
+        row = self.db.execute(
+            "SELECT story FROM hanly_glyph_notes WHERE glyph=?", (glyph,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def save_hanly_note(self, glyph: str, story: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO hanly_glyph_notes VALUES (?,?,?)", (glyph, story, now())
+            )
