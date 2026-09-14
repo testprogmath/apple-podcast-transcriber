@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 from ..diagnostics import diagnostic
 from ..models import UserError
 from ..storage import Storage, now
+from .quotes import QUOTE_PROMPT, SourceQuotes, supports_quotes
 from .settings import pricing
 
 T = TypeVar("T", bound=BaseModel)
@@ -28,6 +29,10 @@ class OpenAIStudyClient:
     async def request(
         self, schema: type[T], instructions: str, payload: dict, model: str, max_output: int
     ) -> tuple[T, dict]:
+        quotes = SourceQuotes(schema, payload) if supports_quotes(schema) else None
+        if quotes:
+            payload = quotes.payload
+            instructions += QUOTE_PROMPT
         try:
             response = await self.client.responses.parse(
                 model=model,
@@ -37,7 +42,7 @@ class OpenAIStudyClient:
                     {"role": "system", "content": instructions},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                 ],
-                text_format=schema,
+                text_format=quotes.schema if quotes else schema,
             )
         except (OpenAIError, ValidationError, ValueError) as exc:
             log.error("stage=study-api %s", diagnostic(exc))
@@ -49,7 +54,8 @@ class OpenAIStudyClient:
                 "The study model refused or did not finish its response. Your transcript is saved. Use /retry."
             )
         usage = response.usage.model_dump() if response.usage else {}
-        return response.output_parsed, usage
+        result = quotes.resolve(response.output_parsed) if quotes else response.output_parsed
+        return result, usage
 
 
 class StudyRequests:
