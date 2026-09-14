@@ -20,7 +20,7 @@ from .lexical import (
     validate_lexical,
     vocabulary_markdown,
 )
-from .models import ChunkMaterial, Selection, StudyMaterial
+from .models import Selection, StudyMaterial, chunk_schema
 from .mosaic import select_candidates
 from .prompts import CHUNK_PROMPT, RANK_PROMPT
 from .render import (
@@ -112,7 +112,9 @@ class StudyService:
                 key=key,
                 step=f"chunk-{index}",
                 model=settings.model,
-                schema=ChunkMaterial if settings.target_language == "zh" else LexicalChunk,
+                schema=chunk_schema(len(group))
+                if settings.target_language == "zh"
+                else LexicalChunk,
                 instructions=CHUNK_PROMPT if settings.target_language == "zh" else PROMPT,
                 payload={
                     "settings": asdict(settings),

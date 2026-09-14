@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 Text = Annotated[str, Field(min_length=1, max_length=3000)]
 Short = Annotated[str, Field(min_length=1, max_length=400)]
@@ -87,3 +87,14 @@ class StudyMaterial(StrictModel):
     possible_asr_errors: list[ASRIssue]
     mosaic_sentences: list[MosaicSentence]
     correction_policy: Literal["suggestions_only"] = "suggestions_only"
+
+
+def chunk_schema(block_count: int) -> type[ChunkMaterial]:
+    """Constrain structured decoding to cover every input block, including the last."""
+    if not 1 <= block_count <= 100:
+        raise ValueError("Study chunk must contain 1–100 blocks")
+    return create_model(
+        f"ChunkMaterial{block_count}Blocks",
+        __base__=ChunkMaterial,
+        passages=(list[Passage], Field(min_length=block_count, max_length=block_count)),
+    )
