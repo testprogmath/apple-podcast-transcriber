@@ -180,13 +180,23 @@ def test_pinyin_and_translation_are_ordered_and_readable():
 
 @pytest.mark.parametrize(
     "mutation",
-    ["reorder", "rewrite", "missing_line", "invented_quote", "invented_term", "numbered_pinyin"],
+    [
+        "missing",
+        "duplicate",
+        "rewrite",
+        "missing_line",
+        "invented_quote",
+        "invented_term",
+        "numbered_pinyin",
+    ],
 )
 def test_source_validation(mutation):
     blocks = split_blocks(SOURCE)
     material = material_for([{"id": b.id, "text": b.text} for b in blocks])
-    if mutation == "reorder":
-        material.passages.reverse()
+    if mutation == "missing":
+        material.passages.pop()
+    if mutation == "duplicate":
+        material.passages[1] = material.passages[0].model_copy(deep=True)
     if mutation == "rewrite":
         material.passages[0].source = "改写"
     if mutation == "missing_line":
@@ -638,3 +648,28 @@ async def test_study_restart_requires_retry_for_uncertain_call(store, canonical)
     assert store.retry(42, 12) == current.id
     await svc.generate(canonical, StudySettings(), store.claim(), AsyncMock())
     assert len(client.calls) == 2
+
+
+@pytest.mark.parametrize("reversed_order", [False, True])
+def test_passages_bound_to_exact_source_despite_wrong_ids(reversed_order):
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(7, "你好。"), SourceBlock(8, "谢谢。"), SourceBlock(9, "你好。")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    for passage in result.passages:
+        passage.block_id = 1
+    if reversed_order:
+        result.passages.reverse()
+    validate_chunk(result, blocks, "zh")
+    assert [p.block_id for p in result.passages] == [7, 8, 9]
+    assert [p.source for p in result.passages] == [b.text for b in blocks]
+    assert [p.lines[0].source for p in result.passages] == [b.text for b in blocks]
+    validate_chunk(result, blocks, "zh")  # Checkpoint validation remains idempotent.
+
+
+def test_extra_passage_rejected():
+    blocks = split_blocks(SOURCE)
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages.append(result.passages[0].model_copy(deep=True))
+    with pytest.raises(UserError, match="complete transcript paragraphs"):
+        validate_chunk(result, blocks, "zh")
