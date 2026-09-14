@@ -83,6 +83,12 @@ class Storage:
             if name not in usage_columns:
                 self.db.execute(f"ALTER TABLE usage ADD COLUMN {name} INTEGER")
         self.db.executescript("""
+        CREATE TABLE IF NOT EXISTS mosaic_packs (
+          source_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, payload TEXT NOT NULL,
+          status TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS mosaic_sentences (
+          uuid TEXT PRIMARY KEY, source_id TEXT NOT NULL, payload TEXT NOT NULL,
+          status TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS recent_material (chat_id INTEGER PRIMARY KEY, source_path TEXT,
           pack_path TEXT, pack_source TEXT);

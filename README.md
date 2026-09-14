@@ -38,6 +38,7 @@ For other source languages, reading and translation/study files are produced wit
 /regenerate
 /regenerate HSK4
 /zip
+/mosaic
 /status
 /retry
 /force <URL>
@@ -167,6 +168,29 @@ For Mandarin Mosaic:
 - Deterministic filtering removes obvious support/advertising material and repeated listening sentences. Punctuation-only repetitions and harmless interjection variants are deduplicated; global model ranking handles semantic overlap.
 - Reasons are retained in `study.json`. Timestamp fields remain null because the study stage does not invent audio alignment.
 
+## Direct Mandarin Mosaic upload
+
+After receiving a Chinese study pack, send `/mosaic` to upload its selected sentences. This command performs no transcription or LLM generation. CSV export remains available independently. Nothing is automatically uploaded when an episode finishes.
+
+Set both secrets in the server environment or its private `.env`, then recreate the container with `docker compose up -d`:
+
+```dotenv
+MANDARIN_MOSAIC_REFRESH_TOKEN=
+MANDARIN_MOSAIC_REFRESH_TOKEN_ID=
+```
+
+Leave both empty to disable direct upload. Never paste credentials into Telegram or commit them. A missing/invalid optional configuration does not stop the transcription bot; `/mosaic` explains what needs configuring.
+
+`mosaic/client.py` uses only the supplied refresh, `addpacks`, and `sentences` POST endpoints. It does not discover endpoints, implement Google OAuth, or synchronize `/api/usersentences`. Pack creation is confirmed by UUID membership in `SuccessfulUpdates` and absence from `UnsuccessfulUpdates`. Every sentence UUID is checked the same way; missing acknowledgements are reported as **unconfirmed**, separately from explicit rejection. HTTP 200 alone is insufficient.
+
+JWTs are kept in memory, refreshed with a 30-second expiry margin under an async lock, and replaced once after HTTP 401 before exactly one retry. Returned refresh credentials are reused and saved atomically in private configuration at `DATA_DIR/mosaic-session.json` (mode `0600`); JWTs are never persisted. Keep this file on the existing persistent data volume. A changed environment credential pair replaces the saved session on next startup. Do not share this file or its backups. A lost refresh response can still require replacement credentials if the server invalidated the previous pair.
+
+Chinese words are segmented locally with [jieba in its default accurate mode](https://github.com/fxsjy/jieba); `mosaic/segmentation.py` is the replaceable adapter. Segmentation is checked to preserve all non-whitespace characters. Original Mandarin and the selected English translation are uploaded unchanged. Segmentation may differ from the official client's dictionary; no claim of identical token boundaries is made.
+
+SQLite tables `mosaic_packs` and `mosaic_sentences` persist the source episode ID, UUIDs, exact upload payloads, and statuses **before** network activity. Credentials are never stored there. There is one Mosaic pack per source episode: the first upload freezes its selected-sentence snapshot. `/regenerate` does not replace that remote snapshot or silently create a second pack. Repeating `/mosaic` resumes that snapshot, reuses all UUIDs, skips confirmed sentences, and retries rejected/unconfirmed ones. A completed upload makes no further requests. This also applies after a process restart; remote idempotency ultimately depends on the supplied API honoring UUID updates.
+
+A network failure during pack creation leaves creation unconfirmed and sends no sentences. A failure during sentence upload preserves the confirmed pack and reports remaining delivery as unconfirmed. Use `/mosaic` for upload retries; `/retry` remains the transcription/study job command. The upload orchestrator lives in `mosaic/service.py`; Telegram handlers contain no API payload or authentication logic.
+
 ## Caching, persistence, and billing
 
 SQLite holds the queue, preferences, canonical-cache pointers, independent study-cache pointers, both stages' usage, and validated step checkpoints.
@@ -201,7 +225,7 @@ ruff check .
 python -m compileall -q podcast_bot
 ```
 
-Tests block unexpected networking and mock OpenAI/Telegram APIs. Real ffmpeg tests use generated local audio. See `VALIDATION.md` for results and validation boundaries. No paid call is required to run tests.
+Tests block unexpected networking and mock OpenAI, Telegram, and Mandarin Mosaic APIs. Real ffmpeg tests use generated local audio. See `VALIDATION.md` for results and validation boundaries. No paid call is required to run tests.
 
 Modules: `resolver/`, `transcription/`, `study/` (typed schemas, source validation/chunking, prompts, API adapter/checkpoints, selection, renderers), plus `pipeline.py`, `storage.py`, `queue.py`, and `bot.py`. Additional derived outputs can be added within `study/` without changing speech recognition.
 

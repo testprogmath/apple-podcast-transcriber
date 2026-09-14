@@ -2,7 +2,7 @@
 
 ## Results
 
-- **117 tests passed** in the final run (2.95 seconds).
+- **149 tests passed** after the direct-upload extension (6.27 seconds).
 - `ruff check`: passed.
 - Python bytecode compilation: passed.
 - Real Apple/RSS integration: passed for the full supplied 大鹏 episode URL. The result is saved in `resolver-example.json`.
@@ -41,3 +41,9 @@ Mocked tests cover structured Responses API parsing and refusals, verbatim sourc
 ## Unvalidated boundaries
 
 Live study-material quality and Telegram study document delivery have not been exercised. Model access was checked with a read-only API request. The original transcription bot is deployed; this record describes local validation of the study extension. The README documents resolver limits and uncertain-request billing behavior.
+
+## Mandarin Mosaic direct-upload validation — 2026-09-14
+
+32 mocked tests cover successful refresh/pack/sentence operations, expiry and rotated credentials, concurrent refresh and concurrent 401 recovery, one retry after 401, rejected refresh, rejected/missing/conflicting pack acknowledgements, partial sentence rejection and missing acknowledgements, network failures in both upload stages, restart/cancellation recovery with identical UUIDs, secret-safe logs/errors/configuration, private rotated-session persistence, failed local persistence recovery, source validation, local segmentation, malformed responses, regenerated-episode snapshot reuse, and Telegram authorization/command integration.
+
+No real Mandarin Mosaic API call, OpenAI request, or Telegram test message was made for this extension. The API contract is user-supplied; live account access, official-app visibility, and exact official segmenter equivalence remain unvalidated.

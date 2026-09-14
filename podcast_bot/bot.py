@@ -12,6 +12,9 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from .config import Config, language_code
 from .models import Job, UserError
+from .mosaic.client import MandarinMosaicClient
+from .mosaic.config import MosaicConfig
+from .mosaic.service import MosaicUploadService
 from .net import http_client
 from .pipeline import Pipeline, cleanup_abandoned
 from .queue import Worker
@@ -30,6 +33,7 @@ HELP = """Send an Apple Podcasts episode link to receive a transcript and study 
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
 /regenerate [HSK4] — rebuild the latest study pack without speech-to-text
+/mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
 /transcribe nl <URL> — override language (zh, nl, en, auto)
 /force <URL> — make a new paid transcription
@@ -60,6 +64,8 @@ class BotHandlers:
     def __init__(self, config: Config, storage: Storage):
         self.config, self.storage = config, storage
         self.worker: Worker | None = None
+        self.mosaic: MosaicUploadService | None = None
+        self.mosaic_error: str | None = None
         self.study_defaults = StudySettings.from_env()
 
     def study_settings(self) -> StudySettings:
@@ -121,6 +127,24 @@ class BotHandlers:
                 await message.reply_text(
                     f"Saved: {field} = {value}. Existing transcripts are unchanged. Use /regenerate for new study materials."
                 )
+                return
+            if command == "/mosaic":
+                if self.mosaic is None:
+                    raise UserError(
+                        self.mosaic_error
+                        or "Mandarin Mosaic upload is not configured. Set both refresh credentials on the server."
+                    )
+                pack = self.storage.recent_pack(update.effective_chat.id)
+                if not pack:
+                    raise UserError("No complete study pack yet. Send a link or use /regenerate.")
+                status = await message.reply_text(
+                    "Uploading selected sentences to Mandarin Mosaic…"
+                )
+                try:
+                    result = await self.mosaic.create_study_pack(pack)
+                    await status.edit_text(result.message())
+                except UserError as exc:
+                    await status.edit_text(str(exc))
                 return
             if command == "/zip":
                 pack = self.storage.recent_pack(update.effective_chat.id)
@@ -280,6 +304,15 @@ def build_application(config: Config, storage: Storage) -> Application:
         # Automatic SDK retries are disabled to avoid blind duplicate paid requests.
         openai = AsyncOpenAI(api_key=config.api_key, max_retries=0, timeout=900)
         app.bot_data.update(http=client, openai=openai)
+        try:
+            mosaic_config = MosaicConfig.from_env(config.data_dir / "mosaic-session.json")
+            if mosaic_config:
+                handlers.mosaic = MosaicUploadService(
+                    storage, MandarinMosaicClient(client, mosaic_config)
+                )
+        except UserError as exc:
+            # Optional upload configuration must not disable transcription or study jobs.
+            handlers.mosaic_error = str(exc)
         pipeline = Pipeline(config, storage, client, OpenAITranscriber(openai))
         if config.study_enabled:
             pipeline = LearningPipeline(
@@ -323,6 +356,7 @@ def build_application(config: Config, storage: Storage) -> Application:
         "native",
         "regenerate",
         "zip",
+        "mosaic",
     ):
         app.add_handler(CommandHandler(command, handlers.handle))
     app.add_handler(MessageHandler(filters.TEXT, handlers.handle))

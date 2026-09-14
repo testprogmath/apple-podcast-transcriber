@@ -28,3 +28,7 @@ SERVER-SETUP.md
 build/
 
 dist/
+
+# Mandarin Mosaic private rotated-session configuration
+mosaic-session.json
+.mosaic-session-*
