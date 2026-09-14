@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from ..models import UserError
 from .models import ChunkMaterial
-from .translations import untranslated, wrong_language
+from .translations import han_ratio, untranslated, wrong_language
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +55,17 @@ def batches(blocks: list[SourceBlock], limit: int) -> list[list[SourceBlock]]:
     return result
 
 
+def report(field: str, native: str, value: str) -> None:
+    """One diagnostic line so a rejected paid run still tells us what came back."""
+    log.warning(
+        "study-language field=%s native=%s han_ratio=%.2f excerpt=%r",
+        field,
+        native,
+        han_ratio(value),
+        (value or "")[:60],
+    )
+
+
 def validate_chunk(
     material: ChunkMaterial, blocks: list[SourceBlock], target: str, native: str = ""
 ) -> None:
@@ -101,6 +112,7 @@ def validate_chunk(
             )
     for passage in material.passages:
         if untranslated(passage.source, passage.translation, native):
+            report("passage-translation", native, passage.translation)
             raise UserError(
                 "The study model returned the source text instead of a "
                 f"{native or 'native'}-language translation. Canonical transcript preserved; use /retry."
@@ -112,11 +124,13 @@ def validate_chunk(
         *material.cultural_references,
     ]:
         if untranslated(item.example, item.example_translation, native):
+            report("example-translation", native, item.example_translation)
             raise UserError(
                 "A study example was not translated into the configured native language. Use /retry."
             )
     for item in material.vocabulary:
         if wrong_language(item.meaning, native):
+            report("vocabulary-meaning", native, item.meaning)
             raise UserError(
                 "A vocabulary meaning was not written in the configured native language. Use /retry."
             )

@@ -5,6 +5,34 @@ from pydantic import BaseModel, ConfigDict, Field, create_model
 Text = Annotated[str, Field(min_length=1, max_length=3000)]
 Short = Annotated[str, Field(min_length=1, max_length=400)]
 
+# The system prompt alone did not stop the model answering in the target language, so the
+# requirement is repeated on every field the model must write in the learner's own language.
+NATIVE = (
+    " Write this in the native language named by settings.native_language in the input,"
+    " NOT in the source/target language. Copying or rewording the Chinese source here is wrong."
+)
+Translation = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=3000,
+        description="Natural translation of the whole block." + NATIVE,
+    ),
+]
+Rendered = Annotated[
+    str,
+    Field(min_length=1, max_length=3000, description="Translation of the quoted example." + NATIVE),
+]
+Meaning = Annotated[
+    str, Field(min_length=1, max_length=3000, description="What the item means." + NATIVE)
+]
+Explanation = Annotated[
+    str, Field(min_length=1, max_length=3000, description="Explanation for the learner." + NATIVE)
+]
+ShortNative = Annotated[
+    str, Field(min_length=1, max_length=400, description="Short note." + NATIVE)
+]
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -19,34 +47,34 @@ class Passage(StrictModel):
     block_id: int
     source: Text
     lines: list[ReadingLine] = Field(min_length=1, max_length=100)
-    translation: Text
+    translation: Translation
 
 
 class Vocabulary(StrictModel):
     term: Short
     pinyin: str = Field(max_length=400)
-    meaning: Text
-    register_note: Short
+    meaning: Meaning
+    register_note: ShortNative
     example: Text
-    example_translation: Text
-    usage: Text
+    example_translation: Rendered
+    usage: Explanation
     tags: list[Short] = Field(max_length=8)
 
 
 class Pattern(StrictModel):
     pattern: Short
-    meaning: Text
-    usage: Text
+    meaning: Meaning
+    usage: Explanation
     example: Text
-    example_translation: Text
+    example_translation: Rendered
 
 
 class Note(StrictModel):
     title: Short
-    explanation: Text
+    explanation: Explanation
     example: Text
-    example_translation: Text
-    recommendation: Text
+    example_translation: Rendered
+    recommendation: Explanation
 
 
 class ASRIssue(StrictModel):
