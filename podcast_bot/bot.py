@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from openai import AsyncOpenAI
-from telegram import InputMediaDocument, Update
+from telegram import BotCommand, BotCommandScopeChat, InputMediaDocument, MenuButtonCommands, Update
 from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -33,7 +33,8 @@ from .transcription.audio import check_ffmpeg
 from .transcription.openai import OpenAITranscriber
 
 log = logging.getLogger(__name__)
-HELP = """Send an Apple Podcasts episode link to receive a transcript and study pack.
+HELP = """Send an Apple Podcasts episode link. zh: full study pack and configured uploads.
+Other languages: transcript and vocabulary/expressions only; no external uploads.
 /level HSK3 — set learner level (also HSK4, A2, B1, etc.)
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
@@ -47,6 +48,28 @@ HELP = """Send an Apple Podcasts episode link to receive a transcript and study 
 /status — current job and queue
 /help — these instructions
 Plain links use DEFAULT_LANGUAGE. Only your configured private Telegram account can use this bot."""
+
+
+async def setup_command_menu(bot, chat_id: int) -> None:
+    commands = [
+        ("help", "Как пользоваться ботом"),
+        ("status", "Текущая задача и очередь"),
+        ("transcribe", "Транскрипция: /transcribe en ссылка"),
+        ("language", "Язык подкаста: /language zh, en, de, nl"),
+        ("level", "Уровень: /level HSK3 или B1"),
+        ("native", "Язык объяснений: /native ru"),
+        ("regenerate", "Обновить материалы из сохранённого текста"),
+        ("zip", "Скачать последние материалы архивом"),
+        ("hanly", "Слова в Hanly — только zh"),
+        ("mosaic", "Предложения в Mandarin Mosaic — только zh"),
+        ("retry", "Повторить неудавшуюся задачу"),
+        ("force", "Новая платная транскрипция: /force ссылка"),
+        ("start", "Начать и показать справку"),
+    ]
+    await bot.set_my_commands(
+        [BotCommand(*c) for c in commands], scope=BotCommandScopeChat(chat_id)
+    )
+    await bot.set_chat_menu_button(chat_id=chat_id, menu_button=MenuButtonCommands())
 
 
 def authorized(update: Update, allowed_user_id: int) -> bool:
@@ -176,6 +199,13 @@ class BotHandlers:
                 if not pack or not pack_valid(pack):
                     raise UserError("No complete study pack yet. Send a link or use /regenerate.")
                 metadata = json.loads((pack / "metadata.json").read_text(encoding="utf-8"))
+                if (
+                    metadata["study_settings"]["target_language"] != "zh"
+                    and metadata.get("pack_format") != "vocabulary-only-v1"
+                ):
+                    raise UserError(
+                        "Use /regenerate to prepare the new vocabulary-only materials first."
+                    )
                 with (pack / metadata["zip_filename"]).open("rb") as document:
                     await context.bot.send_document(
                         chat_id=update.effective_chat.id,
@@ -285,13 +315,16 @@ async def send_files(bot, chat_id: int, path: Path) -> None:
         names = ["transcript.txt"]
         if metadata["study_settings"]["target_language"] == "zh":
             names.extend(["transcript_pinyin.md", "mandarin_mosaic.csv"])
-        names += [
-            f"translation_{metadata['study_settings']['native_language']}.md",
-            "reader.md",
-            "study.md",
-            "hanly.csv",
-            "metadata.json",
-        ]
+        if metadata["study_settings"]["target_language"] == "zh":
+            names += [
+                f"translation_{metadata['study_settings']['native_language']}.md",
+                "reader.md",
+                "study.md",
+                "hanly.csv",
+                "metadata.json",
+            ]
+        else:
+            names.append("vocabulary.md")
         if (path / "transcript.srt").is_file():
             names.append("transcript.srt")
     else:
@@ -326,6 +359,10 @@ def build_application(config: Config, storage: Storage) -> Application:
         await send_files(app.bot, job.chat_id, path)
 
     async def start(app: Application) -> None:
+        try:
+            await setup_command_menu(app.bot, config.allowed_user_id)
+        except TelegramError:
+            log.warning("stage=command-menu-setup-failed")
         check_ffmpeg()
         cleanup_abandoned(storage)
         storage.recover()

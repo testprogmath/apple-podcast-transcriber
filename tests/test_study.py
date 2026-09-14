@@ -23,6 +23,7 @@ from podcast_bot.study.chunking import (
     validate_chunk,
 )
 from podcast_bot.study.client import OpenAIStudyClient, StudyRequests
+from podcast_bot.study.lexical import LexicalChunk
 from podcast_bot.study.models import (
     ASRIssue,
     ChunkMaterial,
@@ -96,7 +97,9 @@ class FakeStudyClient:
         self.calls.append((schema, payload))
         if len(self.calls) == self.fail_at:
             raise UserError("Mock study failure")
-        if schema is ChunkMaterial:
+        if schema is LexicalChunk:
+            result = LexicalChunk(vocabulary=[vocabulary().model_dump(exclude={"pinyin"})])
+        elif schema is ChunkMaterial:
             result = material_for(payload["blocks"])
         else:
             result = Selection(
@@ -448,7 +451,10 @@ async def test_non_chinese_outputs_no_pinyin(store, canonical):
         canonical, settings, enqueue_study(store, canonical, settings), AsyncMock()
     )
     assert not (pack / "transcript_pinyin.md").exists()
-    assert (pack / "translation_ru.md").is_file()
+    assert (pack / "vocabulary.md").is_file()
+    assert not (pack / "translation_ru.md").exists()
+    assert not (pack / "reader.md").exists()
+    assert not (pack / "hanly.csv").exists()
 
 
 async def test_pack_delivery_and_zip_command(config, store, canonical):
