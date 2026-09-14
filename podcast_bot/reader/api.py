@@ -12,7 +12,7 @@ from .auth import telegram_user_id
 from .bkrs import RussianDictionary
 from .dictionary import Dictionary
 from .documents import ReaderDocument
-from .enrich import NONE, enrich
+from .enrich import enrich
 from .tokens import HAN, tokenize
 
 log = logging.getLogger(__name__)
@@ -129,16 +129,20 @@ class ReaderApi:
             self.dictionary,
             self.russian,
         )
+        # Keyed by glyph rather than repeated per token: a transcript repeats each word
+        # about three times, and this is what makes carrying both languages affordable.
+        glossary = {}
+        for glyph, lexeme in lexemes.items():
+            entry = {"p": lexeme.pinyin}
+            if lexeme.native():
+                entry["ru"] = list(lexeme.native())
+                entry["rs"] = lexeme.native_source
+            if lexeme.english:
+                entry["en"] = list(lexeme.english)
+            glossary[glyph] = entry
 
         def describe(token):
-            if not token.word:
-                return {"t": token.text, "w": False}
-            lexeme = lexemes[token.text]
-            item = {"t": token.text, "w": True, "p": lexeme.pinyin}
-            if lexeme.meaning_source != NONE:
-                item["m"] = lexeme.meaning
-                item["ms"] = lexeme.meaning_source
-            return item
+            return {"t": token.text, "w": True} if token.word else {"t": token.text, "w": False}
 
         return json_response(
             200,
@@ -150,6 +154,8 @@ class ReaderApi:
                 "hanly_error": self.services.hanly_error or "",
                 "mosaic_available": self.services.mosaic is not None,
                 "mosaic_error": self.services.mosaic_error or "",
+                "native_language": document.native_language() or "ru",
+                "glossary": glossary,
                 "paragraphs": document.paragraphs(sentences),
                 "sentences": [
                     {
@@ -256,8 +262,9 @@ class ReaderApi:
         notes = []
         for glyph, sentence in chosen:
             lexeme = lexemes[glyph]
+            meaning = lexeme.native() or lexeme.english
             story = build_hanly_note(
-                lexeme.meaning or None,
+                "\n".join(meaning) or None,
                 sentence.text,
                 translations.get(sentence.text.strip()),
             )

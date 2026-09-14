@@ -58,6 +58,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 - Re-sending a URL reuses the transcript and matching study pack. After a level/native-language change it creates only new study materials.
 - `/force <URL>` intentionally makes a new paid audio transcription. `/retry` resumes a failed job, reusing completed stage checkpoints.
 - `/zip` retrieves the latest completed pack, even if a newer job is still processing.
+- The finished-job message links the episode audio and its Apple Podcasts page, so the recording sits beside its transcript.
 - `/reader` opens the latest transcript or study pack in the Reader. It never retranscribes; it reuses the stored transcript.
 - Long jobs update one status message. Study failures leave the transcript usable and deliver it on its own, with an explanation and `/retry` guidance.
 
@@ -71,7 +72,7 @@ Two destinations, deliberately different:
 
 **Mandarin Mosaic gets sentences.** Tap anywhere in a sentence that is not a word, or its ◎ marker, and the whole sentence is selected. Uploading sends those complete sentences through the existing Mandarin Mosaic sentence API with the existing jieba segmentation. Whole documents are never uploaded.
 
-**Words carry a definition.** The sheet shows the study pack's own contextual meaning when it has one for that exact term. Otherwise it falls back to a local CC-CEDICT definition, labelled `CC-CEDICT` so the two are never confused. When neither knows the word the sheet shows glyph and pinyin only, with no empty label. Dictionary membership is never a gate: a chunk CC-CEDICT has never heard of stays tappable and uploadable, which matters because Hanly accepts arbitrary Chinese strings.
+**Words carry a definition, in either language.** A `RU / EN` toggle beside the pinyin one switches the sheet between the learner's language and English, remembered per browser. The Russian side prefers the study pack's own contextual meaning and falls back to the optional Russian dictionary; the English side comes from CC-CEDICT. Whichever side is empty falls back to the other rather than showing nothing, and the source is labelled so the two are never confused. Each dictionary sense renders on its own line. When neither language knows the word the sheet shows glyph and pinyin only, with no empty label. Dictionary membership is never a gate: a chunk CC-CEDICT has never heard of stays tappable and uploadable, which matters because Hanly accepts arbitrary Chinese strings.
 
 **Pinyin is a toggle.** `拼音 OFF / ON` in the header adds interlinear tone-mark pinyin above every Chinese lexical item using `<ruby>`, never over punctuation or Latin text. It is off by default and remembered per browser in `localStorage`; if site data is unavailable the Reader simply starts with it off. The pinyin sits in the DOM either way, so toggling is instant and line spacing does not shift while it is off. The lexical sheet always shows pinyin regardless of the toggle.
 
@@ -303,6 +304,8 @@ python3 build_bkrs_dictionary.py source/dabkrs.gz bkrs.sqlite3
 Roughly 25 seconds for 3.46 million entries and a 384 MB database, kept outside the repository and outside the image so other applications on the same host can share it. Definitions are stored with their ABBYY DSL markup intact so the database stays a faithful reformatting; `reader/bkrs.py` is the reference renderer. Pinyin is still taken from CC-CEDICT, which separates syllables (`rèn wéi`) where the Russian source does not (`rènwéi`).
 
 CC-CEDICT stores several entries for a written form when it has several readings. The lowest source id is the deterministic primary, supplying the displayed pronunciation; definitions merge across the homographs in source order, deduplicated, and the popup shows at most three. The alternatives stay available in `reader/dictionary.py` rather than being discarded.
+
+Both languages travel in one `glossary` keyed by glyph rather than repeated on every token. A transcript repeats each word about 2.7 times, so keying by glyph is what makes carrying two languages cheaper than carrying one used to be.
 
 Lookup is one indexed SQLite query per document, not one per tap: 125,061 entries in a 14.6 MB read-only database, adding roughly 0.6 ms to a full episode's response and 0.2 ms to a short one, measured interleaved on a warm process. The response grows from about 82 KB to 181 KB for a full episode, which the reverse proxy compresses. Without the database the Reader still works and simply shows no definitions.
 

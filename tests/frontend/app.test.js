@@ -10,15 +10,23 @@ const DOCUMENT = {
   hanly_error: "",
   mosaic_error: "",
   paragraphs: [[0, 1]],
+  glossary: {
+    他们: { p: "tā men", en: ["they"] },
+    获得: { p: "huò dé", ru: ["получать"], rs: "contextual", en: ["to obtain"] },
+    了: { p: "le" },
+    菲尔兹奖: { p: "fēi ěr zī jiǎng" },
+    做研究: { p: "zuò yán jiū" },
+    很难: { p: "hěn nán", ru: ["трудный", "тяжёлый"], rs: "bkrs", en: ["difficult"] },
+  },
   sentences: [
     {
       id: 0,
       text: "他们获得了菲尔兹奖。",
       tokens: [
-        { t: "他们", w: true, p: "tā men" },
-        { t: "获得", w: true, p: "huò dé", m: "получать", ms: "contextual" },
-        { t: "了", w: true, p: "le" },
-        { t: "菲尔兹奖", w: true, p: "fēi ěr zī jiǎng" },
+        { t: "他们", w: true },
+        { t: "获得", w: true },
+        { t: "了", w: true },
+        { t: "菲尔兹奖", w: true },
         { t: "。", w: false },
       ],
     },
@@ -26,13 +34,15 @@ const DOCUMENT = {
       id: 1,
       text: "做研究很难。",
       tokens: [
-        { t: "做研究", w: true, p: "zuò yán jiū" },
-        { t: "很难", w: true, p: "hěn nán", m: "difficult", ms: "cc-cedict" },
+        { t: "做研究", w: true },
+        { t: "很难", w: true },
         { t: "。", w: false },
       ],
     },
   ],
 };
+
+const senses = (nodes) => nodes["lexeme-senses"].children.map((li) => li.textContent);
 
 function start(options = {}) {
   const env = setup(options);
@@ -104,7 +114,7 @@ test("popup always shows pinyin, and shows a known meaning", async () => {
   await settle();
   word(body, "获得").click(body);
   assert.strictEqual(nodes["lexeme-pinyin"].textContent, "huò dé");
-  assert.strictEqual(nodes["lexeme-meaning"].textContent, "получать");
+  assert.deepStrictEqual(senses(nodes), ["получать"]);
   assert.ok(!nodes.text.classes.has("pinyin"), "inline pinyin still off");
 });
 
@@ -113,7 +123,7 @@ test("a token with no meaning shows an empty meaning rather than a label", async
   await settle();
   word(body, "做研究").click(body);
   assert.strictEqual(nodes["lexeme-pinyin"].textContent, "zuò yán jiū");
-  assert.strictEqual(nodes["lexeme-meaning"].textContent, "");
+  assert.deepStrictEqual(senses(nodes), []);
   assert.strictEqual(nodes["lexeme-source"].textContent, "", "no source label either");
 });
 
@@ -121,17 +131,57 @@ test("a contextual meaning is shown without a dictionary label", async () => {
   const { body, nodes } = start();
   await settle();
   word(body, "获得").click(body);
-  assert.strictEqual(nodes["lexeme-meaning"].textContent, "получать");
+  assert.deepStrictEqual(senses(nodes), ["получать"]);
   assert.strictEqual(nodes["lexeme-source"].textContent, "");
 });
 
-test("a CC-CEDICT meaning is shown and attributed", async () => {
+test("every sense renders on its own line", async () => {
   const { body, nodes } = start();
   await settle();
   word(body, "很难").click(body);
-  assert.strictEqual(nodes["lexeme-pinyin"].textContent, "hěn nán");
-  assert.strictEqual(nodes["lexeme-meaning"].textContent, "difficult");
+  assert.deepStrictEqual(senses(nodes), ["трудный", "тяжёлый"]);
+  assert.strictEqual(nodes["lexeme-source"].textContent, "大БКРС");
+});
+
+test("the language toggle switches the popup between Russian and English", async () => {
+  const { body, nodes } = start();
+  await settle();
+  assert.strictEqual(nodes["language-toggle"].textContent, "RU", "Russian by default");
+  word(body, "很难").click(body);
+  assert.deepStrictEqual(senses(nodes), ["трудный", "тяжёлый"]);
+
+  nodes["language-toggle"].fire("click");
+  assert.strictEqual(nodes["language-toggle"].textContent, "EN");
+  assert.deepStrictEqual(senses(nodes), ["difficult"], "the open popup updates in place");
   assert.strictEqual(nodes["lexeme-source"].textContent, "CC-CEDICT");
+
+  nodes["language-toggle"].fire("click");
+  assert.deepStrictEqual(senses(nodes), ["трудный", "тяжёлый"]);
+});
+
+test("a language with no entry falls back to the other rather than showing nothing", async () => {
+  const { body, nodes } = start();
+  await settle();
+  nodes["language-toggle"].fire("click");
+  word(body, "获得").click(body);
+  assert.deepStrictEqual(senses(nodes), ["to obtain"]);
+  nodes["lexeme-close"].fire("click");
+  word(body, "他们").click(body);
+  assert.deepStrictEqual(senses(nodes), ["they"]);
+  nodes["language-toggle"].fire("click");
+  assert.deepStrictEqual(senses(nodes), ["they"], "Russian absent, English shown instead");
+});
+
+test("the language preference is persisted and restored", async () => {
+  const storage = memoryStorage();
+  const first = start({ storage });
+  await settle();
+  first.nodes["language-toggle"].fire("click");
+  assert.strictEqual(storage._store["reader.language"], "en");
+
+  const second = start({ storage: memoryStorage({ "reader.language": "en" }) });
+  await settle();
+  assert.strictEqual(second.nodes["language-toggle"].textContent, "EN");
 });
 
 test("an unknown word still opens a usable popup and stays selectable", async () => {

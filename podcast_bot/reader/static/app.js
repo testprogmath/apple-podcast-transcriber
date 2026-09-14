@@ -4,7 +4,8 @@ const telegram = window.Telegram && window.Telegram.WebApp;
 const documentId = new URLSearchParams(location.search).get("doc") || "";
 const initData = (telegram && telegram.initData) || "";
 const PINYIN_KEY = "reader.pinyin";
-const SOURCE_LABELS = { "cc-cedict": "CC-CEDICT", bkrs: "大БКРС" };
+const LANGUAGE_KEY = "reader.language";
+const SOURCE_LABELS = { "cc-cedict": "CC-CEDICT", bkrs: "大БКРС", contextual: "" };
 
 const state = {
   title: "",
@@ -14,22 +15,24 @@ const state = {
   open: null,
   lexeme: null,
   pinyin: false,
+  language: "ru",
+  glossary: {},
 };
 
 const el = (id) => document.getElementById(id);
 const counters = { hanly: el("hanly-counter"), mosaic: el("mosaic-counter") };
 
-function readPreference() {
+function readPreference(key, fallback) {
   try {
-    return localStorage.getItem(PINYIN_KEY) === "on";
+    return localStorage.getItem(key) ?? fallback;
   } catch (error) {
-    return false;
+    return fallback;
   }
 }
 
-function writePreference(on) {
+function writePreference(key, value) {
   try {
-    localStorage.setItem(PINYIN_KEY, on ? "on" : "off");
+    localStorage.setItem(key, value);
   } catch (error) {
     /* A private window or blocked site data must not break reading. */
   }
@@ -108,6 +111,23 @@ function applyPinyin(on) {
   toggle.textContent = on ? "拼音 ON" : "拼音 OFF";
 }
 
+function applyLanguage(language) {
+  state.language = language;
+  const toggle = el("language-toggle");
+  toggle.setAttribute("aria-pressed", language === "ru" ? "true" : "false");
+  toggle.textContent = language.toUpperCase();
+  if (state.lexeme) renderLexemeBody(state.lexeme.glyph);
+}
+
+/** The chosen language, falling back to the other rather than showing nothing. */
+function sensesFor(glyph) {
+  const entry = state.glossary[glyph] || {};
+  const native = { senses: entry.ru || [], source: entry.rs || "" };
+  const english = { senses: entry.en || [], source: entry.en ? "cc-cedict" : "" };
+  const first = state.language === "ru" ? native : english;
+  return first.senses.length ? first : state.language === "ru" ? english : native;
+}
+
 function markInspecting(node) {
   document.querySelectorAll(".word.inspecting").forEach((n) => n.classList.remove("inspecting"));
   if (node) node.classList.add("inspecting");
@@ -129,13 +149,25 @@ function renderLexemeAction() {
   action.classList.toggle("remove", picked);
 }
 
+function renderLexemeBody(glyph) {
+  const entry = state.glossary[glyph] || {};
+  el("lexeme-glyph").textContent = glyph;
+  el("lexeme-pinyin").textContent = entry.p || "";
+  const list = el("lexeme-senses");
+  list.textContent = "";
+  const { senses, source } = sensesFor(glyph);
+  for (const sense of senses) {
+    const item = document.createElement("li");
+    item.textContent = sense;
+    list.appendChild(item);
+  }
+  el("lexeme-source").textContent = senses.length ? SOURCE_LABELS[source] || "" : "";
+}
+
 function openLexeme(token, sentenceId, node) {
   state.lexeme = { glyph: token.t, sentenceId };
   closeLexeme.origin = node;
-  el("lexeme-glyph").textContent = token.t;
-  el("lexeme-pinyin").textContent = token.p || "";
-  el("lexeme-meaning").textContent = token.m || "";
-  el("lexeme-source").textContent = SOURCE_LABELS[token.ms] || "";
+  renderLexemeBody(token.t);
   renderLexemeAction();
   markInspecting(node);
   el("lexeme").hidden = false;
@@ -152,17 +184,18 @@ function renderSentence(sentence) {
       node.appendChild(document.createTextNode(token.t));
       continue;
     }
+    const pinyin = (state.glossary[token.t] || {}).p || "";
     const word = document.createElement("button");
     word.type = "button";
     word.className = "word";
     word.dataset.glyph = token.t;
     word.setAttribute("aria-pressed", "false");
-    word.setAttribute("aria-label", token.p ? `${token.t} ${token.p}` : token.t);
-    if (token.p) {
+    word.setAttribute("aria-label", pinyin ? `${token.t} ${pinyin}` : token.t);
+    if (pinyin) {
       const ruby = document.createElement("ruby");
       ruby.appendChild(document.createTextNode(token.t));
       const rt = document.createElement("rt");
-      rt.textContent = token.p;
+      rt.textContent = pinyin;
       ruby.appendChild(rt);
       word.appendChild(ruby);
     } else {
@@ -187,6 +220,7 @@ function renderSentence(sentence) {
 function render(data) {
   state.title = data.title;
   state.sentences = data.sentences;
+  state.glossary = data.glossary || {};
   state.available = { hanly: data.hanly_available, mosaic: data.mosaic_available };
   state.reasons = { hanly: data.hanly_error, mosaic: data.mosaic_error };
   el("title").textContent = data.title;
@@ -348,7 +382,11 @@ el("lexeme-action").addEventListener("click", (event) => {
 });
 el("pinyin-toggle").addEventListener("click", () => {
   applyPinyin(!state.pinyin);
-  writePreference(state.pinyin);
+  writePreference(PINYIN_KEY, state.pinyin ? "on" : "off");
+});
+el("language-toggle").addEventListener("click", () => {
+  applyLanguage(state.language === "ru" ? "en" : "ru");
+  writePreference(LANGUAGE_KEY, state.language);
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") dismissTop();
@@ -362,8 +400,8 @@ for (const id of ["cedict-link", "cedict-licence"]) {
   });
 }
 
-state.pinyin = readPreference();
-applyPinyin(state.pinyin);
+applyPinyin(readPreference(PINYIN_KEY, "off") === "on");
+applyLanguage(readPreference(LANGUAGE_KEY, "ru") === "en" ? "en" : "ru");
 
 if (telegram) {
   telegram.ready();

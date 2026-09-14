@@ -185,8 +185,16 @@ ruby { ruby-align: center; }
 #lexeme-glyph { margin: 0; font-size: 30px; line-height: 1.25; }
 #lexeme-pinyin { margin: 4px 0 0; color: var(--muted); font-size: 16px; }
 #lexeme-pinyin:empty { display: none; }
-#lexeme-meaning { margin: 8px 0 0; font-size: 16px; }
-#lexeme-meaning:empty { display: none; }
+#lexeme-senses {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+#lexeme-senses li { padding: 2px 0; }
+#lexeme-senses:empty { display: none; }
 #lexeme-source { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 #lexeme-source:empty { display: none; }
 #lexeme-action { margin-top: 16px; }

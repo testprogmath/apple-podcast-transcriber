@@ -3,9 +3,9 @@ import pathlib
 
 import pytest
 
-from podcast_bot.reader.bkrs import RussianDictionary, plain_gloss
+from podcast_bot.reader.bkrs import RussianDictionary, plain_senses
 from podcast_bot.reader.dictionary import Dictionary
-from podcast_bot.reader.enrich import BKRS, CEDICT, CONTEXTUAL, NONE, enrich
+from podcast_bot.reader.enrich import BKRS, CONTEXTUAL, enrich
 
 TOOL = pathlib.Path(__file__).parent.parent / "tools" / "build_bkrs_dictionary.py"
 _spec = importlib.util.spec_from_file_location("build_bkrs_dictionary", TOOL)
@@ -51,7 +51,10 @@ def russian(tmp_path):
 def test_the_builder_reads_headword_pinyin_and_definitions(russian):
     entry = russian.lookup("认为")
     assert entry.pinyin == "rènwéi"
-    assert entry.definitions == ("1) признать за...; принять за...; 2) полагать, считать",)
+    assert entry.definitions == (
+        "1) признать за...; принять за...",
+        "2) полагать, считать",
+    ), "each sense is its own line"
 
 
 def test_a_compound_cc_cedict_lacks_is_present(russian):
@@ -67,11 +70,17 @@ def test_examples_are_dropped_from_the_gloss(russian):
     assert "我学习汉语" not in russian.lookup("学习").definitions[0]
 
 
-def test_plain_gloss_handles_markup_directly():
-    assert plain_gloss("[m1]банк[/m]") == "банк"
-    assert plain_gloss("[m1]а[/m]\n[m2]б[/m]") == "а; б"
-    assert plain_gloss("[m1]x[/m]", limit=1) == "x"
-    assert plain_gloss("") == ""
+def test_senses_are_split_per_block_and_deduplicated():
+    assert plain_senses("[m1]банк[/m]") == ("банк",)
+    assert plain_senses("[m1]а[/m][m2]б[/m]") == ("а", "б")
+    assert plain_senses("[m1]а[/m][m2]а[/m]") == ("а",), "repeats collapse"
+    assert plain_senses("[m1]а[/m][m2]б[/m]", limit=1) == ("а",)
+    assert plain_senses("") == ()
+
+
+def test_a_second_reading_header_stays_on_its_own_line():
+    senses = plain_senses("[m2]1) все[/m][m1][b]dàgū[/b][/m][m2][p]вежл.[/p] барышня[/m]")
+    assert senses == ("1) все", "dàgū", "вежл. барышня")
 
 
 def test_an_unknown_headword_is_clean(russian):
@@ -101,31 +110,42 @@ def cedict(tmp_path):
     return Dictionary(target)
 
 
-def test_russian_beats_cc_cedict_but_never_a_contextual_meaning(russian, tmp_path):
+def test_the_native_track_prefers_a_contextual_meaning_over_the_russian_gloss(russian, tmp_path):
     english = cedict(tmp_path)
     contextual = enrich(["认为"], {"认为": "считать (из урока)"}, {}, english, russian)["认为"]
-    assert contextual.meaning == "считать (из урока)"
-    assert contextual.meaning_source == CONTEXTUAL
+    assert contextual.native() == ("считать (из урока)",)
+    assert contextual.native_source == CONTEXTUAL
 
-    preferred = enrich(["认为"], {}, {}, english, russian)["认为"]
-    assert preferred.meaning.startswith("1) признать за")
-    assert preferred.meaning_source == BKRS
+    without = enrich(["认为"], {}, {}, english, russian)["认为"]
+    assert without.native()[0].startswith("1) признать за")
+    assert without.native_source == BKRS
     english.close()
 
 
-def test_cc_cedict_fills_in_where_russian_has_nothing(russian, tmp_path):
+def test_both_language_tracks_are_carried_at_once(russian, tmp_path):
     english = cedict(tmp_path)
-    lexeme = enrich(["银行"], {}, {}, english, russian)["银行"]
-    assert lexeme.meaning == "bank"
-    assert lexeme.meaning_source == CEDICT
+    lexeme = enrich(["认为"], {}, {}, english, russian)["认为"]
+    assert lexeme.russian and lexeme.english, "the Reader can switch without another request"
+    assert lexeme.english == ("to think; to consider",)
+    assert len(lexeme.russian) == 2, "each Russian sense on its own line"
     english.close()
 
 
-def test_neither_source_leaves_the_meaning_absent(russian, tmp_path):
+def test_a_word_only_one_source_knows_keeps_that_track(russian, tmp_path):
+    english = cedict(tmp_path)
+    only_russian = enrich(["研究成果"], {}, {}, english, russian)["研究成果"]
+    assert only_russian.russian == ("результаты исследований",)
+    assert only_russian.english == ()
+    only_english = enrich(["银行"], {}, {}, english, russian)["银行"]
+    assert only_english.english == ("bank",)
+    assert only_english.russian == ()
+    english.close()
+
+
+def test_neither_source_leaves_both_tracks_empty(russian, tmp_path):
     english = cedict(tmp_path)
     lexeme = enrich(["辛苦了"], {}, {}, english, russian)["辛苦了"]
-    assert lexeme.meaning == ""
-    assert lexeme.meaning_source == NONE
+    assert lexeme.native() == () and lexeme.english == ()
     assert lexeme.pinyin == "xīn kǔ le", "local fallback still supplies pinyin"
     english.close()
 
