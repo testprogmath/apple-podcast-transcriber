@@ -15,6 +15,9 @@ test = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.12"]
 [tool.setuptools.packages.find]
 include = ["podcast_bot*"]
 
+[tool.setuptools.package-data]
+"podcast_bot.reader" = ["static/*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

@@ -1,6 +1,6 @@
 # Apple Podcast Transcriber & Study Bot
 
-A private, single-user Telegram bot: send an Apple Podcasts episode URL to get a faithful transcript and a curated language-learning pack. Python 3.12+, SQLite, ffmpeg, the official OpenAI Python SDK, and Telegram long polling. No web frontend or external queue.
+A private, single-user Telegram bot: send an Apple Podcasts episode URL to get a faithful transcript and a curated language-learning pack, then read either that transcript or any Chinese text in an interactive Reader that feeds Hanly and Mandarin Mosaic. Python 3.12+, SQLite, ffmpeg, the official OpenAI Python SDK, Telegram long polling, and a small static Mini App served by the same process. No external queue, no Node build.
 
 ## Study pack
 
@@ -40,6 +40,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 /regenerate
 /regenerate HSK4
 /zip
+/reader
 /mosaic
 /hanly
 /status
@@ -55,7 +56,69 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 - Re-sending a URL reuses the transcript and matching study pack. After a level/native-language change it creates only new study materials.
 - `/force <URL>` intentionally makes a new paid audio transcription. `/retry` resumes a failed job, reusing completed stage checkpoints.
 - `/zip` retrieves the latest completed pack, even if a newer job is still processing.
+- `/reader` opens the latest transcript or study pack in the Reader. It never retranscribes; it reuses the stored transcript.
 - Long jobs update one status message. Study failures leave the transcript usable and deliver it on its own, with an explanation and `/retry` guidance.
+
+## Interactive Reader
+
+The Reader is a Telegram Mini App for reading Chinese and collecting material from it. Open it and you get the text in comfortable type, with every Chinese lexical item tappable and every sentence selectable.
+
+Two destinations, deliberately different:
+
+**Hanly gets vocabulary.** Tap 培养, 骄傲, 研究成果 and the header shows `Hanly · 3`. There is no free-text selection: the Reader segments Chinese into lexical items and you pick from those, so what reaches Hanly is always a real word or chunk rather than whatever your finger dragged across. Multi-character chunks that the study pipeline already extracted for an episode (`研究成果`, `做研究`) are recognised as single items ahead of the generic segmenter. Punctuation, whitespace and Latin text are not tappable.
+
+**Mandarin Mosaic gets sentences.** Tap anywhere in a sentence that is not a word, or its ◎ marker, and the whole sentence is selected. Uploading sends those complete sentences through the existing Mandarin Mosaic sentence API with the existing jieba segmentation. Whole documents are never uploaded.
+
+Both baskets are local until you press upload. Open a basket from its counter to review the items, remove any of them, then upload.
+
+### Opening it
+
+| Input | How |
+| --- | --- |
+| Processed episode | The **📖 Open Reader** button on the finished job, or `/reader` |
+| Chinese text | Send the text to the bot; it replies with the button |
+| `.txt` / `.md` file | Send the file as a document; UTF-8, up to 2 MB |
+
+Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB, OCR and subtitle formats are out of scope.
+
+### What upload does
+
+Hanly: the Reader document owns one stable collection UUID, allocated in SQLite before any network call. Uploading merges the selected glyphs into that collection in a single batch through the existing Firestore client, preserving the collection's existing cards, its optimistic-concurrency retry, and its read-back verification. Tapping a word never touches Firestore.
+
+Mandarin Mosaic: the document owns one stable pack. Sentence payloads and their UUIDs are committed to SQLite before the first request, so a retry re-sends the same identifiers instead of creating duplicates, and a sentence already staged for that pack is never staged twice. `SuccessfulUpdates` / `UnsuccessfulUpdates` are reconciled as before, and the Mini App reports exactly which sentences failed and keeps them selected.
+
+The two destinations bind differently, because the services themselves differ. A document opened from a podcast episode uses that episode's own Hanly identity, so tapped words merge into the same collection the automatic study upload writes to. Its Mandarin Mosaic pack is separate: a study pack's sentence snapshot is frozen at its first upload, and hand-picked Reader sentences must not rewrite it. Names come from the episode title; direct text derives a short title from its first line, falling back to a timestamp. Names are display only: the UUID and the PackId are the identifiers.
+
+A failed upload keeps the basket intact and shows the reason. Reloading the Reader creates nothing externally; only an explicit upload mutates anything.
+
+### Mini App setup
+
+The Reader needs a public HTTPS address, because Telegram requires HTTPS for `web_app` buttons. Put a TLS reverse proxy in front of the bot and point `READER_PUBLIC_URL` at it:
+
+```dotenv
+READER_PUBLIC_URL=https://reader.example.com
+READER_HOST=127.0.0.1
+READER_PORT=8081
+```
+
+Compose publishes `READER_PORT` on `127.0.0.1` by default; set `READER_BIND_ADDRESS` if the proxy runs on another host. No BotFather configuration is required: the button carries the URL, and Mini Apps opened from an inline `web_app` button in a private chat need no registered domain. Leaving `READER_PUBLIC_URL` empty disables the button and every Reader entry point; the bot otherwise behaves as before.
+
+For local development, run the bot with:
+
+```dotenv
+READER_PUBLIC_URL=http://127.0.0.1:8081
+READER_DEV_MODE=true
+```
+
+and open `http://127.0.0.1:8081/reader/?doc=<id>` in a browser. Dev mode accepts a request that carries *no* Telegram init data; forged init data is still rejected, and the setting must stay `false` in production.
+
+### Security model
+
+Every external call is made by the backend. The Mini App holds no Firebase API key, no refresh token, no ID token, no Mosaic JWT and no `Authorization` header, and it never contacts Hanly or Mandarin Mosaic directly. It only calls this bot.
+
+Each API request carries `X-Telegram-Init-Data`, validated server-side with Telegram's documented scheme: `secret_key = HMAC_SHA256(key="WebAppData", message=<bot token>)`, then a constant-time comparison against `HMAC_SHA256(key=secret_key, message=<data check string>)`, plus an `auth_date` freshness window. The verified user must be `TELEGRAM_ALLOWED_USER_ID`.
+
+Reader document IDs are opaque 128-bit values scoped to the owning chat, so documents cannot be enumerated by counting up. The client submits sentence IDs, never sentence text; the backend re-derives canonical sentences from the stored source. Responses carry `nosniff`, `no-referrer` and a Content-Security-Policy that allows scripts only from this origin and `telegram.org`.
 
 ## Setup
 
@@ -93,7 +156,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Run one replica with a persistent `data/` volume. The service has automatic restart, non-root execution, bounded logs, and no incoming port. Do not use ephemeral storage for SQLite/transcripts. Avoid printing resolved Compose configuration with secrets; `docker compose config --quiet` validates it safely.
+Run one replica with a persistent `data/` volume. The service has automatic restart, non-root execution, and bounded logs. Its only incoming port is the Reader's, published on loopback for a TLS reverse proxy. Do not use ephemeral storage for SQLite/transcripts. Avoid printing resolved Compose configuration with secrets; `docker compose config --quiet` validates it safely.
 
 ## Configuration
 
@@ -134,6 +197,11 @@ Both item counts are preferences, not quotas. Short or low-value episodes may yi
 | `STUDY_INPUT_USD_PER_MILLION` | Optional study pricing override |
 | `STUDY_CACHED_INPUT_USD_PER_MILLION` | Optional cached-input pricing override |
 | `STUDY_OUTPUT_USD_PER_MILLION` | Optional output pricing override |
+| `READER_ENABLED` | `true`; `false` disables the Reader, its HTTP server and its commands |
+| `READER_PUBLIC_URL` | Public HTTPS base URL of the Reader; blank hides every Open Reader button |
+| `READER_HOST` | `127.0.0.1`; Compose sets `0.0.0.0` inside the container |
+| `READER_PORT` | `8081` |
+| `READER_DEV_MODE` | `false`; `true` accepts browser requests without Telegram init data |
 
 Set all three study price overrides together. Invalid/incomplete or unknown pricing simply disables the estimate; it does not block generation. Environment variables override `.env`. Persisted Telegram preferences override level/language defaults until changed again through commands. Queued jobs retain their study settings snapshot.
 
@@ -273,7 +341,7 @@ Repository settings: enable Actions and Dependabot alerts/security updates if di
 
 Tests block unexpected networking and mock OpenAI, Telegram, Mandarin Mosaic, and Firebase/Firestore APIs. Real ffmpeg tests use generated local audio. See `VALIDATION.md` for results and validation boundaries. No paid call is required to run tests.
 
-Modules: `resolver/`, `transcription/`, `study/` (typed schemas, source validation/chunking, prompts, API adapter/checkpoints, selection, renderers), plus `pipeline.py`, `storage.py`, `queue.py`, and `bot.py`. Additional derived outputs can be added within `study/` without changing speech recognition.
+Modules: `resolver/`, `transcription/`, `reader/` (sentence parsing, lexical segmentation, documents, init-data validation, HTTP API/server, static Mini App), `study/` (typed schemas, source validation/chunking, prompts, API adapter/checkpoints, selection, renderers), plus `pipeline.py`, `storage.py`, `queue.py`, and `bot.py`. Additional derived outputs can be added within `study/` without changing speech recognition.
 
 ## Documentation sources
 
@@ -283,6 +351,7 @@ Modules: `resolver/`, `transcription/`, `study/` (typed schemas, source validati
 - [GPT-5.4 mini model and pricing](https://developers.openai.com/api/docs/models/gpt-5.4-mini)
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing)
 - [Telegram BotFather](https://core.telegram.org/bots/features#botfather)
+- [Telegram Mini Apps and initData validation](https://core.telegram.org/bots/webapps)
 
 - [Firestore PATCH and update masks](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/patch)
 - [Firestore update-time preconditions](https://firebase.google.com/docs/firestore/reference/rest/v1/Precondition)

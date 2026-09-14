@@ -65,3 +65,15 @@ Exact production versions are unchanged: pins moved to Dependabot-discoverable `
 ## Command menu and language-specific output — 2026-09-14
 
 198 tests pass. New tests cover the private Telegram command menu, vocabulary-only schema and artifacts for en/de/nl, immutable transcripts, two-document delivery, minimal ZIP contents, independent non-zh cache versioning, rejection of fabricated quotations, and zero integration calls for non-zh. Existing Mandarin study/upload tests remain green. Ruff lint and formatting checks pass. No paid generation is needed for these tests.
+
+## Interactive Reader Mini App — 2026-09-14
+
+279 tests pass, 58 of them new. They cover sentence parsing (Chinese terminators, mixed Chinese/English, decimals, quotes, ellipsis, empty input, exact source preservation with whitespace-only gaps, paragraph grouping), reader tokenization (multi-character words preferred, study-pipeline chunks overriding the generic segmenter, punctuation/English/whitespace left unclickable, lossless round-trip), Telegram initData validation (valid, tampered field, appended field, stripped hash, empty, non-encoded, expired, foreign bot token), the API (unauthorized, foreign user, unknown and malformed document IDs, another chat's document, malformed bodies, five invalid Hanly payloads, four invalid sentence-ID payloads, traversal attempts on static files), Hanly (single call through the existing service, glyph dedup, rejection of items absent from the document, stable collection UUID across retries, failure surfaced as 502 with the row left `unconfirmed`), Mandarin Mosaic (only the selected canonical sentences uploaded, existing jieba segmentation applied and verified lossless, stable pack across retries with no duplicated sentences, per-sentence partial-failure reporting), security (no credentials in any static asset or API response, no document enumeration, opening the Reader mutating nothing externally), and the Telegram entry points (Chinese text, `.txt`/`.md` upload, rejected file types, `/reader` reusing the stored transcript, missing `READER_PUBLIC_URL`).
+
+Four deliberate mutations were each caught by exactly one test: disabled authorization, removed glyph dedup, non-stable Hanly collection UUID, and removed Mosaic sentence dedup.
+
+The HTTP server was exercised over a real loopback socket and with `curl`: static assets, document JSON, security headers, 404 on traversal, and 401 for forged init data in dev mode. The Mini App's JavaScript was run against a DOM shim to confirm rendering, word and sentence selection, basket editing, upload, basket clearing, total-failure state retention, and partial-failure per-sentence retention.
+
+Ruff lint and formatting, `python -m compileall`, `docker compose config`, and a packaging check that the static assets install with the wheel all pass.
+
+No real Hanly, Firebase, Mandarin Mosaic, OpenAI, or Telegram call was made. Production Hanly and Mandarin Mosaic synchronization from the Reader is **not** validated: no live upload was performed. Rendering inside the actual Telegram client, on iOS/Android/desktop, and behind a production TLS reverse proxy also remains unvalidated.

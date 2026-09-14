@@ -7,7 +7,16 @@ from dataclasses import replace
 from pathlib import Path
 
 from openai import AsyncOpenAI
-from telegram import BotCommand, BotCommandScopeChat, InputMediaDocument, MenuButtonCommands, Update
+from telegram import (
+    BotCommand,
+    BotCommandScopeChat,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaDocument,
+    MenuButtonCommands,
+    Update,
+    WebAppInfo,
+)
 from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -23,6 +32,9 @@ from .mosaic.service import MosaicUploadService
 from .net import http_client
 from .pipeline import Pipeline, cleanup_abandoned
 from .queue import Worker
+from .reader.api import ReaderApi
+from .reader.documents import from_text, from_transcript
+from .reader.server import ReaderServer
 from .resolver.apple import parse_url
 from .storage import Storage, request_key
 from .study.client import OpenAIStudyClient, StudyRequests
@@ -33,12 +45,14 @@ from .transcription.audio import check_ffmpeg
 from .transcription.openai import OpenAITranscriber
 
 log = logging.getLogger(__name__)
+MAX_UPLOAD_BYTES = 2_000_000
 HELP = """Send an Apple Podcasts episode link. zh: full study pack and configured uploads.
 Other languages: transcript and vocabulary/expressions only; no external uploads.
 /level HSK3 — set learner level (also HSK4, A2, B1, etc.)
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
 /regenerate [HSK4] — rebuild the latest study pack without speech-to-text
+/reader — open the latest transcript in the interactive Reader
 /hanly — merge selected vocabulary into the latest episode collection
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
@@ -47,6 +61,7 @@ Other languages: transcript and vocabulary/expressions only; no external uploads
 /retry — resume the latest failed job (may retry an already billed request)
 /status — current job and queue
 /help — these instructions
+Send Chinese text or a .txt/.md file to open it directly in the Reader.
 Plain links use DEFAULT_LANGUAGE. Only your configured private Telegram account can use this bot."""
 
 
@@ -60,6 +75,7 @@ async def setup_command_menu(bot, chat_id: int) -> None:
         ("native", "Язык объяснений: /native ru"),
         ("regenerate", "Обновить материалы из сохранённого текста"),
         ("zip", "Скачать последние материалы архивом"),
+        ("reader", "Открыть интерактивную читалку"),
         ("hanly", "Слова в Hanly — только zh"),
         ("mosaic", "Предложения в Mandarin Mosaic — только zh"),
         ("retry", "Повторить неудавшуюся задачу"),
@@ -89,6 +105,15 @@ def extract_url(text: str) -> str:
     return parse_url(url).url
 
 
+def reader_markup(config: Config, identifier: str) -> InlineKeyboardMarkup | None:
+    if not config.reader_enabled or not config.reader_url:
+        return None
+    url = f"{config.reader_url.rstrip('/')}/reader/?doc={identifier}"
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("📖 Open Reader", web_app=WebAppInfo(url=url))]]
+    )
+
+
 class BotHandlers:
     def __init__(self, config: Config, storage: Storage):
         self.config, self.storage = config, storage
@@ -98,6 +123,7 @@ class BotHandlers:
         self.hanly: HanlyUploadService | None = None
         self.hanly_error: str | None = None
         self.uploads = StudyUploads()
+        self.reader: ReaderServer | None = None
         self.study_defaults = StudySettings.from_env()
 
     def study_settings(self) -> StudySettings:
@@ -108,6 +134,45 @@ class BotHandlers:
             native_language=self.storage.preference("native_language", base.native_language),
             learner_level=self.storage.preference("learner_level", base.learner_level),
         )
+
+    def require_reader(self) -> None:
+        if not self.config.reader_enabled:
+            raise UserError("Reader is disabled in server configuration.")
+        if not self.config.reader_url:
+            raise UserError("Reader has no public URL. Set READER_PUBLIC_URL on the server.")
+
+    async def open_reader(self, message, document) -> None:
+        self.require_reader()
+        self.storage.save_reader_document(document)
+        count = len(document.sentences())
+        await message.reply_text(
+            f"📖 {document.title}\n{count} sentences ready. Tap words for Hanly, sentences for Mandarin Mosaic.",
+            reply_markup=reader_markup(self.config, document.id),
+        )
+
+    async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not authorized(update, self.config.allowed_user_id) or not update.effective_message:
+            return
+        message = update.effective_message
+        attachment = message.document
+        try:
+            self.require_reader()
+            if not attachment or not (attachment.file_name or "").lower().endswith((".txt", ".md")):
+                raise UserError("Reader accepts UTF-8 .txt or .md files.")
+            if (attachment.file_size or 0) > MAX_UPLOAD_BYTES:
+                raise UserError("That file is too large for Reader.")
+            handle = await attachment.get_file()
+            raw = bytes(await handle.download_as_bytearray())
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                raise UserError("Reader needs a UTF-8 encoded file.") from None
+            document = from_text(
+                update.effective_chat.id, text, title=attachment.file_name, source_type="file"
+            )
+            await self.open_reader(message, document)
+        except UserError as exc:
+            await message.reply_text(str(exc))
 
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not authorized(update, self.config.allowed_user_id) or not update.effective_message:
@@ -242,6 +307,20 @@ class BotHandlers:
                 if self.worker:
                     self.worker.wake.set()
                 return
+            if command == "/reader":
+                self.require_reader()
+                source = self.storage.recent_pack(
+                    update.effective_chat.id
+                ) or self.storage.recent_source(update.effective_chat.id)
+                if source is None:
+                    raise UserError(
+                        "No saved transcript yet. Send an episode link, Chinese text, or a .txt file."
+                    )
+                await self.open_reader(message, from_transcript(update.effective_chat.id, source))
+                return
+            if not command and not re.search(r"https://podcasts\.apple\.com/", text):
+                await self.open_reader(message, from_text(update.effective_chat.id, text.strip()))
+                return
             language = self.storage.preference(
                 "target_language", self.config.default_language or "auto"
             )
@@ -357,6 +436,18 @@ def build_application(config: Config, storage: Storage) -> Application:
 
     async def deliver(job: Job, path: Path) -> None:
         await send_files(app.bot, job.chat_id, path)
+        if not config.reader_enabled or not config.reader_url:
+            return
+        try:
+            document = from_transcript(job.chat_id, path)
+            storage.save_reader_document(document)
+            await app.bot.send_message(
+                chat_id=job.chat_id,
+                text=f"📖 {document.title}",
+                reply_markup=reader_markup(config, document.id),
+            )
+        except (UserError, TelegramError):
+            log.warning("job=%s stage=reader-document-unavailable", job.id)
 
     async def start(app: Application) -> None:
         try:
@@ -403,8 +494,19 @@ def build_application(config: Config, storage: Storage) -> Application:
             )
         handlers.worker = Worker(storage, pipeline, status, deliver, upload=handlers.uploads.run)
         handlers.worker.start()
+        if config.reader_enabled and config.reader_url:
+            api = ReaderApi(config, storage, handlers, dev_mode=config.reader_dev_mode)
+            handlers.reader = ReaderServer(api, config.reader_host, config.reader_port)
+            try:
+                await handlers.reader.start()
+            except OSError:
+                handlers.reader = None
+                log.error("stage=reader-server-bind-failed port=%s", config.reader_port)
 
     async def stop(app: Application) -> None:
+        if handlers.reader:
+            await handlers.reader.stop()
+            handlers.reader = None
         if handlers.worker:
             await handlers.worker.stop()
         if client := app.bot_data.get("http"):
@@ -438,8 +540,10 @@ def build_application(config: Config, storage: Storage) -> Application:
         "zip",
         "mosaic",
         "hanly",
+        "reader",
     ):
         app.add_handler(CommandHandler(command, handlers.handle))
     app.add_handler(MessageHandler(filters.TEXT, handlers.handle))
+    app.add_handler(MessageHandler(filters.Document.ALL, handlers.handle_document))
     app.add_error_handler(error)
     return app
