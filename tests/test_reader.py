@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from dataclasses import replace
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ from podcast_bot.mosaic.service import MosaicUploadService
 from podcast_bot.reader.api import STATIC, ReaderApi
 from podcast_bot.reader.auth import sign, telegram_user_id
 from podcast_bot.reader.documents import from_text, from_transcript
+from podcast_bot.reader.pinyin import pinyin_for
 from podcast_bot.reader.sentences import paragraphs, parse_sentences
 from podcast_bot.reader.server import parse_head, response
 from podcast_bot.reader.tokens import tokenize
@@ -848,3 +850,71 @@ async def test_a_glyph_with_no_available_context_still_uploads(notes):
     document = study_document(notes.store)
     await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
     assert notes.services.hanly.client.notes[0][1] == "原文：他们获得了菲尔兹奖。"
+
+
+@pytest.mark.parametrize(
+    ("word", "expected"),
+    [
+        ("辛苦了", "xīn kǔ le"),
+        ("研究成果", "yán jiū chéng guǒ"),
+        ("获得", "huò dé"),
+        ("很难", "hěn nán"),
+    ],
+)
+def test_pinyin_uses_tone_marks_not_numbers(word, expected):
+    assert pinyin_for(word) == expected
+    assert not re.search(r"[a-zü][1-5]", pinyin_for(word))
+
+
+@pytest.mark.parametrize("word", ["了", "的", "吗", "我们"])
+def test_neutral_tone_carries_no_mark(word):
+    syllable = pinyin_for(word).split()[-1]
+    assert syllable in {"le", "de", "ma", "men"}
+
+
+def test_polyphonic_characters_resolve_from_the_whole_lexical_item():
+    assert pinyin_for("银行") == "yín háng"
+    assert pinyin_for("行走") == "xíng zǒu"
+
+
+@pytest.mark.parametrize("value", ["，", "。", "！", "Nobel", "it's", " ", ""])
+def test_punctuation_and_latin_get_no_pinyin(value):
+    assert pinyin_for(value) == ""
+
+
+def test_pinyin_is_deterministic_and_local(monkeypatch):
+    monkeypatch.setattr("socket.socket.connect", lambda *a, **k: pytest.fail("network call"))
+    assert len({pinyin_for.__wrapped__("研究成果") for _ in range(25)}) == 1
+
+
+async def test_token_representation_exposes_pinyin_and_known_meanings(notes):
+    document = study_document(
+        notes.store,
+        text="他们获得了菲尔兹奖。\n",
+        vocabulary=[{"term": "获得", "meaning": "получать"}],
+    )
+    status, data = await call(notes, "GET", f"/api/reader/{document.id}")
+    assert status == 200
+    tokens = data["sentences"][0]["tokens"]
+    words = {t["t"]: t for t in tokens if t["w"]}
+    assert words["获得"]["p"] == "huò dé"
+    assert words["获得"]["m"] == "получать"
+    assert "m" not in words["他们"], "an unknown meaning is omitted, never an empty label"
+    assert words["他们"]["p"] == "tā men"
+
+
+async def test_punctuation_tokens_carry_no_pinyin_field(notes):
+    document = study_document(notes.store, text="他们获得了菲尔兹奖。\n")
+    _, data = await call(notes, "GET", f"/api/reader/{document.id}")
+    punctuation = [t for t in data["sentences"][0]["tokens"] if not t["w"]]
+    assert punctuation
+    assert all(set(t) == {"t", "w"} for t in punctuation)
+
+
+async def test_direct_text_tokens_still_carry_pinyin_without_meanings(notes):
+    document = from_text(42, "老师说辛苦了。\n")
+    notes.store.save_reader_document(document)
+    _, data = await call(notes, "GET", f"/api/reader/{document.id}")
+    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
+    assert all(token["p"] for token in words.values())
+    assert all("m" not in token for token in words.values())

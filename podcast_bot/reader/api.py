@@ -10,6 +10,7 @@ from ..hanly.notes import build_hanly_note
 from ..models import UserError
 from .auth import telegram_user_id
 from .documents import ReaderDocument
+from .pinyin import pinyin_for
 from .tokens import HAN, tokenize
 
 log = logging.getLogger(__name__)
@@ -115,6 +116,17 @@ class ReaderApi:
     def read(self, document: ReaderDocument):
         sentences = document.sentences()
         tokens = document.tokens(sentences)
+        meanings = document.glyph_meanings()
+
+        def describe(token):
+            if not token.word:
+                return {"t": token.text, "w": False}
+            item = {"t": token.text, "w": True, "p": pinyin_for(token.text)}
+            meaning = meanings.get(token.text)
+            if meaning:
+                item["m"] = meaning
+            return item
+
         return json_response(
             200,
             {
@@ -130,7 +142,7 @@ class ReaderApi:
                     {
                         "id": sentence.id,
                         "text": sentence.text,
-                        "tokens": [{"t": t.text, "w": t.word} for t in items],
+                        "tokens": [describe(t) for t in items],
                     }
                     for sentence, items in zip(sentences, tokens, strict=True)
                 ],

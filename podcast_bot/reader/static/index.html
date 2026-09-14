@@ -9,7 +9,10 @@
 </head>
 <body>
 <header id="bar">
-  <h1 id="title">Reader</h1>
+  <div id="titlerow">
+    <h1 id="title">Reader</h1>
+    <button id="pinyin-toggle" type="button" class="toggle" aria-pressed="false">拼音 OFF</button>
+  </div>
   <div id="counters">
     <button id="hanly-counter" type="button" class="counter">Hanly · 0</button>
     <button id="mosaic-counter" type="button" class="counter">Mandarin Mosaic · 0</button>
@@ -20,7 +23,19 @@
 
 <div id="scrim" hidden></div>
 
-<section id="basket" hidden aria-live="polite">
+<section id="lexeme" hidden role="dialog" aria-modal="true" aria-labelledby="lexeme-glyph">
+  <div id="lexeme-head">
+    <div>
+      <h2 id="lexeme-glyph"></h2>
+      <p id="lexeme-pinyin"></p>
+      <p id="lexeme-meaning"></p>
+    </div>
+    <button id="lexeme-close" type="button" class="plain">Close</button>
+  </div>
+  <button id="lexeme-action" type="button" class="primary"></button>
+</section>
+
+<section id="basket" hidden role="dialog" aria-modal="true" aria-labelledby="basket-title">
   <div id="basket-head">
     <h2 id="basket-title">Hanly</h2>
     <button id="basket-close" type="button" class="plain">Close</button>
@@ -30,7 +45,7 @@
   <button id="basket-upload" type="button" class="primary">Upload</button>
 </section>
 
-<p id="toast" hidden></p>
+<p id="toast" hidden role="status"></p>
 
 <script src="/reader/app.js"></script>
 </body>

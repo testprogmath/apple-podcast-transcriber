@@ -43,6 +43,8 @@ pydantic==2.13.5
     #   openai
 pydantic-core==2.46.5
     # via pydantic
+pypinyin==0.55.0
+    # via personal-podcast-telegram-bot (pyproject.toml)
 python-dotenv==1.2.3
     # via personal-podcast-telegram-bot (pyproject.toml)
 python-telegram-bot==22.8

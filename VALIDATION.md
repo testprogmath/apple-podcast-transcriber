@@ -93,3 +93,19 @@ Six deliberate mutations were each caught by the intended tests: removed ownersh
 Beyond the suite, the whole path was run end to end against a mock Firebase/Firestore transport: the commit body, the stored multiline note, the SQLite ownership row, an idempotent second upload reported `unchanged`, and a manually edited remote note reported `skipped-user-modified` with the remote text intact. The Mini App was run against a DOM shim to confirm the item payload carries `sentence_id`, that a failed upload keeps every selection, and that the note summary reads correctly at count one.
 
 Ruff lint and formatting, `python -m compileall podcast_bot`, and `docker compose config` pass. No real Hanly, Firebase, Mandarin Mosaic, OpenAI, or Telegram call was made. Writing a real `personalizedStories` document in production remains unverified by this implementation.
+
+## Reader lexical popup and interlinear pinyin — 2026-09-14
+
+339 Python tests and 22 frontend tests pass, 20 and 22 of them new.
+
+Python tests cover tone-mark pinyin (never numeric), neutral tone carrying no mark for 了/的/吗/我们, polyphonic resolution from the whole lexical item (银行 `yín háng` against 行走 `xíng zǒu`), empty pinyin for punctuation, Latin and whitespace, determinism across repeated calls with sockets blocked, and the token representation: `p` on every word token, `m` only when the study pack has a meaning for that exact term, and punctuation tokens carrying nothing but `t` and `w`. Direct-text documents keep pinyin without meanings.
+
+The Mini App has no build step, so its behaviour is now covered by a DOM shim in `tests/frontend/` run under the Node.js already present on the CI runner, wired in as a `Reader frontend tests` step. It asserts that tokens render as real `<button>` elements with `<ruby>`/`<rt>` and `aria-pressed`, that tapping opens the sheet without selecting anything, that only the explicit action selects or removes, that the sheet always shows pinyin and omits an unknown meaning rather than labelling it, that a selection retains its `sentence_id` and the first context wins when a glyph is met again, that the toggle switches inline pinyin and persists to `localStorage`, that a stored preference is restored, that failing site data does not break reading, that the scrim and Escape dismiss without mutating, that focus moves to the action and returns to the token, that a lexical tap never toggles the surrounding Mandarin Mosaic sentence, and that successful uploads clear while failed and partially failed ones keep their selections.
+
+Five deliberate mutations were each caught: tap-selects-immediately, removed `stopPropagation`, pinyin defaulting on, a removed `localStorage` guard, and last-context-overwrites-first.
+
+Scenarios were exercised through the shim with pinyin off, pinyin on, the popup open, a selected glyph, and simultaneous Hanly and Mandarin Mosaic selections; the stylesheet was checked for fixed widths, media queries, full-bleed sheets and safe-area insets. Pixel layout at real viewport widths still needs a browser or the Telegram client.
+
+Ruff lint and formatting, `python -m compileall podcast_bot`, `node --check`, and `docker compose config` pass. `pypinyin` was added as the only new dependency; `requirements.txt` was edited to add that single pin rather than recompiled, because a full recompile also swapped the production HTTP stack from `httpx`/`distro`/`tqdm` to `httpx2`/`httpcore2`/`truststore`, which is unrelated to this change.
+
+No external service is contacted by any test. Rendering inside the real Telegram WebView remains unverified.

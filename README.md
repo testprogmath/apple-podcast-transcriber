@@ -65,9 +65,11 @@ The Reader is a Telegram Mini App for reading Chinese and collecting material fr
 
 Two destinations, deliberately different:
 
-**Hanly gets vocabulary.** Tap 培养, 骄傲, 研究成果 and the header shows `Hanly · 3`. Each tap also remembers the sentence it was tapped in, which becomes the card's study note. There is no free-text selection: the Reader segments Chinese into lexical items and you pick from those, so what reaches Hanly is always a real word or chunk rather than whatever your finger dragged across. Multi-character chunks that the study pipeline already extracted for an episode (`研究成果`, `做研究`) are recognised as single items ahead of the generic segmenter. Punctuation, whitespace and Latin text are not tappable.
+**Hanly gets vocabulary.** Tapping a word opens it rather than filing it: a bottom sheet shows the glyph, its tone-mark pinyin, and its contextual meaning when the study pack has one, with a single `+ Add to Hanly` control. Nothing enters the basket until you press it, and reopening a selected word offers `✓ In Hanly — remove` instead. The header then shows `Hanly · 3`. Each entry remembers the sentence it was selected from, which becomes the card's study note; selecting the same word again from a different sentence keeps the first context rather than silently re-pointing the note. There is no free-text selection: the Reader segments Chinese into lexical items and you pick from those, so what reaches Hanly is always a real word or chunk rather than whatever your finger dragged across. Multi-character chunks that the study pipeline already extracted for an episode (`研究成果`, `做研究`) are recognised as single items ahead of the generic segmenter. Punctuation, whitespace and Latin text are not tappable.
 
 **Mandarin Mosaic gets sentences.** Tap anywhere in a sentence that is not a word, or its ◎ marker, and the whole sentence is selected. Uploading sends those complete sentences through the existing Mandarin Mosaic sentence API with the existing jieba segmentation. Whole documents are never uploaded.
+
+**Pinyin is a toggle.** `拼音 OFF / ON` in the header adds interlinear tone-mark pinyin above every Chinese lexical item using `<ruby>`, never over punctuation or Latin text. It is off by default and remembered per browser in `localStorage`; if site data is unavailable the Reader simply starts with it off. The pinyin sits in the DOM either way, so toggling is instant and line spacing does not shift while it is off. The lexical sheet always shows pinyin regardless of the toggle.
 
 Both baskets are local until you press upload. Open a basket from its counter to review the items, remove any of them, then upload.
 
@@ -273,6 +275,8 @@ Leave both empty to disable direct upload. Never paste credentials into Telegram
 
 JWTs are kept in memory, refreshed with a 30-second expiry margin under an async lock, and replaced once after HTTP 401 before exactly one retry. Returned refresh credentials are reused and saved atomically in private configuration at `DATA_DIR/mosaic-session.json` (mode `0600`); JWTs are never persisted. Keep this file on the existing persistent data volume. A changed environment credential pair replaces the saved session on next startup. Do not share this file or its backups. A lost refresh response can still require replacement credentials if the server invalidated the previous pair.
 
+Reader pinyin comes from [pypinyin](https://github.com/mozillazg/python-pinyin) in `reader/pinyin.py`: local, deterministic, tone marks, no network and no model call. Each lexical item is converted as a whole so phrase context resolves polyphonic characters (银行 → `yín háng`, 行走 → `xíng zǒu`). Characters whose reading depends on wider sentence context than the lexical item itself can still be wrong; the study pack's own LLM pinyin remains the source for `reader.md` and `transcript_pinyin.md` and is unchanged.
+
 Chinese words are segmented locally with [jieba in its default accurate mode](https://github.com/fxsjy/jieba); `mosaic/segmentation.py` is the replaceable adapter. Segmentation is checked to preserve all non-whitespace characters. Original Mandarin and the selected English translation are uploaded unchanged. Segmentation may differ from the official client's dictionary; no claim of identical token boundaries is made.
 
 SQLite tables `mosaic_packs` and `mosaic_sentences` persist the source episode ID, UUIDs, exact upload payloads, and statuses **before** network activity. Credentials are never stored there. There is one Mosaic pack per source episode: the first upload freezes its selected-sentence snapshot. `/regenerate` does not replace that remote snapshot or silently create a second pack. Repeating `/mosaic` resumes that snapshot, reuses all UUIDs, skips confirmed sentences, and retries rejected/unconfirmed ones. A completed upload makes no further requests. This also applies after a process restart; remote idempotency ultimately depends on the supplied API honoring UUID updates.
@@ -348,7 +352,10 @@ python -m pytest -q
 ruff check .
 ruff format --check .
 python -m compileall -q podcast_bot
+node tests/frontend/app.test.js
 ```
+
+The Mini App has no build step and no framework, so its behaviour is covered by a small DOM shim in `tests/frontend/` run with the Node.js already present on the CI runner. It exercises token rendering, the lexical sheet, explicit selection, the pinyin toggle and its persistence, and both upload outcomes.
 
 For local fixes, run `ruff check --fix .` and `ruff format .`. Ruff targets Python 3.12 with E/F (errors), I (imports), UP (modern syntax), B (likely bugs), and SIM (simplifications). Formatting handles layout; E501 is excluded for long literal messages/SQL.
 
