@@ -35,7 +35,7 @@ jieba==0.42.1
     # via personal-podcast-telegram-bot (pyproject.toml)
 jiter==0.17.0
     # via openai
-openai==2.54.0
+openai==3.13.0
     # via personal-podcast-telegram-bot (pyproject.toml)
 pydantic==2.13.5
     # via
