@@ -99,7 +99,7 @@ class FakeStudyClient:
             raise UserError("Mock study failure")
         if schema is LexicalChunk:
             result = LexicalChunk(vocabulary=[vocabulary().model_dump(exclude={"pinyin"})])
-        elif schema is ChunkMaterial:
+        elif issubclass(schema, ChunkMaterial):
             result = material_for(payload["blocks"])
         else:
             result = Selection(
@@ -344,7 +344,7 @@ async def test_partial_study_failure_reuses_validated_chunk(store, canonical):
     current = store.claim()
     client.fail_at = None
     await svc.generate(canonical, StudySettings(), current, AsyncMock())
-    assert len([x for x in client.calls if x[0] is ChunkMaterial]) == 1
+    assert len([x for x in client.calls if issubclass(x[0], ChunkMaterial)]) == 1
 
 
 async def test_corrupt_pack_rebuilt_from_checkpoints_without_api(store, canonical):
@@ -369,8 +369,17 @@ def test_pricing_bad_override_nonfatal(monkeypatch):
     assert pricing("gpt-5.4-mini") is None
 
 
-async def test_real_sdk_structured_request_mocked():
+@pytest.mark.parametrize("study_chunk", [False, True])
+async def test_real_sdk_structured_request_mocked(study_chunk):
+    from podcast_bot.study.models import chunk_schema
+
     observed = []
+    schema = chunk_schema(2) if study_chunk else Selection
+    output = (
+        material_for([{"id": 0, "text": "你好。"}, {"id": 1, "text": "谢谢。"}]).model_dump_json()
+        if study_chunk
+        else '{"selected_ids": [1]}'
+    )
 
     def handler(request):
         observed.append(json.loads(request.content))
@@ -391,7 +400,7 @@ async def test_real_sdk_structured_request_mocked():
                         "content": [
                             {
                                 "type": "output_text",
-                                "text": '{"selected_ids": [1]}',
+                                "text": output,
                                 "annotations": [],
                             }
                         ],
@@ -407,9 +416,15 @@ async def test_real_sdk_structured_request_mocked():
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     ) as sdk:
         result, usage = await OpenAIStudyClient(sdk).request(
-            Selection, "Choose IDs", {"candidates": [1]}, "gpt-5.4-mini", 1000
+            schema, "Choose IDs", {"candidates": [1]}, "gpt-5.4-mini", 1000
         )
-    assert result.selected_ids == [1] and usage["output_tokens"] == 10
+    assert usage["output_tokens"] == 10
+    if study_chunk:
+        assert len(result.passages) == 2
+        shape = observed[0]["text"]["format"]["schema"]["properties"]["passages"]
+        assert shape["minItems"] == shape["maxItems"] == 2
+    else:
+        assert result.selected_ids == [1]
     assert observed[0]["text"]["format"]["type"] == "json_schema"
     assert observed[0]["text"]["format"]["strict"] is True
     assert observed[0]["store"] is False
@@ -581,7 +596,7 @@ async def test_mosaic_integrated_global_ranking_and_pack(store, canonical):
     class Client(FakeStudyClient):
         async def request(self, schema, instructions, payload, model, max_output):
             result, usage = await super().request(schema, instructions, payload, model, max_output)
-            if schema is ChunkMaterial:
+            if issubclass(schema, ChunkMaterial):
                 result.mosaic_sentences = [mosaic(b["text"]) for b in payload["blocks"]]
             return result, usage
 
@@ -673,3 +688,26 @@ def test_extra_passage_rejected():
     result.passages.append(result.passages[0].model_copy(deep=True))
     with pytest.raises(UserError, match="complete transcript paragraphs"):
         validate_chunk(result, blocks, "zh")
+
+
+@pytest.mark.parametrize("count", [1, 2, 7])
+def test_chunk_schema_requires_exact_passage_count(count):
+    from podcast_bot.study.models import chunk_schema
+
+    schema = chunk_schema(count)
+    shape = schema.model_json_schema()["properties"]["passages"]
+    assert shape["minItems"] == shape["maxItems"] == count
+    valid = material_for([{"id": i, "text": "你好。"} for i in range(count)]).model_dump()
+    assert len(schema.model_validate(valid).passages) == count
+    for wrong_count in (count - 1, count + 1):
+        broken = dict(valid, passages=[valid["passages"][0]] * wrong_count)
+        with pytest.raises(ValidationError):
+            schema.model_validate(broken)
+
+
+async def test_generation_schema_requires_both_source_blocks(store, canonical):
+    svc, client = service(store)
+    await svc.generate(canonical, StudySettings(), enqueue_study(store, canonical), AsyncMock())
+    schema, payload = client.calls[0]
+    assert len(payload["blocks"]) == 2
+    assert schema.model_json_schema()["properties"]["passages"]["minItems"] == 2
