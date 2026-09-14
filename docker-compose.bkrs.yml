@@ -1,0 +1,8 @@
+# Optional override. The Russian dictionary is third-party data kept outside this
+# repository and outside the image; mount your own copy read-only.
+services:
+  bot:
+    environment:
+      READER_DICTIONARY_RU: /app/dictionaries/bkrs.sqlite3
+    volumes:
+      - ${BKRS_DICTIONARY:?Set BKRS_DICTIONARY to the shared bkrs.sqlite3 path}:/app/dictionaries/bkrs.sqlite3:ro

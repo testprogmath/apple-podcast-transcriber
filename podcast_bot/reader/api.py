@@ -9,6 +9,7 @@ from ..hanly.client import merge_glyphs
 from ..hanly.notes import build_hanly_note
 from ..models import UserError
 from .auth import telegram_user_id
+from .bkrs import RussianDictionary
 from .dictionary import Dictionary
 from .documents import ReaderDocument
 from .enrich import NONE, enrich
@@ -52,10 +53,13 @@ def json_response(status: int, payload: dict):
 
 
 class ReaderApi:
-    def __init__(self, config, storage, services, dev_mode: bool = False, dictionary=None):
+    def __init__(
+        self, config, storage, services, dev_mode: bool = False, dictionary=None, russian=None
+    ):
         self.config, self.storage, self.services = config, storage, services
         self.dev_mode = dev_mode
         self.dictionary = Dictionary() if dictionary is None else dictionary
+        self.russian = RussianDictionary() if russian is None else russian
 
     async def dispatch(self, method: str, path: str, headers: dict, body: bytes):
         try:
@@ -123,6 +127,7 @@ class ReaderApi:
             document.glyph_meanings(),
             document.glyph_pronunciations(),
             self.dictionary,
+            self.russian,
         )
 
         def describe(token):
@@ -245,6 +250,7 @@ class ReaderApi:
             document.glyph_meanings(),
             document.glyph_pronunciations(),
             self.dictionary,
+            self.russian,
         )
         translations = document.sentence_translations()
         notes = []
