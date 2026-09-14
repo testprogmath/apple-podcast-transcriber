@@ -1,9 +1,13 @@
+import logging
 import re
 import unicodedata
+from collections import defaultdict, deque
 from dataclasses import dataclass
 
 from ..models import UserError
 from .models import ChunkMaterial
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -51,8 +55,28 @@ def batches(blocks: list[SourceBlock], limit: int) -> list[list[SourceBlock]]:
 
 
 def validate_chunk(material: ChunkMaterial, blocks: list[SourceBlock], target: str) -> None:
-    if [p.block_id for p in material.passages] != [b.id for b in blocks]:
-        raise UserError("Study output lost or reordered transcript paragraphs. Use /retry.")
+    # Model-assigned IDs are advisory. Bind complete passages to the immutable
+    # source, retaining each passage's own translation and reading lines.
+    remaining = defaultdict(deque)
+    for passage in material.passages:
+        remaining[passage.source].append(passage)
+    aligned = []
+    for block in blocks:
+        if not remaining[block.text]:
+            break
+        aligned.append(remaining[block.text].popleft().model_copy(update={"block_id": block.id}))
+    if len(aligned) != len(blocks) or any(remaining.values()):
+        log.warning(
+            "study-coverage expected_blocks=%d received_passages=%d matched_blocks=%d",
+            len(blocks),
+            len(material.passages),
+            len(aligned),
+        )
+        raise UserError(
+            "Study output did not preserve complete transcript paragraphs "
+            f"({len(aligned)}/{len(blocks)} matched). Canonical transcript preserved; use /retry."
+        )
+    material.passages = aligned
     for passage, block in zip(material.passages, blocks, strict=True):
         if passage.source != block.text or normalized(
             "".join(x.source for x in passage.lines)
