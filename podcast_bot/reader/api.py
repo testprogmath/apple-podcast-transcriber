@@ -238,14 +238,22 @@ class ReaderApi:
             },
         )
 
-    @staticmethod
-    def stories(document: ReaderDocument, chosen) -> list[tuple[str, str]]:
-        meanings = document.glyph_meanings()
+    def stories(self, document: ReaderDocument, chosen) -> list[tuple[str, str]]:
+        """Notes use the same meaning the popup showed, so a card never says less than the Reader."""
+        lexemes = enrich(
+            [glyph for glyph, _ in chosen],
+            document.glyph_meanings(),
+            document.glyph_pronunciations(),
+            self.dictionary,
+        )
         translations = document.sentence_translations()
         notes = []
         for glyph, sentence in chosen:
+            lexeme = lexemes[glyph]
             story = build_hanly_note(
-                meanings.get(glyph), sentence.text, translations.get(sentence.text.strip())
+                lexeme.meaning or None,
+                sentence.text,
+                translations.get(sentence.text.strip()),
             )
             if story:
                 notes.append((glyph, story))

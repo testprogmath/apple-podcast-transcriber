@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from podcast_bot.bot import BotHandlers, reader_markup
+from podcast_bot.config import Config
 from podcast_bot.hanly.notes import build_hanly_note
 from podcast_bot.hanly.service import HanlyUploadService
 from podcast_bot.models import UserError
@@ -1058,6 +1059,16 @@ def untranslated_pack(store, native="ru"):
     return document
 
 
+def notes_api(store, dictionary=None):
+    services = SimpleNamespace(hanly=None, mosaic=None, hanly_error="", mosaic_error="")
+    return ReaderApi(
+        Config(token=TOKEN, allowed_user_id=42, api_key="k", data_dir=store.root),
+        store,
+        services,
+        dictionary=dictionary or Dictionary(store.root / "absent.sqlite3"),
+    )
+
+
 def test_a_chinese_meaning_is_not_offered_as_a_contextual_translation(store):
     document = untranslated_pack(store)
     assert document.native_language() == "ru"
@@ -1068,7 +1079,7 @@ def test_a_chinese_meaning_is_not_offered_as_a_contextual_translation(store):
 def test_the_hanly_note_omits_a_translation_that_is_just_the_chinese_again(store):
     document = untranslated_pack(store)
     sentence = document.sentences()[0]
-    story = ReaderApi.stories(document, [("同样", sentence)])[0][1]
+    story = notes_api(store).stories(document, [("同样", sentence)])[0][1]
     assert story == "原文：" + UNTRANSLATED_SENTENCE
     assert "Перевод" not in story
     assert story.count(UNTRANSLATED_SENTENCE) == 1
@@ -1092,7 +1103,7 @@ def test_a_properly_translated_pack_still_produces_the_full_note(store):
     )
     document = from_transcript(42, Path(document.source_reference))
     sentence = document.sentences()[0]
-    story = ReaderApi.stories(document, [("同样", sentence)])[0][1]
+    story = notes_api(store).stories(document, [("同样", sentence)])[0][1]
     assert story == (
         "такой же; одинаковый\n\n原文："
         + UNTRANSLATED_SENTENCE
@@ -1106,3 +1117,30 @@ async def test_the_reader_popup_falls_back_to_the_dictionary_when_the_meaning_is
     words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
     assert "m" not in words["同样"], "the Chinese 'meaning' is not shown as a translation"
     assert words["学习"]["ms"] == "cc-cedict" if "学习" in words else True
+
+
+def test_the_note_falls_back_to_the_dictionary_when_the_pack_has_no_usable_meaning(store, tmp_path):
+    source = tmp_path / "cedict_ts.u8"
+    source.write_text(
+        "# sample\n認為 认为 [ren4 wei2] /to think; to consider/to be of the opinion that/\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "cedict.sqlite3"
+    cedict_build(source, target)
+    dictionary = Dictionary(target)
+    document = untranslated_pack(store)
+    atomic_json(
+        Path(document.source_reference) / "transcript.txt".replace("transcript.txt", "study.json"),
+        {"vocabulary": [{"term": "认为", "meaning": "认为就是觉得的意思。"}], "passages": []},
+    )
+    (Path(document.source_reference) / "transcript.txt").write_text(
+        "很多人认为要做好研究。\n", encoding="utf-8"
+    )
+    document = from_transcript(42, Path(document.source_reference))
+    sentence = document.sentences()[0]
+    story = notes_api(store, dictionary).stories(document, [("认为", sentence)])[0][1]
+    assert story == (
+        "to think; to consider; to be of the opinion that\n\n原文：很多人认为要做好研究。"
+    )
+    assert "Перевод" not in story
+    dictionary.close()

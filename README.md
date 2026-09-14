@@ -100,7 +100,7 @@ Each uploaded glyph then gets a study note at `personalizedStories/<glyph>`, so 
 Перевод：Они получили премию Филдса.
 ```
 
-Nothing in that note is generated. The glyph's meaning and the sentence translation are reused from the study pack when it already has them for that exact term and that exact sentence, and omitted otherwise, with no empty labels left behind. The label is `原文` rather than `例句` because the sentence is the real one from the source. A direct-text document has no study pack, so its notes carry `原文：` alone. Opening the Reader never triggers translation, and this change adds no model call anywhere.
+Nothing in that note is generated. Its first line uses the same meaning the Reader showed you: the study pack's contextual meaning, or a CC-CEDICT definition when the pack has none, so a card never says less than the popup did. The sentence translation comes only from the study pack for that exact sentence, and is omitted otherwise, with no empty labels left behind. The label is `原文` rather than `例句` because the sentence is the real one from the source. A direct-text document has no study pack, so its notes carry `原文：` alone. Opening the Reader never triggers translation, and this change adds no model call anywhere.
 
 Mandarin Mosaic: the document owns one stable pack. Sentence payloads and their UUIDs are committed to SQLite before the first request, so a retry re-sends the same identifiers instead of creating duplicates, and a sentence already staged for that pack is never staged twice. `SuccessfulUpdates` / `UnsuccessfulUpdates` are reconciled as before, and the Mini App reports exactly which sentences failed and keeps them selected.
 
