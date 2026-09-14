@@ -6,10 +6,11 @@ import re
 from pathlib import Path
 
 from ..hanly.client import merge_glyphs
+from ..hanly.notes import build_hanly_note
 from ..models import UserError
 from .auth import telegram_user_id
 from .documents import ReaderDocument
-from .tokens import HAN
+from .tokens import HAN, tokenize
 
 log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
@@ -136,16 +137,38 @@ class ReaderApi:
             },
         )
 
-    def glyphs(self, document: ReaderDocument, data: dict) -> list[str]:
-        values = data.get("glyphs")
+    def items(self, document: ReaderDocument, data: dict):
+        """Resolve client selections into (glyph, canonical sentence) pairs, first occurrence wins."""
+        values = data.get("items")
         if not isinstance(values, list) or not values or len(values) > MAX_GLYPHS:
             raise ApiError(400, "Send between 1 and 200 vocabulary items.")
+        sentences = {s.id: s for s in document.sentences()}
+        known = document.known_chunks()
+        words: dict[int, set[str]] = {}
+        chosen, seen = [], set()
         for value in values:
-            if not isinstance(value, str) or not 1 <= len(value.strip()) <= MAX_GLYPH_LENGTH:
+            if not isinstance(value, dict) or set(value) != {"glyph", "sentence_id"}:
                 raise ApiError(400, "A selected vocabulary item is invalid.")
-            if not HAN.search(value) or value.strip() not in document.raw_text:
-                raise ApiError(400, "A selected item is absent from this Reader document.")
-        return merge_glyphs([], values)
+            glyph, identifier = value["glyph"], value["sentence_id"]
+            if not isinstance(glyph, str) or not 1 <= len(glyph.strip()) <= MAX_GLYPH_LENGTH:
+                raise ApiError(400, "A selected vocabulary item is invalid.")
+            glyph = glyph.strip()
+            if not HAN.search(glyph):
+                raise ApiError(400, "A selected vocabulary item is invalid.")
+            if type(identifier) is not int or identifier not in sentences:
+                raise ApiError(400, "A selected sentence is not part of this Reader document.")
+            sentence = sentences[identifier]
+            if identifier not in words:
+                words[identifier] = {
+                    token.text for token in tokenize(sentence.text, known) if token.word
+                }
+            # Only lexical items the Reader itself offered in that sentence are uploadable.
+            if glyph not in words[identifier]:
+                raise ApiError(400, "That item is not a Reader word in the selected sentence.")
+            if glyph not in seen:
+                seen.add(glyph)
+                chosen.append((glyph, sentence))
+        return chosen
 
     def selected(self, document: ReaderDocument, data: dict):
         values = data.get("sentence_ids")
@@ -169,13 +192,19 @@ class ReaderApi:
             raise ApiError(
                 503, self.services.hanly_error or "Hanly upload is not configured on the server."
             )
-        glyphs = self.glyphs(document, data)
+        chosen = self.items(document, data)
+        glyphs = merge_glyphs([], [glyph for glyph, _ in chosen])
         try:
             result = await service.merge_collection(
                 document.hanly_key, document.title, document.title[:1000], glyphs
             )
         except UserError as exc:
             raise ApiError(502, str(exc)) from None
+        log.info(
+            "reader=%s collection=%s glyphs=%s", document.id, result.collection_id, len(glyphs)
+        )
+        # Enrichment is secondary: it never turns a stored glyph into a failed upload.
+        outcomes = await service.write_notes(self.stories(document, chosen), document.id)
         return json_response(
             200,
             {
@@ -183,8 +212,24 @@ class ReaderApi:
                 "name": result.name,
                 "uploaded": result.requested,
                 "total": result.total,
+                "notes": [
+                    {"glyph": o.glyph, "action": o.action, "error": o.error or ""} for o in outcomes
+                ],
             },
         )
+
+    @staticmethod
+    def stories(document: ReaderDocument, chosen) -> list[tuple[str, str]]:
+        meanings = document.glyph_meanings()
+        translations = document.sentence_translations()
+        notes = []
+        for glyph, sentence in chosen:
+            story = build_hanly_note(
+                meanings.get(glyph), sentence.text, translations.get(sentence.text.strip())
+            )
+            if story:
+                notes.append((glyph, story))
+        return notes
 
     async def mosaic(self, document: ReaderDocument, data: dict):
         service = self.services.mosaic

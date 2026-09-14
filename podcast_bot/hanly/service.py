@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +16,8 @@ from ..study.service import pack_valid
 from .auth import HanlyError
 from .client import HanlyClient, merge_glyphs
 
+log = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class HanlyResult:
@@ -25,6 +28,13 @@ class HanlyResult:
 
     def message(self):
         return f"Hanly:\n✓ {self.name}\n✓ {self.requested} selected words/expressions verified ({self.total} cards in collection)"
+
+
+@dataclass(frozen=True)
+class NoteOutcome:
+    glyph: str
+    action: str
+    error: str | None = None
 
 
 class HanlyUploadService:
@@ -60,6 +70,37 @@ class HanlyUploadService:
                 "UPDATE hanly_collections SET status='verified' WHERE episode_id=?", (episode,)
             )
         return HanlyResult(row["uuid"], name, len(glyphs), total)
+
+    async def write_notes(
+        self, notes: list[tuple[str, str]], document_id: str = ""
+    ) -> list[NoteOutcome]:
+        """Secondary enrichment: one independent result per glyph, never raising."""
+        outcomes = []
+        async with self._lock:
+            for glyph, story in notes:
+                try:
+                    action = await self.client.upsert_glyph_note(
+                        glyph, story, self.storage.hanly_note(glyph)
+                    )
+                except Exception as exc:
+                    log.error(
+                        "reader=%s glyph=%s note=failed exception_type=%s",
+                        document_id,
+                        glyph,
+                        type(exc).__name__,
+                    )
+                    message = (
+                        str(exc)
+                        if isinstance(exc, UserError)
+                        else "Hanly note enrichment failed. Retry the upload for this item."
+                    )
+                    outcomes.append(NoteOutcome(glyph, "failed", message))
+                    continue
+                if action != "skipped-user-modified":
+                    self.storage.save_hanly_note(glyph, story)
+                log.info("reader=%s glyph=%s note=%s", document_id, glyph, action)
+                outcomes.append(NoteOutcome(glyph, action))
+        return outcomes
 
     async def upload(self, path: Path) -> HanlyResult:
         if not pack_valid(path):

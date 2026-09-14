@@ -39,34 +39,63 @@ class ReaderDocument:
     def paragraphs(self, sentences: list[Sentence]) -> list[list[int]]:
         return paragraphs(self.raw_text, sentences)
 
-    def known_chunks(self) -> frozenset[str]:
-        """Reuse study-pipeline vocabulary and patterns; never call a model when opening."""
+    def material(self) -> dict:
+        """The study pack this document came from, or an empty mapping for direct text."""
         if not self.source_reference:
-            return frozenset()
+            return {}
         try:
             material = json.loads(
                 (Path(self.source_reference) / "study.json").read_text(encoding="utf-8")
             )
         except (OSError, ValueError):
-            return frozenset()
+            return {}
+        return material if isinstance(material, dict) else {}
+
+    def known_chunks(self) -> frozenset[str]:
+        """Reuse study-pipeline vocabulary and patterns; never call a model when opening."""
+        material = self.material()
         terms = [item.get("term", "") for item in material.get("vocabulary", [])]
         terms += [item.get("pattern", "") for item in material.get("patterns", [])]
         return frozenset(term for term in terms if isinstance(term, str) and term)
 
     def known_translations(self) -> dict[str, str]:
         """Reuse translations the study pipeline already produced; never translate on demand."""
-        if not self.source_reference:
-            return {}
-        try:
-            material = json.loads(
-                (Path(self.source_reference) / "study.json").read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError):
-            return {}
         return {
             item["chinese"]: item["english"]
-            for item in material.get("mosaic_sentences", [])
+            for item in self.material().get("mosaic_sentences", [])
             if isinstance(item.get("chinese"), str) and isinstance(item.get("english"), str)
+        }
+
+    def glyph_meanings(self) -> dict[str, str]:
+        """Contextual meanings the study pipeline already wrote, keyed by the exact term."""
+        material = self.material()
+        pairs = [(i.get("term"), i.get("meaning")) for i in material.get("vocabulary", [])]
+        pairs += [(i.get("pattern"), i.get("meaning")) for i in material.get("patterns", [])]
+        return {
+            term.strip(): meaning.strip()
+            for term, meaning in pairs
+            if isinstance(term, str)
+            and isinstance(meaning, str)
+            and term.strip()
+            and meaning.strip()
+        }
+
+    def sentence_translations(self) -> dict[str, str]:
+        """Native-language translations of exact source segments the study pipeline quoted."""
+        material = self.material()
+        pairs = [
+            (item.get("example"), item.get("example_translation"))
+            for kind in ("vocabulary", "patterns", "pragmatics", "cultural_references")
+            for item in material.get(kind, [])
+        ]
+        pairs += [(i.get("source"), i.get("translation")) for i in material.get("passages", [])]
+        return {
+            source.strip(): translation.strip()
+            for source, translation in pairs
+            if isinstance(source, str)
+            and isinstance(translation, str)
+            and source.strip()
+            and translation.strip()
         }
 
     def tokens(self, sentences: list[Sentence]) -> list[list[Token]]:

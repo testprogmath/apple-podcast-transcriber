@@ -5,7 +5,7 @@ import json
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 from uuid import uuid4
 
 import httpx
@@ -649,3 +649,197 @@ async def test_application_wires_optional_uploads_without_auth_requests(
         assert bool(handler.hanly_error) == (mode == "malformed")
     finally:
         await app.post_stop(app)
+
+
+class NoteAPI:
+    """Mock personalizedStories backend with real updateTime precondition semantics."""
+
+    def __init__(self, stories=None):
+        self.stories = dict(stories or {})
+        self.versions = dict.fromkeys(self.stories, 1)
+        self.calls = []
+        self.commits = []
+        self.conflicts = 0
+        self.commit_status = None
+        self.drift = None
+
+    def update_time(self, glyph):
+        return f"2026-09-14T11:00:{self.versions[glyph]:02d}.000000Z"
+
+    def __call__(self, request):
+        self.calls.append(request)
+        if request.url.host == "securetoken.googleapis.com":
+            return httpx.Response(
+                200,
+                json={
+                    "id_token": ID_TOKEN,
+                    "user_id": UID,
+                    "refresh_token": TOKEN,
+                    "expires_in": "3600",
+                },
+            )
+        assert request.headers["Authorization"] == "Bearer " + ID_TOKEN
+        if request.method == "GET":
+            glyph = unquote(request.url.path.split("/personalizedStories/")[1])
+            if glyph not in self.stories:
+                return httpx.Response(404, json={"error": {"status": "NOT_FOUND"}})
+            return httpx.Response(
+                200,
+                json={
+                    "name": "projects/hanzo-282fc/databases/(default)/documents/userData/"
+                    + UID
+                    + "/personalizedStories/"
+                    + glyph,
+                    "fields": {
+                        "story": {"stringValue": self.stories[glyph]},
+                        "timestamp": {"timestampValue": self.update_time(glyph)},
+                    },
+                    "updateTime": self.update_time(glyph),
+                },
+            )
+        assert request.url.path.endswith("/documents:commit")
+        body = json.loads(request.content)
+        self.commits.append(body)
+        write = body["writes"][0]
+        glyph = write["update"]["name"].split("/personalizedStories/")[1]
+        if self.commit_status:
+            return httpx.Response(self.commit_status, text=TOKEN + KEY + ID_TOKEN)
+        if self.conflicts:
+            self.conflicts -= 1
+            if glyph in self.stories:
+                self.versions[glyph] += 1
+            return httpx.Response(409, json={"error": {"status": "ABORTED"}})
+        precondition = write["currentDocument"]
+        if "exists" in precondition:
+            if glyph in self.stories:
+                return httpx.Response(400, json={"error": {"status": "FAILED_PRECONDITION"}})
+        elif precondition["updateTime"] != self.update_time(glyph):
+            return httpx.Response(400, json={"error": {"status": "FAILED_PRECONDITION"}})
+        self.stories[glyph] = self.drift or write["update"]["fields"]["story"]["stringValue"]
+        self.versions[glyph] = self.versions.get(glyph, 0) + 1
+        return httpx.Response(
+            200,
+            json={
+                "writeResults": [{"updateTime": self.update_time(glyph), "transformResults": [{}]}],
+                "commitTime": self.update_time(glyph),
+            },
+        )
+
+
+NOTE = "Значение\n\n原文：他们获得了菲尔兹奖。\nПеревод：Они получили премию Филдса."
+
+
+async def test_note_creation_uses_create_safe_precondition_and_server_timestamp(auth):
+    api = NoteAPI()
+    action = await client(auth, api).upsert_glyph_note("辛苦了", NOTE, None)
+    assert action == "created"
+    assert [r.method for r in firestore_calls(api)] == ["GET", "POST", "GET"]
+    write = api.commits[0]["writes"][0]
+    assert write["currentDocument"] == {"exists": False}
+    assert write["updateMask"] == {"fieldPaths": ["story"]}
+    assert write["updateTransforms"] == [
+        {"fieldPath": "timestamp", "setToServerValue": "REQUEST_TIME"}
+    ]
+    assert write["update"]["fields"] == {"story": {"stringValue": NOTE}}
+    assert write["update"]["name"].endswith("/userData/" + UID + "/personalizedStories/辛苦了")
+    assert set(write["update"]["fields"]) == {"story"}
+    assert api.stories["辛苦了"] == NOTE
+
+
+async def test_note_update_uses_update_time_precondition(auth):
+    api = NoteAPI({"研究成果": "Старое значение"})
+    action = await client(auth, api).upsert_glyph_note("研究成果", NOTE, "Старое значение")
+    assert action == "updated"
+    assert api.commits[0]["writes"][0]["currentDocument"] == {
+        "updateTime": "2026-09-14T11:00:01.000000Z"
+    }
+    assert api.stories["研究成果"] == NOTE
+
+
+async def test_note_document_path_encodes_chinese_glyphs(auth):
+    api = NoteAPI()
+    await client(auth, api).upsert_glyph_note("研究成果", NOTE, None)
+    read = firestore_calls(api)[0]
+    assert "%E7%A0%94%E7%A9%B6%E6%88%90%E6%9E%9C" in str(read.url)
+    assert unquote(str(read.url)).endswith("/personalizedStories/研究成果")
+
+
+async def test_note_unchanged_when_remote_already_matches(auth):
+    api = NoteAPI({"辛苦了": NOTE})
+    action = await client(auth, api).upsert_glyph_note("辛苦了", NOTE, NOTE)
+    assert action == "unchanged"
+    assert not api.commits
+
+
+@pytest.mark.parametrize("previous", [None, "a different generated note"])
+async def test_note_preserves_a_remote_note_this_integration_did_not_write(auth, previous):
+    api = NoteAPI({"辛苦了": "Моя собственная заметка"})
+    action = await client(auth, api).upsert_glyph_note("辛苦了", NOTE, previous)
+    assert action == "skipped-user-modified"
+    assert not api.commits
+    assert api.stories["辛苦了"] == "Моя собственная заметка"
+
+
+async def test_note_conflict_is_retried_within_a_bounded_number_of_attempts(auth):
+    api = NoteAPI({"辛苦了": "Старое"})
+    api.conflicts = 2
+    action = await client(auth, api).upsert_glyph_note("辛苦了", NOTE, "Старое")
+    assert action == "updated"
+    assert len(api.commits) == 3
+    assert api.commits[-1]["writes"][0]["currentDocument"] == {
+        "updateTime": "2026-09-14T11:00:03.000000Z"
+    }
+
+    exhausted = NoteAPI({"辛苦了": "Старое"})
+    exhausted.conflicts = 9
+    with pytest.raises(ConflictError):
+        await client(auth, exhausted).upsert_glyph_note("辛苦了", NOTE, "Старое")
+    assert len(exhausted.commits) == 3
+
+
+async def test_note_write_is_verified_by_reading_it_back(auth):
+    api = NoteAPI()
+    api.drift = "something else entirely"
+    with pytest.raises(VerificationError):
+        await client(auth, api).upsert_glyph_note("辛苦了", NOTE, None)
+    assert [r.method for r in firestore_calls(api)] == ["GET", "POST", "GET"]
+
+
+async def test_note_write_failure_is_a_safe_domain_error(auth):
+    api = NoteAPI()
+    api.commit_status = 500
+    with pytest.raises(HanlyError) as error:
+        await client(auth, api).upsert_glyph_note("辛苦了", NOTE, None)
+    assert TOKEN not in str(error.value) and ID_TOKEN not in str(error.value)
+
+
+@pytest.mark.parametrize("glyph", ["", "a/b", "..", "__name__"])
+async def test_note_rejects_invalid_firestore_document_ids(auth, glyph):
+    api = NoteAPI()
+    with pytest.raises(SchemaError):
+        await client(auth, api).upsert_glyph_note(glyph, NOTE, None)
+    assert not api.calls
+
+
+async def test_note_refreshes_authentication_after_a_rejected_id_token(auth):
+    api = NoteAPI()
+    rejected = []
+
+    def handler(request):
+        if request.url.host == "firestore.googleapis.com" and not rejected:
+            rejected.append(request)
+            return httpx.Response(401, json={"error": {"status": "UNAUTHENTICATED"}})
+        return api(request)
+
+    action = await client(auth, handler).upsert_glyph_note("辛苦了", NOTE, None)
+    assert action == "created"
+    assert sum(r.url.host == "securetoken.googleapis.com" for r in api.calls) == 2
+
+
+async def test_note_logs_carry_no_credentials(auth, caplog):
+    caplog.set_level(logging.DEBUG)
+    api = NoteAPI()
+    await client(auth, api).upsert_glyph_note("辛苦了", NOTE, None)
+    assert "辛苦了" in caplog.text
+    for secret in (TOKEN, KEY, ID_TOKEN, "Bearer "):
+        assert secret not in caplog.text

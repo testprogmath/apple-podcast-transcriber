@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from podcast_bot.bot import BotHandlers, reader_markup
+from podcast_bot.hanly.notes import build_hanly_note
 from podcast_bot.hanly.service import HanlyUploadService
 from podcast_bot.models import UserError
 from podcast_bot.mosaic.client import BatchResult
@@ -139,13 +140,29 @@ def test_expired_and_foreign_token_init_data_is_rejected():
 class FakeHanlyClient:
     def __init__(self, error=None):
         self.calls = []
+        self.notes = []
+        self.remote = {}
         self.error = error
+        self.note_error = None
 
     async def upsert_episode_collection(self, identifier, name, comment, glyphs, episode):
         self.calls.append((identifier, name, list(glyphs), episode))
         if self.error:
             raise self.error
         return len(glyphs) + 5
+
+    async def upsert_glyph_note(self, glyph, story, previous):
+        self.notes.append((glyph, story, previous))
+        if self.note_error:
+            raise self.note_error
+        existing = self.remote.get(glyph)
+        if existing is not None:
+            if existing == story:
+                return "unchanged"
+            if previous is None or existing != previous:
+                return "skipped-user-modified"
+        self.remote[glyph] = story
+        return "updated" if existing is not None else "created"
 
 
 class FakeMosaicClient:
@@ -185,6 +202,10 @@ def reader(config, store):
         store=store,
         headers={"x-telegram-init-data": valid_init_data()},
     )
+
+
+def item(glyph, sentence_id):
+    return {"items": [{"glyph": glyph, "sentence_id": sentence_id}]}
 
 
 async def call(reader, method, path, payload=None, headers=None):
@@ -227,7 +248,18 @@ async def test_documents_of_another_chat_are_not_readable(reader):
 
 @pytest.mark.parametrize(
     "payload",
-    [{}, {"glyphs": []}, {"glyphs": "获得"}, {"glyphs": [1]}, {"glyphs": ["   "]}],
+    [
+        {},
+        {"items": []},
+        {"items": "获得"},
+        {"items": [1]},
+        {"items": [{"glyph": "   ", "sentence_id": 2}]},
+        {"items": [{"glyph": "获得"}]},
+        {"items": [{"glyph": "获得", "sentence_id": 2, "story": "injected"}]},
+        {"items": [{"glyph": "获得", "sentence_id": "2"}]},
+        {"items": [{"glyph": "ok", "sentence_id": 2}]},
+        {"glyphs": ["获得"]},
+    ],
 )
 async def test_malformed_hanly_request_is_refused(reader, payload):
     status, data = await call(reader, "POST", f"/api/reader/{reader.document.id}/hanly", payload)
@@ -247,7 +279,13 @@ async def test_hanly_upload_deduplicates_and_calls_the_existing_service_once(rea
         reader,
         "POST",
         f"/api/reader/{reader.document.id}/hanly",
-        {"glyphs": ["获得", "获得 ", "讨论"]},
+        {
+            "items": [
+                {"glyph": "获得", "sentence_id": 2},
+                {"glyph": "获得 ", "sentence_id": 2},
+                {"glyph": "讨论", "sentence_id": 1},
+            ]
+        },
     )
     assert status == 200
     client = reader.services.hanly.client
@@ -258,7 +296,10 @@ async def test_hanly_upload_deduplicates_and_calls_the_existing_service_once(rea
 
 async def test_hanly_rejects_items_absent_from_the_document(reader):
     status, data = await call(
-        reader, "POST", f"/api/reader/{reader.document.id}/hanly", {"glyphs": ["永动机"]}
+        reader,
+        "POST",
+        f"/api/reader/{reader.document.id}/hanly",
+        {"items": [{"glyph": "永动机", "sentence_id": 2}]},
     )
     assert status == 400
     assert not reader.services.hanly.client.calls
@@ -266,8 +307,8 @@ async def test_hanly_rejects_items_absent_from_the_document(reader):
 
 async def test_hanly_collection_uuid_is_stable_across_retries(reader):
     path = f"/api/reader/{reader.document.id}/hanly"
-    first = (await call(reader, "POST", path, {"glyphs": ["获得"]}))[1]
-    second = (await call(reader, "POST", path, {"glyphs": ["讨论"]}))[1]
+    first = (await call(reader, "POST", path, item("获得", 2)))[1]
+    second = (await call(reader, "POST", path, item("讨论", 1)))[1]
     assert first["collection_id"] == second["collection_id"]
     rows = reader.store.db.execute("SELECT * FROM hanly_collections").fetchall()
     assert len(rows) == 1
@@ -278,7 +319,7 @@ async def test_hanly_collection_uuid_is_stable_across_retries(reader):
 async def test_hanly_failure_is_surfaced_without_losing_the_collection(reader):
     reader.services.hanly.client.error = UserError("Hanly collection write failed.")
     status, data = await call(
-        reader, "POST", f"/api/reader/{reader.document.id}/hanly", {"glyphs": ["获得"]}
+        reader, "POST", f"/api/reader/{reader.document.id}/hanly", item("获得", 2)
     )
     assert status == 502
     assert data["error"] == "Hanly collection write failed."
@@ -354,7 +395,7 @@ async def test_unconfigured_integrations_report_their_reason(reader):
     reader.services.hanly = None
     reader.services.hanly_error = "Hanly auth config is missing."
     status, data = await call(
-        reader, "POST", f"/api/reader/{reader.document.id}/hanly", {"glyphs": ["获得"]}
+        reader, "POST", f"/api/reader/{reader.document.id}/hanly", item("获得", 2)
     )
     assert status == 503
     assert data["error"] == "Hanly auth config is missing."
@@ -448,7 +489,7 @@ async def test_reader_requires_a_public_url(config, store):
 
 def episode_source(store, text=TEXT):
     source = store.root / "transcripts" / "episode"
-    source.mkdir(parents=True)
+    source.mkdir(parents=True, exist_ok=True)
     (source / "transcript.txt").write_text(text, encoding="utf-8")
     atomic_json(
         source / "metadata.json",
@@ -581,7 +622,7 @@ async def test_reader_uploads_do_not_disturb_the_study_pack_snapshot(config, sto
             reader, "POST", f"/api/reader/{document.id}/mandarin-mosaic", {"sentence_ids": [0]}
         )
     )[0] == 200
-    assert (await call(reader, "POST", f"/api/reader/{document.id}/hanly", {"glyphs": ["获得"]}))[
+    assert (await call(reader, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2)))[
         0
     ] == 200
     packs = {row["source_id"] for row in store.db.execute("SELECT source_id FROM mosaic_packs")}
@@ -591,3 +632,219 @@ async def test_reader_uploads_do_not_disturb_the_study_pack_snapshot(config, sto
         row["episode_id"] for row in store.db.execute("SELECT episode_id FROM hanly_collections")
     }
     assert collections == {"apple:1490732024:1000789324203"}
+
+
+GLOSS = "Исследовательские результаты"
+SENTENCE = "她因为研究成果非常突出，所以获得了很多国际奖项。"
+SENTENCE_RU = "Благодаря выдающимся результатам исследований она получила множество наград."
+
+
+def test_note_contains_meaning_source_and_translation():
+    assert build_hanly_note(GLOSS, SENTENCE, SENTENCE_RU) == (
+        f"{GLOSS}\n\n原文：{SENTENCE}\nПеревод：{SENTENCE_RU}"
+    )
+
+
+def test_note_without_a_glyph_translation_starts_at_the_source():
+    assert build_hanly_note(None, SENTENCE, SENTENCE_RU) == (
+        f"原文：{SENTENCE}\nПеревод：{SENTENCE_RU}"
+    )
+
+
+def test_note_without_a_sentence_translation_omits_the_label():
+    note = build_hanly_note(GLOSS, SENTENCE, None)
+    assert note == f"{GLOSS}\n\n原文：{SENTENCE}"
+    assert "Перевод" not in note
+
+
+def test_note_with_no_translations_keeps_only_the_source():
+    note = build_hanly_note(None, SENTENCE, "   ")
+    assert note == f"原文：{SENTENCE}"
+    assert "Перевод" not in note
+
+
+def test_note_has_exactly_one_blank_line_and_no_trailing_whitespace():
+    note = build_hanly_note("  " + GLOSS + "  ", SENTENCE, SENTENCE_RU)
+    assert note.split("\n")[1] == ""
+    assert "\n\n\n" not in note
+    assert note == note.strip()
+    assert not any(line != line.rstrip() for line in note.split("\n"))
+
+
+def test_note_preserves_chinese_punctuation_from_the_source():
+    sentence = "他说：“真的吗？”……然后走了。"
+    assert build_hanly_note(None, sentence, None) == "原文：" + sentence
+
+
+def test_note_is_empty_when_there_is_nothing_to_say():
+    assert build_hanly_note(None, "", None) == ""
+    assert build_hanly_note(None, "", SENTENCE_RU) == ""
+
+
+def study_document(store, text=TEXT, **material):
+    source = episode_source(store, text)
+    atomic_json(source / "study.json", material)
+    document = from_transcript(42, source)
+    store.save_reader_document(document)
+    return document
+
+
+@pytest.fixture
+def notes(config, store):
+    services = SimpleNamespace(
+        hanly=HanlyUploadService(store, FakeHanlyClient()),
+        mosaic=None,
+        hanly_error=None,
+        mosaic_error="unset",
+    )
+    return SimpleNamespace(
+        api=ReaderApi(replace(config, token=TOKEN), store, services),
+        services=services,
+        store=store,
+        headers={"x-telegram-init-data": valid_init_data()},
+    )
+
+
+async def test_upload_builds_a_note_from_reused_study_translations(notes):
+    document = study_document(
+        notes.store,
+        vocabulary=[{"term": "获得", "meaning": "получать"}],
+        passages=[{"source": "他们获得了菲尔兹奖。", "translation": "Они получили премию Филдса."}],
+    )
+    notes.document = document
+    status, data = await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    assert status == 200
+    assert data["notes"] == [{"glyph": "获得", "action": "created", "error": ""}]
+    assert notes.services.hanly.client.notes == [
+        (
+            "获得",
+            "получать\n\n原文：他们获得了菲尔兹奖。\nПеревод：Они получили премию Филдса.",
+            None,
+        )
+    ]
+
+
+async def test_upload_reuses_a_quoted_example_translation_for_the_same_sentence(notes):
+    document = study_document(
+        notes.store,
+        vocabulary=[
+            {
+                "term": "获得",
+                "meaning": "получать",
+                "example": "他们获得了菲尔兹奖。",
+                "example_translation": "Они получили премию Филдса.",
+            }
+        ],
+    )
+    await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    assert "Перевод：Они получили премию Филдса." in notes.services.hanly.client.notes[0][1]
+
+
+async def test_direct_text_notes_carry_the_source_sentence_without_translations(notes):
+    document = from_text(42, TEXT)
+    notes.store.save_reader_document(document)
+    await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    assert notes.services.hanly.client.notes == [("获得", "原文：他们获得了菲尔兹奖。", None)]
+
+
+async def test_note_uses_the_canonical_sentence_not_client_supplied_text(notes):
+    document = study_document(notes.store)
+    status, _ = await call(
+        notes,
+        "POST",
+        f"/api/reader/{document.id}/hanly",
+        {"items": [{"glyph": "获得", "sentence_id": 2, "sentence": "伪造的句子。"}]},
+    )
+    assert status == 400
+    assert not notes.services.hanly.client.notes
+
+
+async def test_glyph_must_occur_in_the_referenced_sentence(notes):
+    document = study_document(notes.store)
+    status, data = await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 1))
+    assert status == 400
+    assert "not a Reader word" in data["error"]
+    assert not notes.services.hanly.client.calls
+
+
+async def test_arbitrary_prose_spans_cannot_be_uploaded_as_glyphs(notes):
+    document = study_document(notes.store)
+    for span in ("他们获得", "获得了菲尔兹", "们获"):
+        status, _ = await call(notes, "POST", f"/api/reader/{document.id}/hanly", item(span, 2))
+        assert status == 400
+    assert not notes.services.hanly.client.calls
+
+
+async def test_an_arbitrary_chinese_chunk_is_accepted_without_any_dictionary_check(notes):
+    document = study_document(
+        notes.store,
+        text="老师说辛苦了。\n",
+        vocabulary=[{"term": "辛苦了", "meaning": "Хорошо поработал(а)!"}],
+    )
+    status, data = await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("辛苦了", 0))
+    assert status == 200
+    assert notes.services.hanly.client.calls[0][2] == ["辛苦了"]
+    assert notes.services.hanly.client.notes[0][0] == "辛苦了"
+    assert data["notes"][0]["action"] == "created"
+
+
+async def test_an_existing_user_note_is_preserved_and_reported(notes):
+    document = study_document(notes.store)
+    notes.services.hanly.client.remote["获得"] = "Моя собственная заметка"
+    status, data = await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    assert status == 200
+    assert data["uploaded"] == 1
+    assert data["notes"][0]["action"] == "skipped-user-modified"
+    assert notes.store.hanly_note("获得") is None
+
+
+async def test_a_note_this_integration_wrote_may_be_updated_later(notes):
+    document = study_document(notes.store)
+    await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    stored = notes.store.hanly_note("获得")
+    assert stored == "原文：他们获得了菲尔兹奖。"
+    notes.services.hanly.client.remote["获得"] = stored
+    second = study_document(notes.store, vocabulary=[{"term": "获得", "meaning": "получать"}])
+    status, data = await call(notes, "POST", f"/api/reader/{second.id}/hanly", item("获得", 2))
+    assert status == 200
+    assert data["notes"][0]["action"] == "updated"
+    assert notes.store.hanly_note("获得").startswith("получать")
+
+
+async def test_a_remotely_modified_note_is_never_overwritten(notes):
+    document = study_document(notes.store)
+    await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    notes.services.hanly.client.remote["获得"] = "Я переписал это вручную"
+    second = study_document(notes.store, vocabulary=[{"term": "获得", "meaning": "получать"}])
+    status, data = await call(notes, "POST", f"/api/reader/{second.id}/hanly", item("获得", 2))
+    assert data["notes"][0]["action"] == "skipped-user-modified"
+    assert notes.services.hanly.client.remote["获得"] == "Я переписал это вручную"
+    assert notes.store.hanly_note("获得") == "原文：他们获得了菲尔兹奖。"
+
+
+async def test_note_failure_never_reports_the_glyph_upload_as_failed(notes):
+    document = study_document(notes.store)
+    notes.services.hanly.client.note_error = UserError("Hanly note write failed.")
+    status, data = await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    assert status == 200
+    assert data["uploaded"] == 1
+    assert data["collection_id"]
+    assert data["notes"] == [
+        {"glyph": "获得", "action": "failed", "error": "Hanly note write failed."}
+    ]
+    assert notes.store.hanly_note("获得") is None
+
+
+async def test_an_unexpected_note_error_is_contained(notes):
+    document = study_document(notes.store)
+    notes.services.hanly.client.note_error = RuntimeError("boom")
+    status, data = await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    assert status == 200
+    assert data["notes"][0]["action"] == "failed"
+    assert "boom" not in data["notes"][0]["error"]
+
+
+async def test_a_glyph_with_no_available_context_still_uploads(notes):
+    document = study_document(notes.store)
+    await call(notes, "POST", f"/api/reader/{document.id}/hanly", item("获得", 2))
+    assert notes.services.hanly.client.notes[0][1] == "原文：他们获得了菲尔兹奖。"

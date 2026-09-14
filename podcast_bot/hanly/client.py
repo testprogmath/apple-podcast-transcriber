@@ -57,6 +57,56 @@ class CollectionsDocument:
     update_time: str
 
 
+@dataclass(frozen=True)
+class GlyphNote:
+    story: str
+    update_time: str
+
+
+DATABASE = "projects/hanzo-282fc/databases/(default)"
+DOCUMENTS = f"https://firestore.googleapis.com/v1/{DATABASE}/documents"
+COMMIT_URL = DOCUMENTS + ":commit"
+
+
+def valid_document_id(value: str) -> bool:
+    return (
+        bool(value)
+        and "/" not in value
+        and value not in {".", ".."}
+        and not re.fullmatch(r"__.*__", value)
+        and len(value.encode("utf-8")) <= 1500
+    )
+
+
+def conflicted(response) -> bool:
+    if response.status_code in (409, 412):
+        return True
+    # Firestore can express FAILED_PRECONDITION as HTTP 400.
+    if response.status_code == 400:
+        try:
+            return response.json().get("error", {}).get("status") == "FAILED_PRECONDITION"
+        except (ValueError, AttributeError):
+            return False
+    return False
+
+
+def parse_note(data: object) -> GlyphNote:
+    try:
+        update_time = data["updateTime"]
+        story = data.get("fields", {}).get("story", {}).get("stringValue", "")
+        if (
+            not isinstance(story, str)
+            or not isinstance(update_time, str)
+            or datetime.fromisoformat(update_time.replace("Z", "+00:00")).tzinfo is None
+        ):
+            raise ValueError
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise SchemaError(
+            "Hanly personalized note has an unexpected schema; nothing was overwritten."
+        ) from None
+    return GlyphNote(story, update_time)
+
+
 def strict_json(value: str):
     def unique(pairs):
         result = {}
@@ -209,13 +259,12 @@ class HanlyClient:
                 self.auth.persist()
                 self._pending_persist = False
 
-    async def _firestore(self, method, **kwargs):
+    def user_document(self, suffix: str) -> str:
+        return DOCUMENTS + "/userData/" + quote(self._uid, safe="") + suffix
+
+    async def _authenticated(self, method, url, **kwargs):
         await self.refresh_auth()
         generation = self._generation
-        url = (
-            "https://firestore.googleapis.com/v1/projects/hanzo-282fc/databases/(default)/"
-            "documents/userData/" + quote(self._uid, safe="") + "/collections/data"
-        )
         response = await self._request(
             method, url, headers={"Authorization": f"Bearer {self._id_token}"}, **kwargs
         )
@@ -234,6 +283,13 @@ class HanlyClient:
             raise FirestorePermissionError(
                 "Hanly Firestore permission denied. Check the legitimate session and security rules."
             )
+        return response
+
+    async def _firestore(self, method, **kwargs):
+        await self.refresh_auth()
+        response = await self._authenticated(
+            method, self.user_document("/collections/data"), **kwargs
+        )
         if response.status_code == 404:
             raise DocumentMissingError(
                 "Hanly collections document is missing. Open Hanly and initialize collections first."
@@ -302,18 +358,8 @@ class HanlyClient:
                     response.status_code,
                     attempt - 1,
                 )
-                if response.status_code in (409, 412):
+                if conflicted(response):
                     continue
-                # Firestore can express FAILED_PRECONDITION as HTTP 400.
-                if response.status_code == 400:
-                    try:
-                        conflict = (
-                            response.json().get("error", {}).get("status") == "FAILED_PRECONDITION"
-                        )
-                    except (ValueError, AttributeError):
-                        conflict = False
-                    if conflict:
-                        continue
                 if response.status_code != 200:
                     raise HanlyError(
                         "Hanly collection write failed. Use /hanly to retry with the same collection UUID."
@@ -335,4 +381,70 @@ class HanlyClient:
                 return len(actual["glyphs"])
             raise ConflictError(
                 "Hanly collections kept changing; concurrency retry limit reached. Use /hanly again."
+            )
+
+    async def read_glyph_note(self, glyph: str) -> GlyphNote | None:
+        await self.refresh_auth()
+        response = await self._authenticated(
+            "GET", self.user_document("/personalizedStories/" + quote(glyph, safe=""))
+        )
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            raise HanlyError("Hanly could not read the personalized note. Retry the upload.")
+        try:
+            data = response.json()
+        except ValueError:
+            raise SchemaError("Hanly Firestore returned malformed JSON.") from None
+        return parse_note(data)
+
+    async def _commit_note(self, glyph: str, story: str, existing: GlyphNote | None):
+        await self.refresh_auth()
+        write = {
+            "update": {
+                "name": f"{DATABASE}/documents/userData/{self._uid}/personalizedStories/{glyph}",
+                "fields": {"story": {"stringValue": story}},
+            },
+            "updateMask": {"fieldPaths": ["story"]},
+            "updateTransforms": [{"fieldPath": "timestamp", "setToServerValue": "REQUEST_TIME"}],
+            "currentDocument": (
+                {"updateTime": existing.update_time} if existing else {"exists": False}
+            ),
+        }
+        return await self._authenticated("POST", COMMIT_URL, json={"writes": [write]})
+
+    async def upsert_glyph_note(self, glyph: str, story: str, previous: str | None) -> str:
+        """Write one personalizedStories note, preserving anything this integration did not write.
+
+        Returns created, updated, unchanged, or skipped-user-modified.
+        """
+        if not valid_document_id(glyph):
+            raise SchemaError("Hanly cannot store a note for that vocabulary item.")
+        async with self._write_lock:
+            for attempt in range(1, 4):
+                existing = await self.read_glyph_note(glyph)
+                if existing is not None:
+                    if existing.story == story:
+                        return "unchanged"
+                    if previous is None or existing.story != previous:
+                        return "skipped-user-modified"
+                response = await self._commit_note(glyph, story, existing)
+                log.info(
+                    "glyph=%s operation=note-commit http_status=%s retry=%s",
+                    glyph,
+                    response.status_code,
+                    attempt - 1,
+                )
+                if conflicted(response):
+                    continue
+                if response.status_code != 200:
+                    raise HanlyError("Hanly note write failed. Retry the upload for this item.")
+                verified = await self.read_glyph_note(glyph)
+                if verified is None or verified.story != story:
+                    raise VerificationError(
+                        "Hanly note verification failed after writing. Retry the upload."
+                    )
+                return "created" if existing is None else "updated"
+            raise ConflictError(
+                "Hanly note kept changing; concurrency retry limit reached. Retry the upload."
             )

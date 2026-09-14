@@ -65,7 +65,7 @@ The Reader is a Telegram Mini App for reading Chinese and collecting material fr
 
 Two destinations, deliberately different:
 
-**Hanly gets vocabulary.** Tap 培养, 骄傲, 研究成果 and the header shows `Hanly · 3`. There is no free-text selection: the Reader segments Chinese into lexical items and you pick from those, so what reaches Hanly is always a real word or chunk rather than whatever your finger dragged across. Multi-character chunks that the study pipeline already extracted for an episode (`研究成果`, `做研究`) are recognised as single items ahead of the generic segmenter. Punctuation, whitespace and Latin text are not tappable.
+**Hanly gets vocabulary.** Tap 培养, 骄傲, 研究成果 and the header shows `Hanly · 3`. Each tap also remembers the sentence it was tapped in, which becomes the card's study note. There is no free-text selection: the Reader segments Chinese into lexical items and you pick from those, so what reaches Hanly is always a real word or chunk rather than whatever your finger dragged across. Multi-character chunks that the study pipeline already extracted for an episode (`研究成果`, `做研究`) are recognised as single items ahead of the generic segmenter. Punctuation, whitespace and Latin text are not tappable.
 
 **Mandarin Mosaic gets sentences.** Tap anywhere in a sentence that is not a word, or its ◎ marker, and the whole sentence is selected. Uploading sends those complete sentences through the existing Mandarin Mosaic sentence API with the existing jieba segmentation. Whole documents are never uploaded.
 
@@ -85,9 +85,26 @@ Text documents accept up to 200,000 characters and must contain Chinese. PDF, EP
 
 Hanly: the Reader document owns one stable collection UUID, allocated in SQLite before any network call. Uploading merges the selected glyphs into that collection in a single batch through the existing Firestore client, preserving the collection's existing cards, its optimistic-concurrency retry, and its read-back verification. Tapping a word never touches Firestore.
 
+Each uploaded glyph then gets a study note at `personalizedStories/<glyph>`, so the card carries the context you read it in:
+
+```text
+получать
+
+原文：他们获得了菲尔兹奖。
+Перевод：Они получили премию Филдса.
+```
+
+Nothing in that note is generated. The glyph's meaning and the sentence translation are reused from the study pack when it already has them for that exact term and that exact sentence, and omitted otherwise, with no empty labels left behind. The label is `原文` rather than `例句` because the sentence is the real one from the source. A direct-text document has no study pack, so its notes carry `原文：` alone. Opening the Reader never triggers translation, and this change adds no model call anywhere.
+
 Mandarin Mosaic: the document owns one stable pack. Sentence payloads and their UUIDs are committed to SQLite before the first request, so a retry re-sends the same identifiers instead of creating duplicates, and a sentence already staged for that pack is never staged twice. `SuccessfulUpdates` / `UnsuccessfulUpdates` are reconciled as before, and the Mini App reports exactly which sentences failed and keeps them selected.
 
 The two destinations bind differently, because the services themselves differ. A document opened from a podcast episode uses that episode's own Hanly identity, so tapped words merge into the same collection the automatic study upload writes to. Its Mandarin Mosaic pack is separate: a study pack's sentence snapshot is frozen at its first upload, and hand-picked Reader sentences must not rewrite it. Names come from the episode title; direct text derives a short title from its first line, falling back to a timestamp. Names are display only: the UUID and the PackId are the identifiers.
+
+### Notes never overwrite your own writing
+
+Adding the glyph to the collection is the primary operation; the note is enrichment, and a note failure never reports a stored glyph as failed. The Mini App reports both: `Hanly: 3 uploaded to "…" (11 cards).` followed by `Notes: 1 added, 1 kept (yours), 1 failed.`
+
+Ownership is explicit rather than guessed from the note's text. SQLite `hanly_glyph_notes` records the exact story this integration last wrote for each glyph, and a remote note is overwritten only when the document does not exist yet or its `story` is byte-identical to that record. Edit a note in Hanly and the next Reader upload leaves it alone, reporting `skipped-user-modified`. Nothing is added to the Firestore document to mark ownership: it stays exactly the `story` plus `timestamp` shape Hanly writes itself.
 
 A failed upload keeps the basket intact and shows the reason. Reloading the Reader creates nothing externally; only an explicit upload mutates anything.
 
@@ -118,7 +135,7 @@ Every external call is made by the backend. The Mini App holds no Firebase API k
 
 Each API request carries `X-Telegram-Init-Data`, validated server-side with Telegram's documented scheme: `secret_key = HMAC_SHA256(key="WebAppData", message=<bot token>)`, then a constant-time comparison against `HMAC_SHA256(key=secret_key, message=<data check string>)`, plus an `auth_date` freshness window. The verified user must be `TELEGRAM_ALLOWED_USER_ID`.
 
-Reader document IDs are opaque 128-bit values scoped to the owning chat, so documents cannot be enumerated by counting up. The client submits sentence IDs, never sentence text; the backend re-derives canonical sentences from the stored source. Responses carry `nosniff`, `no-referrer` and a Content-Security-Policy that allows scripts only from this origin and `telegram.org`.
+Reader document IDs are opaque 128-bit values scoped to the owning chat, so documents cannot be enumerated by counting up. The client submits sentence IDs, never sentence text; the backend re-derives canonical sentences from the stored source. A Hanly item is accepted only when its glyph is one of the lexical items the Reader itself offered for the referenced sentence, so the endpoint cannot be used to write an arbitrary note for an arbitrary string, and arbitrary prose spans cannot be turned into cards. Responses carry `nosniff`, `no-referrer` and a Content-Security-Policy that allows scripts only from this origin and `telegram.org`.
 
 ## Setup
 
@@ -292,7 +309,9 @@ The override mounts the directory at `/app/hanly-auth` and sets the in-container
 
 SQLite `hanly_collections` maps the canonical Apple show/episode identity (RSS feed/GUID hash fallback) to a UUID **before any network write**. Retries and regeneration reuse it, adding new unique terms; a missing collection is recreated under the same UUID. Collection titles are display labels, never deduplication keys. Upload status is marked unconfirmed before a request and verified only after the read-back check. `hanly/service.py` owns this mapping and study selection; Telegram handlers contain no Firebase payload logic.
 
-Hanly-specific logs contain operation, safe episode identity/collection UUID, HTTP status, and retry count. HTTP transport logs are suppressed in the Hanly request context because Firebase's refresh URL contains the API key. Raw API bodies, credentials, and Authorization headers are never included in user errors.
+Personalized notes use `documents:commit` on `userData/<uid>/personalizedStories/<glyph>`, with the UID taken from Firebase auth and the glyph percent-encoded for reads. One write updates only `story` under an `updateMask`, sets `timestamp` with a `REQUEST_TIME` server-value transform, and carries a precondition: `exists: false` when creating, the document's `updateTime` when updating. Conflicts re-read and retry up to three times, and a verification GET confirms the stored `story` before success is reported. Notes are written one document per commit so each glyph gets its own outcome and its own retry, which an atomic multi-write commit would collapse into one all-or-nothing result.
+
+Hanly-specific logs contain operation, safe episode identity/collection UUID, HTTP status, retry count, and per-glyph note action (`created`, `updated`, `unchanged`, `skipped-user-modified`, `failed`). HTTP transport logs are suppressed in the Hanly request context because Firebase's refresh URL contains the API key. Raw API bodies, credentials, and Authorization headers are never included in user errors.
 
 Tests use mocked HTTP only. Production Hanly access and synchronization have **not** been tested by this implementation; no live integration test runs automatically. To verify real synchronization, explicitly opt in and use a real selected episode collection after configuring your legitimate session.
 

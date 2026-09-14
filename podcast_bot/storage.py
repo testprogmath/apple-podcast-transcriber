@@ -98,6 +98,8 @@ class Storage:
         CREATE TABLE IF NOT EXISTS study_cache (key TEXT PRIMARY KEY, path TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS study_steps (key TEXT NOT NULL, step TEXT NOT NULL,
           result TEXT NOT NULL, PRIMARY KEY(key,step));
+        CREATE TABLE IF NOT EXISTS hanly_glyph_notes (
+          glyph TEXT PRIMARY KEY, story TEXT NOT NULL, updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS reader_documents (
           id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, title TEXT NOT NULL,
           source_type TEXT NOT NULL, source_reference TEXT NOT NULL, raw_text TEXT NOT NULL,
@@ -430,3 +432,16 @@ class Storage:
             (chat_id,),
         ).fetchone()
         return self.reader_document(row[0]) if row else None
+
+    def hanly_note(self, glyph: str) -> str | None:
+        """The note this integration last wrote for a glyph, or None if it never wrote one."""
+        row = self.db.execute(
+            "SELECT story FROM hanly_glyph_notes WHERE glyph=?", (glyph,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def save_hanly_note(self, glyph: str, story: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO hanly_glyph_notes VALUES (?,?,?)", (glyph, story, now())
+            )

@@ -42,9 +42,9 @@ function refreshCounters() {
   counters.mosaic.classList.toggle("active", state.picked.size > 0);
 }
 
-function toggleWord(text) {
-  const index = state.words.indexOf(text);
-  if (index === -1) state.words.push(text);
+function toggleWord(text, sentenceId) {
+  const index = state.words.findIndex((w) => w.glyph === text);
+  if (index === -1) state.words.push({ glyph: text, sentenceId });
   else state.words.splice(index, 1);
   paintWord(text);
   refreshCounters();
@@ -52,7 +52,7 @@ function toggleWord(text) {
 }
 
 function paintWord(text) {
-  const picked = state.words.includes(text);
+  const picked = state.words.some((w) => w.glyph === text);
   document.querySelectorAll(".word").forEach((node) => {
     if (node.dataset.text === text) node.classList.toggle("picked", picked);
   });
@@ -79,7 +79,7 @@ function renderSentence(sentence) {
       word.textContent = token.t;
       word.addEventListener("click", (event) => {
         event.stopPropagation();
-        toggleWord(token.t);
+        toggleWord(token.t, sentence.id);
       });
       node.appendChild(word);
     } else {
@@ -130,7 +130,7 @@ function openBasket(kind) {
   const items = el("basket-items");
   items.textContent = "";
   const entries = hanly
-    ? state.words.map((text) => ({ key: text, text }))
+    ? state.words.map((w) => ({ key: w.glyph, text: w.glyph }))
     : [...state.picked].sort((a, b) => a - b).map((id) => ({
         key: id,
         text: (state.sentences.find((s) => s.id === id) || {}).text || "",
@@ -175,13 +175,18 @@ async function upload() {
     if (hanly) {
       const result = await api(`/api/reader/${documentId}/hanly`, {
         method: "POST",
-        body: JSON.stringify({ glyphs: state.words }),
+        body: JSON.stringify({
+          items: state.words.map((w) => ({ glyph: w.glyph, sentence_id: w.sentenceId })),
+        }),
       });
-      state.words.forEach(paintWordCleared);
+      state.words.forEach((w) => paintWordCleared(w.glyph));
       state.words = [];
       state.failed = null;
       closeBasket();
-      toast(`Hanly: ${result.uploaded} uploaded to “${result.name}” (${result.total} cards).`);
+      toast(
+        `Hanly: ${result.uploaded} uploaded to “${result.name}” (${result.total} cards).` +
+          noteSummary(result.notes)
+      );
     } else {
       const ids = [...state.picked].sort((a, b) => a - b);
       const result = await api(`/api/reader/${documentId}/mandarin-mosaic`, {
@@ -206,6 +211,23 @@ async function upload() {
     button.textContent = original;
     refreshCounters();
   }
+}
+
+function noteSummary(notes) {
+  if (!notes || !notes.length) return "";
+  const counted = {};
+  for (const note of notes) counted[note.action] = (counted[note.action] || 0) + 1;
+  const labels = {
+    created: "added",
+    updated: "updated",
+    unchanged: "already current",
+    "skipped-user-modified": "kept (yours)",
+    failed: "failed",
+  };
+  const parts = Object.keys(labels)
+    .filter((action) => counted[action])
+    .map((action) => `${counted[action]} ${labels[action]}`);
+  return parts.length ? `\nNotes: ${parts.join(", ")}.` : "";
 }
 
 function paintWordCleared(text) {

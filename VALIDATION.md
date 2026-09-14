@@ -77,3 +77,19 @@ The HTTP server was exercised over a real loopback socket and with `curl`: stati
 Ruff lint and formatting, `python -m compileall`, `docker compose config`, and a packaging check that the static assets install with the wheel all pass.
 
 No real Hanly, Firebase, Mandarin Mosaic, OpenAI, or Telegram call was made. Production Hanly and Mandarin Mosaic synchronization from the Reader is **not** validated: no live upload was performed. Rendering inside the actual Telegram client, on iOS/Android/desktop, and behind a production TLS reverse proxy also remains unvalidated.
+
+## Hanly note enrichment from the Reader — 2026-09-14
+
+319 tests pass, 40 of them new. Note formatting is covered as a pure function: meaning plus source plus translation, each part missing in turn, exactly one blank line, no trailing whitespace, no empty `Перевод：` label, Chinese punctuation preserved, and an empty result when there is nothing to say.
+
+The Firestore protocol is exercised against a mock transport that enforces real `updateTime` semantics: creation carries `currentDocument.exists: false`, an update carries the document's `updateTime`, every write sets only `story` under an `updateMask` with a `REQUEST_TIME` transform on `timestamp`, Chinese document IDs are percent-encoded on reads and sent unencoded in the resource name, conflicts re-read and retry within three attempts before raising, a diverged read-back fails verification, a rejected ID token refreshes once and succeeds, invalid Firestore document IDs are refused before any request, and no credential appears in logs or errors.
+
+User-note protection is tested from both layers: an unrecognised remote note is preserved, a note byte-identical to our recorded value is updated, a remotely edited note is never overwritten and leaves the SQLite record unchanged, and a remote note already equal to the new story is reported `unchanged` without a write.
+
+Reader upload semantics cover a successful glyph with a created note, a successful glyph with a skipped note, and a successful glyph with a failed note, including an unexpected non-domain exception, which is contained and never leaks its text. A glyph absent from its referenced sentence, an arbitrary prose span, a client-supplied sentence field, and a malformed item are all refused before any Hanly call. An arbitrary Chinese chunk such as `辛苦了` is accepted with no dictionary lookup of any kind.
+
+Six deliberate mutations were each caught by the intended tests: removed ownership check, removed `REQUEST_TIME` transform, removed precondition, removed post-write verification, token membership weakened to a substring check, and note failures no longer contained.
+
+Beyond the suite, the whole path was run end to end against a mock Firebase/Firestore transport: the commit body, the stored multiline note, the SQLite ownership row, an idempotent second upload reported `unchanged`, and a manually edited remote note reported `skipped-user-modified` with the remote text intact. The Mini App was run against a DOM shim to confirm the item payload carries `sentence_id`, that a failed upload keeps every selection, and that the note summary reads correctly at count one.
+
+Ruff lint and formatting, `python -m compileall podcast_bot`, and `docker compose config` pass. No real Hanly, Firebase, Mandarin Mosaic, OpenAI, or Telegram call was made. Writing a real `personalizedStories` document in production remains unverified by this implementation.
