@@ -83,6 +83,8 @@ class Storage:
             if name not in usage_columns:
                 self.db.execute(f"ALTER TABLE usage ADD COLUMN {name} INTEGER")
         self.db.executescript("""
+        CREATE TABLE IF NOT EXISTS hanly_collections (
+          episode_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, status TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS mosaic_packs (
           source_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, payload TEXT NOT NULL,
           status TEXT NOT NULL);

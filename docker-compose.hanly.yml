@@ -1,0 +1,7 @@
+# Optional override. Mount a directory: token rotation atomically replaces the file.
+services:
+  bot:
+    environment:
+      HANLY_AUTH_FILE: /app/hanly-auth/hanly-auth.json
+    volumes:
+      - ${HANLY_AUTH_DIR:?Set HANLY_AUTH_DIR to the external auth directory}:/app/hanly-auth

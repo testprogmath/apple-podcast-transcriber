@@ -34,3 +34,9 @@ dist/
 # Mandarin Mosaic private rotated-session configuration
 mosaic-session.json
 .mosaic-session-*
+
+# Sensitive Hanly auth and traffic captures
+hanly-auth*.json*
+.hanly-auth-*
+*.har
+*.HAR

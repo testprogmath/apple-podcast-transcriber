@@ -39,6 +39,7 @@ For other source languages, reading and translation/study files are produced wit
 /regenerate HSK4
 /zip
 /mosaic
+/hanly
 /status
 /retry
 /force <URL>
@@ -170,7 +171,7 @@ For Mandarin Mosaic:
 
 ## Direct Mandarin Mosaic upload
 
-After receiving a Chinese study pack, send `/mosaic` to upload its selected sentences. This command performs no transcription or LLM generation. CSV export remains available independently. Nothing is automatically uploaded when an episode finishes.
+After receiving a Chinese study pack, send `/mosaic` to upload its selected sentences. This command performs no transcription or LLM generation. CSV export remains available independently. With `STUDY_AUTO_UPLOAD=true` (default), completed Chinese study packs are uploaded to configured Hanly and then Mandarin Mosaic services. Set it to `false` for manual `/hanly` and `/mosaic` only.
 
 Set both secrets in the server environment or its private `.env`, then recreate the container with `docker compose up -d`:
 
@@ -190,6 +191,40 @@ Chinese words are segmented locally with [jieba in its default accurate mode](ht
 SQLite tables `mosaic_packs` and `mosaic_sentences` persist the source episode ID, UUIDs, exact upload payloads, and statuses **before** network activity. Credentials are never stored there. There is one Mosaic pack per source episode: the first upload freezes its selected-sentence snapshot. `/regenerate` does not replace that remote snapshot or silently create a second pack. Repeating `/mosaic` resumes that snapshot, reuses all UUIDs, skips confirmed sentences, and retries rejected/unconfirmed ones. A completed upload makes no further requests. This also applies after a process restart; remote idempotency ultimately depends on the supplied API honoring UUID updates.
 
 A network failure during pack creation leaves creation unconfirmed and sends no sentences. A failure during sentence upload preserves the confirmed pack and reports remaining delivery as unconfirmed. Use `/mosaic` for upload retries; `/retry` remains the transcription/study job command. The upload orchestrator lives in `mosaic/service.py`; Telegram handlers contain no API payload or authentication logic.
+
+## Hanly collections via Firebase / Firestore
+
+`/hanly` merges the latest Chinese study pack's selected vocabulary and reusable expressions into an episode collection. It never tokenizes the whole transcript or uploads the Mosaic sentence list. The existing validated `vocabulary` and `mosaic_sentences` model fields already separate these responsibilities. Hanly terms must occur in the saved canonical transcript; incoming terms are deduplicated after surrounding-whitespace trimming and sorted by first source occurrence. Existing Hanly card order, spelling, and custom collection fields are preserved.
+
+By default, after study generation the worker runs **Hanly → Mandarin Mosaic** for configured services, then delivers files and their upload statuses. Each integration failure is isolated: the other integration still runs, the transcript/study files stay cached, and the job can finish successfully. Use `/hanly` or `/mosaic` to retry uploads without ASR or text generation. Sending a cached episode link also reuses local materials. `STUDY_AUTO_UPLOAD=false` disables automatic uploads for both services while keeping the commands. Optional auth setup errors do not prevent bot startup. Temporary audio is still cleaned up by the existing pipeline immediately after ASR.
+
+Store the legitimate Firebase session outside the repository, by default `~/.config/podcast-telegram-bot/hanly-auth.json`, or select a path with `HANLY_AUTH_FILE`:
+
+```json
+{
+  "api_key": "YOUR_FIREBASE_API_KEY",
+  "refresh_token": "YOUR_FIREBASE_REFRESH_TOKEN",
+  "project_id": "hanzo-282fc"
+}
+```
+
+The config is validated and restricted to mode `0600`. Its directory must be writable by the bot because rotated refresh tokens are saved through an atomic file replacement. ID tokens and the Firebase UID are obtained from Auth, cached in memory, and refreshed before expiry under an async lock. A Firestore 401 forces one refresh and exactly one request retry. Do not put credentials in Telegram, HAR files in Git, or auth data inside study archives. A lost refresh response may require replacing the configured session if the previous token was invalidated.
+
+For Docker, place the auth file in a private **host directory outside the repository**, owned/writable by the bot's configured UID. Set `HANLY_AUTH_DIR` to that directory and use the optional override:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.hanly.yml up -d --build
+```
+
+The override mounts the directory at `/app/hanly-auth` and sets the in-container auth path. Mount the directory, not a single file, so atomic rotation works. Use the same two Compose files for subsequent recreation. Base Compose continues to run without Hanly credentials.
+
+`hanly/client.py` implements only the supplied Firebase Auth and Firestore REST protocol for `hanzo-282fc`. It parses `all_user_collections` as a JSON **string**, rejects unexpected schemas or duplicate JSON keys, and preserves unrelated collection values. Each mutation PATCHes exactly `all_user_collections` and `all_user_collections_timestamp`, with both field masks and `currentDocument.updateTime`. The timestamp is `max(now_ms, server_timestamp + 1)`. Up to three conditional-write attempts re-fetch and re-merge after conflicts. A verification GET checks collection identity, name, requested glyphs, active state, and timestamp before reporting success. No Hanly local application/cache files, test collections, Firestore rules, or App Check settings are modified.
+
+SQLite `hanly_collections` maps the canonical Apple show/episode identity (RSS feed/GUID hash fallback) to a UUID **before any network write**. Retries and regeneration reuse it, adding new unique terms; a missing collection is recreated under the same UUID. Collection titles are display labels, never deduplication keys. Upload status is marked unconfirmed before a request and verified only after the read-back check. `hanly/service.py` owns this mapping and study selection; Telegram handlers contain no Firebase payload logic.
+
+Hanly-specific logs contain operation, safe episode identity/collection UUID, HTTP status, and retry count. HTTP transport logs are suppressed in the Hanly request context because Firebase's refresh URL contains the API key. Raw API bodies, credentials, and Authorization headers are never included in user errors.
+
+Tests use mocked HTTP only. Production Hanly access and synchronization have **not** been tested by this implementation; no live integration test runs automatically. To verify real synchronization, explicitly opt in and use a real selected episode collection after configuring your legitimate session.
 
 ## Caching, persistence, and billing
 
@@ -225,7 +260,7 @@ ruff check .
 python -m compileall -q podcast_bot
 ```
 
-Tests block unexpected networking and mock OpenAI, Telegram, and Mandarin Mosaic APIs. Real ffmpeg tests use generated local audio. See `VALIDATION.md` for results and validation boundaries. No paid call is required to run tests.
+Tests block unexpected networking and mock OpenAI, Telegram, Mandarin Mosaic, and Firebase/Firestore APIs. Real ffmpeg tests use generated local audio. See `VALIDATION.md` for results and validation boundaries. No paid call is required to run tests.
 
 Modules: `resolver/`, `transcription/`, `study/` (typed schemas, source validation/chunking, prompts, API adapter/checkpoints, selection, renderers), plus `pipeline.py`, `storage.py`, `queue.py`, and `bot.py`. Additional derived outputs can be added within `study/` without changing speech recognition.
 
@@ -237,3 +272,6 @@ Modules: `resolver/`, `transcription/`, `study/` (typed schemas, source validati
 - [GPT-5.4 mini model and pricing](https://developers.openai.com/api/docs/models/gpt-5.4-mini)
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing)
 - [Telegram BotFather](https://core.telegram.org/bots/features#botfather)
+
+- [Firestore PATCH and update masks](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/patch)
+- [Firestore update-time preconditions](https://firebase.google.com/docs/firestore/reference/rest/v1/Precondition)

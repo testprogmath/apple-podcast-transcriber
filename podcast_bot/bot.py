@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from contextlib import ExitStack
 from dataclasses import replace
@@ -11,6 +12,10 @@ from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from .config import Config, language_code
+from .hanly.auth import HanlyAuth, auth_path
+from .hanly.client import HanlyClient
+from .hanly.service import HanlyUploadService
+from .integrations import StudyUploads
 from .models import Job, UserError
 from .mosaic.client import MandarinMosaicClient
 from .mosaic.config import MosaicConfig
@@ -33,6 +38,7 @@ HELP = """Send an Apple Podcasts episode link to receive a transcript and study 
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
 /regenerate [HSK4] — rebuild the latest study pack without speech-to-text
+/hanly — merge selected vocabulary into the latest episode collection
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
 /transcribe nl <URL> — override language (zh, nl, en, auto)
@@ -66,6 +72,9 @@ class BotHandlers:
         self.worker: Worker | None = None
         self.mosaic: MosaicUploadService | None = None
         self.mosaic_error: str | None = None
+        self.hanly: HanlyUploadService | None = None
+        self.hanly_error: str | None = None
+        self.uploads = StudyUploads()
         self.study_defaults = StudySettings.from_env()
 
     def study_settings(self) -> StudySettings:
@@ -127,6 +136,22 @@ class BotHandlers:
                 await message.reply_text(
                     f"Saved: {field} = {value}. Existing transcripts are unchanged. Use /regenerate for new study materials."
                 )
+                return
+            if command == "/hanly":
+                if self.hanly is None:
+                    raise UserError(
+                        self.hanly_error
+                        or "Hanly auth config is missing. Set HANLY_AUTH_FILE on the server."
+                    )
+                pack = self.storage.recent_pack(update.effective_chat.id)
+                if not pack:
+                    raise UserError("No complete study pack yet. Send a link or use /regenerate.")
+                status = await message.reply_text("Updating Hanly collection…")
+                try:
+                    result = await self.hanly.upload(pack)
+                    await status.edit_text(result.message())
+                except UserError as exc:
+                    await status.edit_text(str(exc))
                 return
             if command == "/mosaic":
                 if self.mosaic is None:
@@ -213,7 +238,11 @@ class BotHandlers:
                 pack = service.cached(cached, settings)
                 if pack:
                     self.storage.remember_pack(update.effective_chat.id, cached, pack)
-                    await message.reply_text("Study pack already prepared.")
+                    upload_status = await self.uploads.run(pack)
+                    await message.reply_text(
+                        "Study pack already prepared."
+                        + ("\n\n" + upload_status if upload_status else "")
+                    )
                     await send_files(context.bot, update.effective_chat.id, pack)
                     return
                 status = await message.reply_text("Already transcribed. Preparing study materials…")
@@ -313,6 +342,20 @@ def build_application(config: Config, storage: Storage) -> Application:
         except UserError as exc:
             # Optional upload configuration must not disable transcription or study jobs.
             handlers.mosaic_error = str(exc)
+        try:
+            path = auth_path()
+            if path.exists() or os.getenv("HANLY_AUTH_FILE"):
+                handlers.hanly = HanlyUploadService(
+                    storage, HanlyClient(client, HanlyAuth.load(path))
+                )
+        except UserError as exc:
+            handlers.hanly_error = str(exc)
+        if os.getenv("STUDY_AUTO_UPLOAD", "true").lower() not in {"false", "0", "no"}:
+            handlers.uploads = StudyUploads(
+                handlers.hanly,
+                handlers.mosaic,
+                [e for e in (handlers.hanly_error, handlers.mosaic_error) if e],
+            )
         pipeline = Pipeline(config, storage, client, OpenAITranscriber(openai))
         if config.study_enabled:
             pipeline = LearningPipeline(
@@ -321,7 +364,7 @@ def build_application(config: Config, storage: Storage) -> Application:
                 storage,
                 handlers.study_settings(),
             )
-        handlers.worker = Worker(storage, pipeline, status, deliver)
+        handlers.worker = Worker(storage, pipeline, status, deliver, upload=handlers.uploads.run)
         handlers.worker.start()
 
     async def stop(app: Application) -> None:
@@ -357,6 +400,7 @@ def build_application(config: Config, storage: Storage) -> Application:
         "regenerate",
         "zip",
         "mosaic",
+        "hanly",
     ):
         app.add_handler(CommandHandler(command, handlers.handle))
     app.add_handler(MessageHandler(filters.TEXT, handlers.handle))

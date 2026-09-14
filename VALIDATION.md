@@ -2,7 +2,7 @@
 
 ## Results
 
-- **149 tests passed** after the direct-upload extension (6.27 seconds).
+- **193 tests passed** after the Hanly integration (mocked network).
 - `ruff check`: passed.
 - Python bytecode compilation: passed.
 - Real Apple/RSS integration: passed for the full supplied 大鹏 episode URL. The result is saved in `resolver-example.json`.
@@ -47,3 +47,11 @@ Live study-material quality and Telegram study document delivery have not been e
 32 mocked tests cover successful refresh/pack/sentence operations, expiry and rotated credentials, concurrent refresh and concurrent 401 recovery, one retry after 401, rejected refresh, rejected/missing/conflicting pack acknowledgements, partial sentence rejection and missing acknowledgements, network failures in both upload stages, restart/cancellation recovery with identical UUIDs, secret-safe logs/errors/configuration, private rotated-session persistence, failed local persistence recovery, source validation, local segmentation, malformed responses, regenerated-episode snapshot reuse, and Telegram authorization/command integration.
 
 No real Mandarin Mosaic API call, OpenAI request, or Telegram test message was made for this extension. The API contract is user-supplied; live account access, official-app visibility, and exact official segmenter equivalence remain unvalidated.
+
+## Hanly implementation — 2026-09-14
+
+44 tests cover Firebase refresh/rotation/0600 atomic config replacement, recovery from failed persistence, expiry and concurrent refresh, GET/schema parsing, conditional PATCH of exactly two fields, timestamp monotonicity, collection creation/merging, preservation of unrelated collections and document fields, 409/412/FAILED_PRECONDITION conflict remerge with a three-attempt bound, verification failures, GET/PATCH 401 recovery, missing/denied documents, safe diagnostics, durable UUID reuse after lost write responses and restart, source-based selected vocabulary, Telegram authorization, and optional auto/manual upload wiring.
+
+The full existing transcription/study/Mosaic suite also passes. Ruff lint/format and Python compilation pass; this repository has no separate configured type checker. Tests use mocked HTTP and block unexpected sockets. No real Firebase/Hanly call, real collection mutation, local Hanly application modification, paid OpenAI call, or Telegram test message was performed. Production synchronization remains unvalidated by this implementation.
+
+Manual setup: supply a legitimate external `hanly-auth.json`, mode 0600, set `HANLY_AUTH_FILE` (or the documented Docker directory mount), and opt in separately before any live integration test. No credentials are supplied by the repository.

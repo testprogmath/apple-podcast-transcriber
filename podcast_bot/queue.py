@@ -19,9 +19,11 @@ class Worker:
         pipeline: Pipeline,
         status: Callable[[Job, str], Awaitable[None]],
         deliver: Callable[[Job, Path], Awaitable[None]],
+        upload: Callable[[Path], Awaitable[str]] | None = None,
     ):
         self.storage, self.pipeline = storage, pipeline
         self.status, self.deliver = status, deliver
+        self.upload = upload
         self.wake = asyncio.Event()
         self.task: asyncio.Task | None = None
 
@@ -31,11 +33,22 @@ class Worker:
             return False
         try:
             output = await self.pipeline.process(job, lambda text: self.status(job, text))
+            summary = completion(output)
+            if self.upload:
+                try:
+                    upload_status = await self.upload(output)
+                except Exception:
+                    log.error("job=%s stage=optional-upload-failed", job.id)
+                    upload_status = (
+                        "Optional upload failed. Files are saved; use /hanly or /mosaic to retry."
+                    )
+                if upload_status:
+                    summary += "\n\n" + upload_status
             if (output / "manifest.json").is_file():
-                await self.status(job, completion(output))
+                await self.status(job, summary)
             await self.deliver(job, output)
             self.storage.finish(job.id, "completed")
-            await self.status(job, completion(output))
+            await self.status(job, summary)
             log.info("job=%s stage=completed", job.id)
         except asyncio.CancelledError:
             raise
