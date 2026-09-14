@@ -416,7 +416,14 @@ async def test_real_sdk_structured_request_mocked(study_chunk):
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     ) as sdk:
         result, usage = await OpenAIStudyClient(sdk).request(
-            schema, "Choose IDs", {"candidates": [1]}, "gpt-5.4-mini", 1000
+            schema,
+            "Choose IDs",
+            {
+                "candidates": [1],
+                "blocks": [{"id": 0, "text": "你好。"}, {"id": 1, "text": "谢谢。"}],
+            },
+            "gpt-5.4-mini",
+            1000,
         )
     assert usage["output_tokens"] == 10
     if study_chunk:

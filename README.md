@@ -161,7 +161,7 @@ The official Responses API returns structured Pydantic-validated JSON; Python re
 
 Transcripts are split at paragraph/sentence boundaries into blocks of at most 1200 characters and bounded request batches (default 3000 characters). A hard 300,000-character transcript safety limit prevents an uncontrolled request count. Extremely long unpunctuated spans may need a hard character boundary.
 
-Each study response must cover source blocks exactly once, in order, preserving every Chinese source character apart from reading-line whitespace. Source examples must occur in the canonical transcript. Global ranking over bounded candidate batches removes duplicate/overlapping vocabulary and picks the strongest episode-wide teaching points. It treats Mosaic sentences as a separate candidate category from vocabulary.
+Each study response must cover source blocks exactly once, in order, preserving every Chinese source character apart from reading-line whitespace. Citation text is inserted from a deterministic catalogue of transcript segments: the model selects a schema-constrained segment ID for vocabulary examples, grammar/culture notes, ASR quotations and Mosaic sentences. It cannot write or paraphrase those citation fields. Translations and explanations remain generated. The same selection protocol applies to non-Chinese vocabulary examples. Global ranking over bounded candidate batches removes duplicate/overlapping vocabulary and picks the strongest episode-wide teaching points. It treats Mosaic sentences as a separate candidate category from vocabulary.
 
 For Mandarin Mosaic:
 

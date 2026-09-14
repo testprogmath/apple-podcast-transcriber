@@ -83,7 +83,9 @@ class StudySettings:
 
 def study_key(transcript: bytes, settings: StudySettings) -> str:
     suffix = b"" if settings.target_language == "zh" else b"\0vocabulary-only-v1"
-    return hashlib.sha256(transcript + b"\0" + settings.to_json().encode() + suffix).hexdigest()
+    return hashlib.sha256(
+        transcript + b"\0" + settings.to_json().encode() + suffix + b"\0source-quotes-v1"
+    ).hexdigest()
 
 
 def pricing(model: str) -> tuple[float, float, float] | None:
