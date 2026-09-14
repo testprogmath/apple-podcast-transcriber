@@ -61,3 +61,7 @@ Manual setup: supply a legitimate external `hanly-auth.json`, mode 0600, set `HA
 A fresh Python 3.12 virtual environment installed the project with `python -m pip install -r requirements.lock -e '.[test]'`. `ruff check .`, `ruff format --check .`, `python -m pytest -q`, and `python -m pip check` passed: 47 formatted Python files, 193 tests, no broken requirements. Workflow and Dependabot YAML were validated against their SchemaStore JSON schemas using a YAML 1.2-compatible loader.
 
 Exact production versions are unchanged: pins moved to Dependabot-discoverable `requirements.txt`, included by the existing `requirements.lock` entry point. CI installs ffmpeg and runs with no service credentials. Small B/SIM fixes preserve existing behavior. No production redeployment is required for the quality configuration.
+
+## Command menu and language-specific output — 2026-09-14
+
+198 tests pass. New tests cover the private Telegram command menu, vocabulary-only schema and artifacts for en/de/nl, immutable transcripts, two-document delivery, minimal ZIP contents, independent non-zh cache versioning, rejection of fabricated quotations, and zero integration calls for non-zh. Existing Mandarin study/upload tests remain green. Ruff lint and formatting checks pass. No paid generation is needed for these tests.

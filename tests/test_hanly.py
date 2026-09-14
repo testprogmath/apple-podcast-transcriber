@@ -634,6 +634,7 @@ async def test_application_wires_optional_uploads_without_auth_requests(
     monkeypatch.setenv("STUDY_AUTO_UPLOAD", "false" if mode == "manual" else "true")
     if mode == "malformed":
         auth.path.write_text("{invalid")
+    monkeypatch.setattr("podcast_bot.bot.setup_command_menu", AsyncMock())
     app = build_application(config, store)
     try:
         await app.post_init(app)

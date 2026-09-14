@@ -21,9 +21,11 @@ A ZIP containing these files plus validated `study.json` is created automaticall
 
 Chinese speech recognition does not translate. The text-processing stage derives all learning files from the saved transcript. It never rewrites that source, even when it suspects an ASR error. The current correction policy is deliberately **suggestions only**; confidence and reasons appear in study notes and metadata, with no silent replacement in quotations or Mosaic sentences.
 
-For other source languages, reading and translation/study files are produced without Chinese pinyin or Mandarin Mosaic. Translation filenames follow the native-language setting, e.g. `translation_en.md`. Hanly keeps its configured column labels for importer compatibility; the meaning and example-translation values follow `NATIVE_LANGUAGE`.
+For every source language other than `zh`, the bot generates only `transcript.txt` and `vocabulary.md`: selected useful words/expressions with meanings, usage and translated examples. It does not generate a full translation, reading guide, pinyin, grammar/culture notes or importer CSVs, and never uploads those episodes to Hanly or Mandarin Mosaic. Available SRT is preserved. `/zip` contains the minimal files plus internal metadata/JSON. Old non-Chinese study packages require `/regenerate` to switch to this format, without repeating transcription.
 
 ## Telegram commands
+
+The private chat has a Telegram command menu with Russian descriptions. Tap **Menu** or type `/`. Commands such as `/language` and `/transcribe` still require the argument shown in their description.
 
 ```text
 <Apple Podcasts episode URL>

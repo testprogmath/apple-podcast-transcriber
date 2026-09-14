@@ -12,6 +12,14 @@ from ..models import Job, UserError
 from ..storage import Storage, atomic_json, safe_name
 from .chunking import batches, normalized, split_blocks, validate_chunk
 from .client import StudyRequests
+from .lexical import (
+    FORMAT,
+    PROMPT,
+    LexicalChunk,
+    as_material,
+    validate_lexical,
+    vocabulary_markdown,
+)
 from .models import ChunkMaterial, Selection, StudyMaterial
 from .mosaic import select_candidates
 from .prompts import CHUNK_PROMPT, RANK_PROMPT
@@ -39,14 +47,13 @@ def deduplicate(items: list, field: str) -> list:
 def pack_valid(path: Path) -> bool:
     try:
         manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-        required = {
-            "transcript.txt",
-            "metadata.json",
-            "reader.md",
-            "study.md",
-            "hanly.csv",
-            "study.json",
-        }
+        metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
+        required = {"transcript.txt", "metadata.json", "study.json"}
+        required |= (
+            {"vocabulary.md"}
+            if metadata.get("pack_format") == FORMAT
+            else {"reader.md", "study.md", "hanly.csv"}
+        )
         return (
             isinstance(manifest, dict)
             and required.issubset(manifest)
@@ -105,18 +112,20 @@ class StudyService:
                 key=key,
                 step=f"chunk-{index}",
                 model=settings.model,
-                schema=ChunkMaterial,
-                instructions=CHUNK_PROMPT,
+                schema=ChunkMaterial if settings.target_language == "zh" else LexicalChunk,
+                instructions=CHUNK_PROMPT if settings.target_language == "zh" else PROMPT,
                 payload={
                     "settings": asdict(settings),
                     "episode_title": metadata.get("title", "")[:300],
                     "blocks": [asdict(b) for b in group],
                 },
-                validate=lambda material, group=group: validate_chunk(
-                    material, group, settings.target_language
+                validate=lambda material, group=group: (
+                    validate_chunk(material, group, settings.target_language)
+                    if settings.target_language == "zh"
+                    else validate_lexical(material, group)
                 ),
             )
-            chunks.append(result)
+            chunks.append(result if settings.target_language == "zh" else as_material(result))
         material = StudyMaterial(
             passages=[p for c in chunks for p in c.passages],
             vocabulary=deduplicate([x for c in chunks for x in c.vocabulary], "term"),
@@ -151,14 +160,22 @@ class StudyService:
                 (output / "transcript_pinyin.md").write_text(
                     pinyin_markdown(material), encoding="utf-8"
                 )
-            (output / f"translation_{settings.native_language}.md").write_text(
-                translation_markdown(material), encoding="utf-8"
-            )
-            (output / "reader.md").write_text(reader_markdown(material, settings), encoding="utf-8")
             if settings.target_language == "zh":
+                (output / f"translation_{settings.native_language}.md").write_text(
+                    translation_markdown(material), encoding="utf-8"
+                )
+                (output / "reader.md").write_text(
+                    reader_markdown(material, settings), encoding="utf-8"
+                )
                 (output / "mandarin_mosaic.csv").write_text(mosaic_csv(material), encoding="utf-8")
-            (output / "study.md").write_text(study_markdown(material, settings), encoding="utf-8")
-            (output / "hanly.csv").write_text(hanly_csv(material, settings), encoding="utf-8")
+                (output / "study.md").write_text(
+                    study_markdown(material, settings), encoding="utf-8"
+                )
+                (output / "hanly.csv").write_text(hanly_csv(material, settings), encoding="utf-8")
+            else:
+                (output / "vocabulary.md").write_text(
+                    vocabulary_markdown(material), encoding="utf-8"
+                )
             atomic_json(output / "study.json", material.model_dump())
             zip_name = safe_name(metadata.get("title", "episode"), 100) + "-study-pack.zip"
             atomic_json(
@@ -175,6 +192,7 @@ class StudyService:
                     "correction_policy": "suggestions_only",
                     "possible_asr_errors": [x.model_dump() for x in material.possible_asr_errors],
                     "study_complete": True,
+                    "pack_format": "mandarin-full" if settings.target_language == "zh" else FORMAT,
                     "zip_filename": zip_name,
                 },
             )

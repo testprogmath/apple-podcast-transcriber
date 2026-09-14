@@ -162,6 +162,11 @@ def completion(path: Path) -> str:
     metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
     if metadata.get("study_complete"):
         settings = metadata["study_settings"]
+        if settings["target_language"] != "zh":
+            return (
+                f"🎙 {metadata.get('title', 'Episode')[:500]}\n✓ Transcript\n"
+                f"✓ {metadata['vocabulary_count']} useful words & expressions"
+            )
         return (
             f"🎙 {metadata.get('podcast', 'Podcast')[:200]}\n{metadata.get('title', 'Episode')[:500]}\n"
             "✓ Transcript\n"
