@@ -38,6 +38,7 @@ async def test_command_menu_scoped_to_owner():
         "native",
         "regenerate",
         "zip",
+        "reader",
         "hanly",
         "mosaic",
         "retry",

@@ -5,6 +5,9 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /app/data
+      READER_HOST: 0.0.0.0
+    ports:
+      - "${READER_BIND_ADDRESS:-127.0.0.1}:${READER_PORT:-8081}:${READER_PORT:-8081}"
     user: "${BOT_UID:-1000}:${BOT_GID:-1000}"
     volumes:
       - ./data:/app/data

@@ -19,6 +19,12 @@ def language_code(value: str | None) -> str | None:
     return code
 
 
+def reader_url_valid(url: str, dev_mode: bool) -> bool:
+    if url.startswith("https://"):
+        return True
+    return dev_mode and url.startswith(("http://localhost", "http://127.0.0.1"))
+
+
 @dataclass(frozen=True)
 class Config:
     token: str = field(repr=False)
@@ -33,6 +39,11 @@ class Config:
     hints: str = ""
     cost_per_minute: float | None = None
     study_enabled: bool = True
+    reader_enabled: bool = True
+    reader_url: str = ""
+    reader_host: str = "127.0.0.1"
+    reader_port: int = 8081
+    reader_dev_mode: bool = False
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -60,6 +71,13 @@ class Config:
                 cost_per_minute=float(os.environ["ESTIMATED_COST_PER_MINUTE_USD"])
                 if os.getenv("ESTIMATED_COST_PER_MINUTE_USD")
                 else None,
+                reader_enabled=os.getenv("READER_ENABLED", "true").lower()
+                not in {"false", "0", "no"},
+                reader_url=os.getenv("READER_PUBLIC_URL", "").strip(),
+                reader_host=os.getenv("READER_HOST", "127.0.0.1"),
+                reader_port=int(os.getenv("READER_PORT", "8081")),
+                reader_dev_mode=os.getenv("READER_DEV_MODE", "false").lower()
+                in {"true", "1", "yes"},
             )
         except ValueError:
             raise UserError("Invalid numeric environment configuration.") from None
@@ -72,5 +90,11 @@ class Config:
         if len(c.hints) > 500 or (c.cost_per_minute is not None and c.cost_per_minute < 0):
             raise UserError(
                 "Hints must be at most 500 characters; estimated price cannot be negative."
+            )
+        if not 1 <= c.reader_port <= 65535:
+            raise UserError("READER_PORT must be 1–65535.")
+        if c.reader_url and not reader_url_valid(c.reader_url, c.reader_dev_mode):
+            raise UserError(
+                "READER_PUBLIC_URL must be an https:// URL; Telegram requires HTTPS for Mini Apps."
             )
         return c
