@@ -45,3 +45,6 @@ hanly-auth*.json*
 !.env.example
 work/
 outputs/
+
+# Generated CC-CEDICT database (built from dictionary/, see dictionary/README.md)
+podcast_bot/reader/cedict.sqlite3

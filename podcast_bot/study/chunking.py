@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from ..models import UserError
 from .models import ChunkMaterial
+from .translations import untranslated, wrong_language
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +55,9 @@ def batches(blocks: list[SourceBlock], limit: int) -> list[list[SourceBlock]]:
     return result
 
 
-def validate_chunk(material: ChunkMaterial, blocks: list[SourceBlock], target: str) -> None:
+def validate_chunk(
+    material: ChunkMaterial, blocks: list[SourceBlock], target: str, native: str = ""
+) -> None:
     # Model-assigned IDs are advisory. Bind complete passages to the immutable
     # source, retaining each passage's own translation and reading lines.
     remaining = defaultdict(deque)
@@ -95,6 +98,27 @@ def validate_chunk(material: ChunkMaterial, blocks: list[SourceBlock], target: s
         ):
             raise UserError(
                 "The study model returned numbered rather than tone-mark pinyin. Use /retry."
+            )
+    for passage in material.passages:
+        if untranslated(passage.source, passage.translation, native):
+            raise UserError(
+                "The study model returned the source text instead of a "
+                f"{native or 'native'}-language translation. Canonical transcript preserved; use /retry."
+            )
+    for item in [
+        *material.vocabulary,
+        *material.patterns,
+        *material.pragmatics,
+        *material.cultural_references,
+    ]:
+        if untranslated(item.example, item.example_translation, native):
+            raise UserError(
+                "A study example was not translated into the configured native language. Use /retry."
+            )
+    for item in material.vocabulary:
+        if wrong_language(item.meaning, native):
+            raise UserError(
+                "A vocabulary meaning was not written in the configured native language. Use /retry."
             )
     validate_mosaic(material, blocks, target)
     source = normalized("".join(b.text for b in blocks))

@@ -134,6 +134,7 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme-glyph").textContent = token.t;
   el("lexeme-pinyin").textContent = token.p || "";
   el("lexeme-meaning").textContent = token.m || "";
+  el("lexeme-source").textContent = token.ms === "cc-cedict" ? "CC-CEDICT" : "";
   renderLexemeAction();
   markInspecting(node);
   el("lexeme").hidden = false;
@@ -351,6 +352,14 @@ el("pinyin-toggle").addEventListener("click", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") dismissTop();
 });
+for (const id of ["cedict-link", "cedict-licence"]) {
+  el(id).addEventListener("click", (event) => {
+    if (telegram && telegram.openLink) {
+      event.preventDefault();
+      telegram.openLink(event.currentTarget.href);
+    }
+  });
+}
 
 state.pinyin = readPreference();
 applyPinyin(state.pinyin);

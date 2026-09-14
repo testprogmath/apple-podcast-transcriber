@@ -16,7 +16,7 @@ const DOCUMENT = {
       text: "他们获得了菲尔兹奖。",
       tokens: [
         { t: "他们", w: true, p: "tā men" },
-        { t: "获得", w: true, p: "huò dé", m: "получать" },
+        { t: "获得", w: true, p: "huò dé", m: "получать", ms: "contextual" },
         { t: "了", w: true, p: "le" },
         { t: "菲尔兹奖", w: true, p: "fēi ěr zī jiǎng" },
         { t: "。", w: false },
@@ -27,7 +27,7 @@ const DOCUMENT = {
       text: "做研究很难。",
       tokens: [
         { t: "做研究", w: true, p: "zuò yán jiū" },
-        { t: "很难", w: true, p: "hěn nán" },
+        { t: "很难", w: true, p: "hěn nán", m: "difficult", ms: "cc-cedict" },
         { t: "。", w: false },
       ],
     },
@@ -114,6 +114,42 @@ test("a token with no meaning shows an empty meaning rather than a label", async
   word(body, "做研究").click(body);
   assert.strictEqual(nodes["lexeme-pinyin"].textContent, "zuò yán jiū");
   assert.strictEqual(nodes["lexeme-meaning"].textContent, "");
+  assert.strictEqual(nodes["lexeme-source"].textContent, "", "no source label either");
+});
+
+test("a contextual meaning is shown without a dictionary label", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "获得").click(body);
+  assert.strictEqual(nodes["lexeme-meaning"].textContent, "получать");
+  assert.strictEqual(nodes["lexeme-source"].textContent, "");
+});
+
+test("a CC-CEDICT meaning is shown and attributed", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "很难").click(body);
+  assert.strictEqual(nodes["lexeme-pinyin"].textContent, "hěn nán");
+  assert.strictEqual(nodes["lexeme-meaning"].textContent, "difficult");
+  assert.strictEqual(nodes["lexeme-source"].textContent, "CC-CEDICT");
+});
+
+test("an unknown word still opens a usable popup and stays selectable", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "做研究").click(body);
+  assert.strictEqual(nodes["lexeme-glyph"].textContent, "做研究");
+  assert.strictEqual(nodes["lexeme-action"].textContent, "+ Add to Hanly");
+  nodes["lexeme-action"].fire("click");
+  assert.strictEqual(nodes["hanly-counter"].textContent, "Hanly · 1");
+});
+
+test("the Reader carries CC-CEDICT attribution", () => {
+  const html = markup();
+  assert.match(html, /Dictionary data:/);
+  assert.match(html, /cc-cedict/i);
+  assert.match(html, /creativecommons\.org\/licenses\/by-sa\/4\.0/);
+  assert.match(html, /CC BY-SA 4\.0/);
 });
 
 test("explicit Add selects the token, explicit Remove clears it", async () => {

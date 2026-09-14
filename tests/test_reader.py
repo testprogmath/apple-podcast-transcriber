@@ -2,6 +2,7 @@ import json
 import re
 import time
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -15,6 +16,8 @@ from podcast_bot.mosaic.client import BatchResult
 from podcast_bot.mosaic.service import MosaicUploadService
 from podcast_bot.reader.api import STATIC, ReaderApi
 from podcast_bot.reader.auth import sign, telegram_user_id
+from podcast_bot.reader.cedict import build as cedict_build
+from podcast_bot.reader.dictionary import Dictionary
 from podcast_bot.reader.documents import from_text, from_transcript
 from podcast_bot.reader.pinyin import pinyin_for
 from podcast_bot.reader.sentences import paragraphs, parse_sentences
@@ -918,3 +921,188 @@ async def test_direct_text_tokens_still_carry_pinyin_without_meanings(notes):
     words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
     assert all(token["p"] for token in words.values())
     assert all("m" not in token for token in words.values())
+
+
+CEDICT_SAMPLE = """# sample
+學習 学习 [xue2 xi2] /to learn; to study/
+銀行 银行 [yin2 hang2] /bank/
+獲得 获得 [huo4 de2] /to obtain; to receive/
+"""
+
+
+@pytest.fixture
+def lexical(config, store, tmp_path):
+    source = tmp_path / "cedict_ts.u8"
+    source.write_text(CEDICT_SAMPLE, encoding="utf-8")
+    target = tmp_path / "cedict.sqlite3"
+    cedict_build(source, target)
+    dictionary = Dictionary(target)
+    services = SimpleNamespace(
+        hanly=HanlyUploadService(store, FakeHanlyClient()),
+        mosaic=None,
+        hanly_error=None,
+        mosaic_error="unset",
+    )
+    yield SimpleNamespace(
+        api=ReaderApi(replace(config, token=TOKEN), store, services, dictionary=dictionary),
+        services=services,
+        store=store,
+        headers={"x-telegram-init-data": valid_init_data()},
+    )
+    dictionary.close()
+
+
+async def test_dictionary_supplies_meaning_and_pinyin_for_direct_text(lexical):
+    document = from_text(42, "他在银行学习。\n")
+    lexical.store.save_reader_document(document)
+    _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
+    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
+    assert words["银行"]["p"] == "yín háng"
+    assert words["银行"]["m"] == "bank"
+    assert words["银行"]["ms"] == "cc-cedict"
+
+
+async def test_contextual_meaning_wins_over_the_dictionary(lexical):
+    document = study_document(
+        lexical.store,
+        text="他们获得了菲尔兹奖。\n",
+        vocabulary=[{"term": "获得", "meaning": "получать", "pinyin": "huò dé"}],
+    )
+    _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
+    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
+    assert words["获得"]["m"] == "получать"
+    assert words["获得"]["ms"] == "contextual"
+
+
+async def test_a_glyph_in_neither_source_omits_meaning_but_keeps_pinyin(lexical):
+    document = from_text(42, "这是研究成果。\n")
+    lexical.store.save_reader_document(document)
+    _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
+    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
+    assert "m" not in words["研究成果"] and "ms" not in words["研究成果"]
+    assert words["研究成果"]["p"] == "yán jiū chéng guǒ"
+
+
+async def test_a_chunk_absent_from_the_dictionary_is_still_uploadable_to_hanly(lexical):
+    document = study_document(
+        lexical.store, text="老师说辛苦了。\n", vocabulary=[{"term": "辛苦了"}]
+    )
+    _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
+    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
+    assert "辛苦了" in words, "segmentation still exposes it"
+    assert "m" not in words["辛苦了"], "no dictionary entry"
+    status, _ = await call(lexical, "POST", f"/api/reader/{document.id}/hanly", item("辛苦了", 0))
+    assert status == 200, "dictionary membership is never validation"
+    assert lexical.services.hanly.client.calls[0][2] == ["辛苦了"]
+
+
+async def test_the_reader_works_with_no_dictionary_at_all(reader):
+    assert not reader.api.dictionary.available
+    status, data = await call(reader, "GET", f"/api/reader/{reader.document.id}")
+    assert status == 200
+    words = [t for t in data["sentences"][2]["tokens"] if t["w"]]
+    assert all(token["p"] for token in words), "local pinyin fallback still applies"
+
+
+async def test_the_dictionary_is_queried_once_per_document_request(lexical, monkeypatch):
+    document = from_text(42, "他在银行学习。银行很大。学习很难。\n")
+    lexical.store.save_reader_document(document)
+    calls = []
+    original = Dictionary.lookup_many
+    monkeypatch.setattr(
+        Dictionary,
+        "lookup_many",
+        lambda self, glyphs: calls.append(list(glyphs)) or original(self, glyphs),
+    )
+    await call(lexical, "GET", f"/api/reader/{document.id}")
+    assert len(calls) == 1
+    assert len(calls[0]) == len(set(calls[0])), "repeated glyphs are collapsed"
+
+
+UNTRANSLATED_SENTENCE = "这样的讨论不只发生在中国，很多国家都会有同样的问题。"
+
+
+def untranslated_pack(store, native="ru"):
+    """Reproduces a real pack whose model answered in Chinese despite native_language=ru."""
+    source = store.root / "transcripts" / "episode"
+    source.mkdir(parents=True, exist_ok=True)
+    (source / "transcript.txt").write_text(UNTRANSLATED_SENTENCE + "\n", encoding="utf-8")
+    atomic_json(
+        source / "metadata.json",
+        {
+            "podcast_id": "1490732024",
+            "episode_id": "1000789324203",
+            "podcast": "Mami Chinese",
+            "title": "同样",
+            "feed_url": "https://example.com/feed.xml",
+            "guid": "episode-guid",
+            "study_settings": {"target_language": "zh", "native_language": native},
+        },
+    )
+    atomic_json(
+        source / "study.json",
+        {
+            "vocabulary": [
+                {
+                    "term": "同样",
+                    "meaning": "同样就是一样的意思。",
+                    "example": UNTRANSLATED_SENTENCE,
+                    "example_translation": UNTRANSLATED_SENTENCE,
+                }
+            ],
+            "passages": [{"source": UNTRANSLATED_SENTENCE, "translation": UNTRANSLATED_SENTENCE}],
+        },
+    )
+    document = from_transcript(42, source)
+    store.save_reader_document(document)
+    return document
+
+
+def test_a_chinese_meaning_is_not_offered_as_a_contextual_translation(store):
+    document = untranslated_pack(store)
+    assert document.native_language() == "ru"
+    assert document.glyph_meanings() == {}, "a Chinese 'meaning' is dropped"
+    assert document.sentence_translations() == {}, "a repeated source is not a translation"
+
+
+def test_the_hanly_note_omits_a_translation_that_is_just_the_chinese_again(store):
+    document = untranslated_pack(store)
+    sentence = document.sentences()[0]
+    story = ReaderApi.stories(document, [("同样", sentence)])[0][1]
+    assert story == "原文：" + UNTRANSLATED_SENTENCE
+    assert "Перевод" not in story
+    assert story.count(UNTRANSLATED_SENTENCE) == 1
+
+
+def test_a_properly_translated_pack_still_produces_the_full_note(store):
+    document = untranslated_pack(store)
+    atomic_json(
+        Path(document.source_reference) / "study.json",
+        {
+            "vocabulary": [
+                {
+                    "term": "同样",
+                    "meaning": "такой же; одинаковый",
+                    "example": UNTRANSLATED_SENTENCE,
+                    "example_translation": "Такие обсуждения происходят не только в Китае.",
+                }
+            ],
+            "passages": [],
+        },
+    )
+    document = from_transcript(42, Path(document.source_reference))
+    sentence = document.sentences()[0]
+    story = ReaderApi.stories(document, [("同样", sentence)])[0][1]
+    assert story == (
+        "такой же; одинаковый\n\n原文："
+        + UNTRANSLATED_SENTENCE
+        + "\nПеревод：Такие обсуждения происходят не только в Китае."
+    )
+
+
+async def test_the_reader_popup_falls_back_to_the_dictionary_when_the_meaning_is_chinese(lexical):
+    document = untranslated_pack(lexical.store)
+    _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
+    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
+    assert "m" not in words["同样"], "the Chinese 'meaning' is not shown as a translation"
+    assert words["学习"]["ms"] == "cc-cedict" if "学习" in words else True

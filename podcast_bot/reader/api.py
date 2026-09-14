@@ -9,8 +9,9 @@ from ..hanly.client import merge_glyphs
 from ..hanly.notes import build_hanly_note
 from ..models import UserError
 from .auth import telegram_user_id
+from .dictionary import Dictionary
 from .documents import ReaderDocument
-from .pinyin import pinyin_for
+from .enrich import NONE, enrich
 from .tokens import HAN, tokenize
 
 log = logging.getLogger(__name__)
@@ -51,9 +52,10 @@ def json_response(status: int, payload: dict):
 
 
 class ReaderApi:
-    def __init__(self, config, storage, services, dev_mode: bool = False):
+    def __init__(self, config, storage, services, dev_mode: bool = False, dictionary=None):
         self.config, self.storage, self.services = config, storage, services
         self.dev_mode = dev_mode
+        self.dictionary = Dictionary() if dictionary is None else dictionary
 
     async def dispatch(self, method: str, path: str, headers: dict, body: bytes):
         try:
@@ -116,15 +118,21 @@ class ReaderApi:
     def read(self, document: ReaderDocument):
         sentences = document.sentences()
         tokens = document.tokens(sentences)
-        meanings = document.glyph_meanings()
+        lexemes = enrich(
+            (token.text for items in tokens for token in items if token.word),
+            document.glyph_meanings(),
+            document.glyph_pronunciations(),
+            self.dictionary,
+        )
 
         def describe(token):
             if not token.word:
                 return {"t": token.text, "w": False}
-            item = {"t": token.text, "w": True, "p": pinyin_for(token.text)}
-            meaning = meanings.get(token.text)
-            if meaning:
-                item["m"] = meaning
+            lexeme = lexemes[token.text]
+            item = {"t": token.text, "w": True, "p": lexeme.pinyin}
+            if lexeme.meaning_source != NONE:
+                item["m"] = lexeme.meaning
+                item["ms"] = lexeme.meaning_source
             return item
 
         return json_response(
