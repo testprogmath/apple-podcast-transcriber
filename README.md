@@ -226,6 +226,8 @@ Both item counts are preferences, not quotas. Short or low-value episodes may yi
 | `READER_PORT` | `8081` |
 | `READER_DEV_MODE` | `false`; `true` accepts browser requests without Telegram init data |
 | `READER_DICTIONARY` | Path to the generated CC-CEDICT database; defaults to one beside `reader/` |
+| `READER_DICTIONARY_RU` | Optional path to a 大БКРС database; blank disables Russian glosses |
+| `BKRS_DICTIONARY` | Host path mounted by `docker-compose.bkrs.yml` |
 
 Set all three study price overrides together. Invalid/incomplete or unknown pricing simply disables the estimate; it does not block generation. Environment variables override `.env`. Persisted Telegram preferences override level/language defaults until changed again through commands. Queued jobs retain their study settings snapshot.
 
@@ -284,7 +286,21 @@ JWTs are kept in memory, refreshed with a 30-second expiry margin under an async
 
 Reader lookups are entirely local. Tapping a word makes no request of any kind: every definition and pronunciation is already in the document response, resolved once per distinct glyph when the document is served.
 
-Pinyin resolves in order: the study pack's own pronunciation for its curated terms, then an exact CC-CEDICT entry, then [pypinyin](https://github.com/mozillazg/python-pinyin) as the local fallback. The dictionary step matters for polyphones a character-by-character fallback gets wrong. Meaning resolves in order: the study pack's contextual meaning, then a CC-CEDICT definition, then nothing — a contextual meaning is never replaced by a generic one, and the API reports which source won.
+Pinyin resolves in order: the study pack's own pronunciation for its curated terms, then an exact CC-CEDICT entry, then [pypinyin](https://github.com/mozillazg/python-pinyin) as the local fallback. The dictionary step matters for polyphones a character-by-character fallback gets wrong. Meaning resolves in order: the study pack's contextual meaning, then an optional Russian gloss, then a CC-CEDICT definition, then nothing — a contextual meaning is never replaced by a generic one, and the API reports which source won.
+
+### Optional Russian dictionary
+
+Set `READER_DICTIONARY_RU` and the popup shows Russian instead of English wherever the study pack has no contextual meaning. It also covers compounds CC-CEDICT omits: 研究成果 resolves to `результаты исследований`, which CC-CEDICT has no entry for at all.
+
+This data is **not** part of the project. 大БКРС offers no formal licence — only an informal note that the databases may be used freely — and documents no provenance for the published dictionaries it draws on, so nothing here redistributes it. `tools/build_bkrs_dictionary.py` converts a copy you download yourself into SQLite, and `docker-compose.bkrs.yml` mounts the result read-only, the same optional-override pattern the Hanly auth file uses:
+
+```sh
+mkdir -p ~/dictionaries/bkrs/source && cd ~/dictionaries/bkrs
+curl -L -o source/dabkrs.gz https://bkrs.info/downloads/daily/dabkrs_<YYMMDD>.gz
+python3 build_bkrs_dictionary.py source/dabkrs.gz bkrs.sqlite3
+```
+
+Roughly 25 seconds for 3.46 million entries and a 384 MB database, kept outside the repository and outside the image so other applications on the same host can share it. Definitions are stored with their ABBYY DSL markup intact so the database stays a faithful reformatting; `reader/bkrs.py` is the reference renderer. Pinyin is still taken from CC-CEDICT, which separates syllables (`rèn wéi`) where the Russian source does not (`rènwéi`).
 
 CC-CEDICT stores several entries for a written form when it has several readings. The lowest source id is the deterministic primary, supplying the displayed pronunciation; definitions merge across the homographs in source order, deduplicated, and the popup shows at most three. The alternatives stay available in `reader/dictionary.py` rather than being discarded.
 

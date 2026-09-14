@@ -4,6 +4,7 @@ const telegram = window.Telegram && window.Telegram.WebApp;
 const documentId = new URLSearchParams(location.search).get("doc") || "";
 const initData = (telegram && telegram.initData) || "";
 const PINYIN_KEY = "reader.pinyin";
+const SOURCE_LABELS = { "cc-cedict": "CC-CEDICT", bkrs: "大БКРС" };
 
 const state = {
   title: "",
@@ -134,7 +135,7 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme-glyph").textContent = token.t;
   el("lexeme-pinyin").textContent = token.p || "";
   el("lexeme-meaning").textContent = token.m || "";
-  el("lexeme-source").textContent = token.ms === "cc-cedict" ? "CC-CEDICT" : "";
+  el("lexeme-source").textContent = SOURCE_LABELS[token.ms] || "";
   renderLexemeAction();
   markInspecting(node);
   el("lexeme").hidden = false;
