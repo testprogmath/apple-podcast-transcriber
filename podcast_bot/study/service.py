@@ -262,7 +262,7 @@ class StudyService:
                 ],
             }
 
-            def validate(selection):
+            def validate(selection, ids=ids):
                 selected = selection.selected_ids
                 if len(set(selected)) != len(selected) or any(i not in ids for i in selected):
                     raise UserError(

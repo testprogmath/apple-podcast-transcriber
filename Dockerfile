@@ -3,7 +3,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY requirements.lock ./
+COPY requirements.lock requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.lock
 COPY pyproject.toml README.md ./
 COPY podcast_bot ./podcast_bot

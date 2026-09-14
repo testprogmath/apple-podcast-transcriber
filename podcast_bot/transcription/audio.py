@@ -151,7 +151,8 @@ async def silence_boundary(path: Path, start: float, target: float) -> float:
     )
     starts = [float(s) for s in re.findall(r"silence_start: ([\d.]+)", stderr)]
     ends = [float(s) for s in re.findall(r"silence_end: ([\d.]+)", stderr)]
-    boundaries = [origin + (a + b) / 2 for a, b in zip(starts, ends) if b >= a]
+    # A trailing silence may lack an end marker; preserve truncation of unmatched pairs.
+    boundaries = [origin + (a + b) / 2 for a, b in zip(starts, ends, strict=False) if b >= a]
     return boundaries[-1] if boundaries else target
 
 

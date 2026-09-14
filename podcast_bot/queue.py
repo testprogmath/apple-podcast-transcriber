@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from pathlib import Path
 
 from .diagnostics import diagnostic
@@ -82,10 +83,8 @@ class Worker:
         while True:
             self.wake.clear()
             if not await self.once():
-                try:
+                with suppress(TimeoutError):
                     await asyncio.wait_for(self.wake.wait(), 5)
-                except TimeoutError:
-                    pass
 
     def start(self) -> None:
         self.task = asyncio.create_task(self.run(), name="podcast-worker")
@@ -93,7 +92,5 @@ class Worker:
     async def stop(self) -> None:
         if self.task:
             self.task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self.task
-            except asyncio.CancelledError:
-                pass

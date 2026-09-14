@@ -135,7 +135,10 @@ def canonical(store):
     return source
 
 
-def enqueue_study(store, canonical, settings=StudySettings(), force=False):
+DEFAULT_STUDY_SETTINGS = StudySettings()
+
+
+def enqueue_study(store, canonical, settings=DEFAULT_STUDY_SETTINGS, force=False):
     store.enqueue_study(canonical, settings.to_json(), 42, 11, regenerate=force)
     return store.claim()
 

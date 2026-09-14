@@ -257,8 +257,17 @@ Apple may omit older episodes outside the latest 200, and RSS may remove entries
 python -m pip install -r requirements.lock -e '.[test]'
 python -m pytest -q
 ruff check .
+ruff format --check .
 python -m compileall -q podcast_bot
 ```
+
+For local fixes, run `ruff check --fix .` and `ruff format .`. Ruff targets Python 3.12 with E/F (errors), I (imports), UP (modern syntax), B (likely bugs), and SIM (simplifications). Formatting handles layout; E501 is excluded for long literal messages/SQL.
+
+CI runs lint, formatting, and `python -m pytest -q` on pull requests and pushes to `main`, using Python 3.12 and ffmpeg without service credentials. Dependabot checks Python and Actions weekly, groups minor/patch updates, and leaves major updates separate. No updates auto-merge.
+
+The existing pip install command remains unchanged. Exact production pins live in `requirements.txt` so Dependabot's pip ecosystem can discover them; `requirements.lock` includes it as a compatibility entry point, with no duplicate pins. When regenerating pins with the existing tool, run `uv pip compile pyproject.toml -o requirements.txt`. Ruff remains in the existing `test` development extra; no additional package manager is required for installation or CI.
+
+Repository settings: enable Actions and Dependabot alerts/security updates if disabled. Require **Python quality and tests** in a branch ruleset for `main` to enforce CI before merging; committed YAML does not set repository rules.
 
 Tests block unexpected networking and mock OpenAI, Telegram, Mandarin Mosaic, and Firebase/Firestore APIs. Real ffmpeg tests use generated local audio. See `VALIDATION.md` for results and validation boundaries. No paid call is required to run tests.
 

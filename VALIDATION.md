@@ -55,3 +55,9 @@ No real Mandarin Mosaic API call, OpenAI request, or Telegram test message was m
 The full existing transcription/study/Mosaic suite also passes. Ruff lint/format and Python compilation pass; this repository has no separate configured type checker. Tests use mocked HTTP and block unexpected sockets. No real Firebase/Hanly call, real collection mutation, local Hanly application modification, paid OpenAI call, or Telegram test message was performed. Production synchronization remains unvalidated by this implementation.
 
 Manual setup: supply a legitimate external `hanly-auth.json`, mode 0600, set `HANLY_AUTH_FILE` (or the documented Docker directory mount), and opt in separately before any live integration test. No credentials are supplied by the repository.
+
+## Quality / dependency maintenance — 2026-09-14
+
+A fresh Python 3.12 virtual environment installed the project with `python -m pip install -r requirements.lock -e '.[test]'`. `ruff check .`, `ruff format --check .`, `python -m pytest -q`, and `python -m pip check` passed: 47 formatted Python files, 193 tests, no broken requirements. Workflow and Dependabot YAML were validated against their SchemaStore JSON schemas using a YAML 1.2-compatible loader.
+
+Exact production versions are unchanged: pins moved to Dependabot-discoverable `requirements.txt`, included by the existing `requirements.lock` entry point. CI installs ffmpeg and runs with no service credentials. Small B/SIM fixes preserve existing behavior. No production redeployment is required for the quality configuration.

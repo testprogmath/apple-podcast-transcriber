@@ -21,6 +21,10 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
+extend-exclude = ["data", "work", "outputs"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I", "UP"]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# Ruff formats code; long literal messages/SQL need not be rewritten to meet E501.
+ignore = ["E501"]

@@ -318,28 +318,30 @@ async def test_end_to_end_dry_run_with_real_audio_and_mock_services(config, stor
         return httpx.Response(200, json={"text": "我们和咱们。", "languages": [{"code": "zh"}]})
 
     bot = SimpleNamespace(send_document=AsyncMock())
-    async with httpx.AsyncClient(transport=httpx.MockTransport(podcast_http)) as http:
-        async with AsyncOpenAI(
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(podcast_http)) as http,
+        AsyncOpenAI(
             api_key="test-only",
             max_retries=0,
             http_client=httpx.AsyncClient(transport=httpx.MockTransport(openai_http)),
-        ) as sdk:
-            pipeline = Pipeline(config, store, http, OpenAITranscriber(sdk))
+        ) as sdk,
+    ):
+        pipeline = Pipeline(config, store, http, OpenAITranscriber(sdk))
 
-            async def deliver(current, output):
-                await send_files(bot, current.chat_id, output)
+        async def deliver(current, output):
+            await send_files(bot, current.chat_id, output)
 
-            worker = Worker(store, pipeline, AsyncMock(), deliver)
-            handlers = BotHandlers(config, store)
-            handlers.worker = worker
-            await handlers.handle(update(URL), SimpleNamespace(bot=bot))
-            assert await worker.once()
-            assert len(requests) == 1
-            assert bot.send_document.await_count == 1
-            assert list((store.root / "tmp").iterdir()) == []
-            result = next((store.root / "transcripts").rglob("transcript.txt"))
-            assert result.read_text() == "我们和咱们。\n"
-            # Same URL is delivered immediately without another API request.
-            await handlers.handle(update(URL), SimpleNamespace(bot=bot))
-            assert len(requests) == 1
-            assert bot.send_document.await_count == 2
+        worker = Worker(store, pipeline, AsyncMock(), deliver)
+        handlers = BotHandlers(config, store)
+        handlers.worker = worker
+        await handlers.handle(update(URL), SimpleNamespace(bot=bot))
+        assert await worker.once()
+        assert len(requests) == 1
+        assert bot.send_document.await_count == 1
+        assert list((store.root / "tmp").iterdir()) == []
+        result = next((store.root / "transcripts").rglob("transcript.txt"))
+        assert result.read_text() == "我们和咱们。\n"
+        # Same URL is delivered immediately without another API request.
+        await handlers.handle(update(URL), SimpleNamespace(bot=bot))
+        assert len(requests) == 1
+        assert bot.send_document.await_count == 2

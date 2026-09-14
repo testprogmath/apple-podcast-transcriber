@@ -40,3 +40,8 @@ hanly-auth*.json*
 .hanly-auth-*
 *.har
 *.HAR
+
+.env.*
+!.env.example
+work/
+outputs/
