@@ -48,7 +48,7 @@ function start(options = {}) {
   const env = setup(options);
   const calls = [];
   const responses = options.responses || {};
-  const payload = options.document || DOCUMENT;
+  const payload = structuredClone(options.document || DOCUMENT);
   global.fetch = async (path, init) => {
     calls.push({ path, method: (init && init.method) || "GET", body: init && init.body });
     for (const [suffix, make] of Object.entries(responses)) {
@@ -401,6 +401,9 @@ test("successful Hanly upload clears the uploaded selections", async () => {
   assert.strictEqual(nodes["hanly-counter"].textContent, "Hanly · 0");
   assert.ok(!word(body, "获得").classes.has("picked"));
   assert.match(nodes.toast.textContent, /Notes: 1 added\./);
+  word(body, "获得").fire("click");
+  assert.strictEqual(nodes["lexeme-state"].textContent, "Learning · Hanly");
+  assert.strictEqual(nodes["lexeme-knowledge"].textContent, "✓ Mark as known");
 });
 
 test("failed Hanly upload keeps every selection", async () => {
@@ -508,6 +511,31 @@ test("basket rows carry the reading and a gloss", async () => {
   assert.match(nodes["basket-note"].textContent, /added to this document's Hanly collection/);
 });
 
+test("the two popup actions form an evenly matched row", () => {
+  const sheet = css();
+  const row = /#lexeme-actions \{([^}]*)\}/.exec(sheet)[1];
+  const button = /#lexeme-actions button \{([^}]*)\}/.exec(sheet)[1];
+  const secondary = /#lexeme-actions \.secondary \{([^}]*)\}/.exec(sheet)[1];
+  const primary = /\n\.primary \{([^}]*)\}/.exec(sheet)[1];
+
+  assert.match(row, /align-items: stretch/, "both buttons share the row height");
+  assert.match(row, /margin-top: 18px/, "the row owns the spacing");
+  assert.match(button, /margin-top: 0/, ".primary's own margin must not offset one button");
+  assert.match(button, /flex: 1 1 0/, "equal widths regardless of label length");
+
+  const pad = (block) => Number(/padding: (\d+)px/.exec(block)[1]);
+  const border = Number((/border: (\d+)px/.exec(secondary) || [0, 0])[1]);
+  assert.strictEqual(
+    pad(secondary) + border,
+    pad(primary),
+    "the outline's border is compensated so both boxes are the same height"
+  );
+  for (const property of [/font-size: 15px/, /font-weight: 600/]) {
+    assert.match(secondary, property, "labels share the primary button's text metrics");
+    assert.match(primary, property);
+  }
+});
+
 test("the stylesheet defines a full dark palette", () => {
   const sheet = css();
   assert.match(sheet, /@media \(prefers-color-scheme: dark\)/);
@@ -526,6 +554,109 @@ test("the layout has no fixed width that would overflow a narrow WebView", () =>
   assert.ok(widths.every((w) => w <= 320), `min-width too large: ${widths}`);
   assert.match(sheet, /max-width:\s*100%|width:\s*100%/, "sheets stretch to the viewport");
   assert.match(sheet, /env\(safe-area-inset-bottom\)/, "bottom sheets clear the home indicator");
+});
+
+test("vocabulary saves immediately, reopens, and clears without selecting sentences", async () => {
+  let next = "known";
+  const { body, nodes, calls } = start({ responses: {
+    "/vocabulary-state": () => ({ ok: true, json: async () => ({ glyph: "获得", vocabulary_state: next }) }),
+  }});
+  await settle();
+  word(body, "获得").fire("click");
+  assert.ok(nodes["lexeme-state"].hidden);
+  assert.strictEqual(nodes["lexeme-knowledge"].textContent, "✓ I know this");
+  nodes["lexeme-knowledge"].fire("click");
+  await settle();
+  assert.strictEqual(nodes["lexeme-state"].textContent, "✓ Known");
+  assert.deepStrictEqual(JSON.parse(calls.at(-1).body), { glyph: "获得", state: "known" });
+  nodes["lexeme-close"].fire("click");
+  word(body, "获得").fire("click");
+  assert.strictEqual(nodes["lexeme-knowledge"].textContent, "Mark as unknown");
+  assert.strictEqual(nodes["mosaic-counter"].textContent.includes("0"), true);
+  next = "unknown";
+  nodes["lexeme-knowledge"].fire("click");
+  await settle();
+  assert.ok(nodes["lexeme-state"].hidden);
+});
+
+for (const prior of ["unknown", "known", "learning"]) {
+  test(`Hanly basket overrides ${prior} and removal restores it`, async () => {
+    const document = structuredClone(DOCUMENT);
+    document.glossary["获得"].vocabulary_state = prior;
+    const { body, nodes, calls } = start({ document });
+    await settle();
+    word(body, "获得").fire("click");
+    nodes["lexeme-action"].fire("click");
+    word(body, "获得").fire("click");
+    assert.strictEqual(nodes["lexeme-state"].textContent, "Learning · Hanly");
+    nodes["lexeme-action"].fire("click");
+    word(body, "获得").fire("click");
+    assert.strictEqual(nodes["lexeme-state"].textContent,
+      prior === "known" ? "✓ Known" : prior === "learning" ? "Learning · Hanly" : "");
+    assert.strictEqual(calls.length, 1, "basket changes do not persist knowledge");
+  });
+}
+
+test("failed vocabulary save preserves state and baskets", async () => {
+  const { body, nodes } = start({ responses: {
+    "/vocabulary-state": () => { throw new Error("Offline"); },
+  }});
+  await settle();
+  word(body, "获得").fire("click");
+  nodes["lexeme-action"].fire("click");
+  word(body, "获得").fire("click");
+  const hanly = nodes["hanly-counter"].textContent;
+  const mosaic = nodes["mosaic-counter"].textContent;
+  nodes["lexeme-knowledge"].fire("click");
+  await settle();
+  assert.strictEqual(nodes["lexeme-state"].textContent, "Learning · Hanly");
+  assert.strictEqual(nodes["lexeme-knowledge"].textContent, "✓ Mark as known");
+  assert.strictEqual(nodes["hanly-counter"].textContent, hanly);
+  assert.strictEqual(nodes["mosaic-counter"].textContent, mosaic);
+  assert.match(nodes.toast.textContent, /Could not save/);
+});
+
+test("marking a basket word known keeps learning until removal; pinyin is independent", async () => {
+  const { body, nodes } = start({ responses: {
+    "/vocabulary-state": () => ({ ok: true, json: async () => ({ glyph: "获得", vocabulary_state: "known" }) }),
+  }});
+  await settle();
+  word(body, "获得").fire("click");
+  nodes["lexeme-action"].fire("click");
+  word(body, "获得").fire("click");
+  nodes["lexeme-knowledge"].click(body);
+  await settle();
+  assert.strictEqual(nodes["lexeme-state"].textContent, "Learning · Hanly");
+  nodes["pinyin-toggle"].fire("click");
+  assert.strictEqual(nodes["lexeme-state"].textContent, "Learning · Hanly");
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 0");
+  nodes["lexeme-action"].fire("click");
+  word(body, "获得").fire("click");
+  assert.strictEqual(nodes["lexeme-state"].textContent, "✓ Known");
+});
+
+test("late vocabulary response updates its glyph and blocks an overlapping Hanly upload", async () => {
+  let finish;
+  const { body, nodes, calls } = start({ responses: {
+    "/vocabulary-state": () => new Promise((resolve) => { finish = resolve; }),
+  }});
+  await settle();
+  word(body, "获得").fire("click");
+  nodes["lexeme-knowledge"].fire("click");
+  assert.ok(nodes["lexeme-knowledge"].disabled);
+  assert.ok(nodes["lexeme-state"].hidden, "no premature saved state");
+  nodes["lexeme-action"].fire("click");
+  nodes["hanly-counter"].fire("click");
+  nodes["basket-upload"].fire("click");
+  assert.ok(!calls.some((c) => c.path.endsWith("/hanly")));
+  word(body, "他们").fire("click");
+  finish({ ok: true, json: async () => ({ glyph: "获得", vocabulary_state: "known" }) });
+  await settle();
+  assert.ok(nodes["lexeme-state"].hidden, "other glyph remains unknown");
+  word(body, "获得").fire("click");
+  nodes["lexeme-action"].fire("click");
+  word(body, "获得").fire("click");
+  assert.strictEqual(nodes["lexeme-state"].textContent, "✓ Known");
 });
 
 (async () => {

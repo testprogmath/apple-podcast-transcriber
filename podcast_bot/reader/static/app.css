@@ -387,3 +387,36 @@ ruby { ruby-align: center; }
 }
 
 #toast.bad { background: var(--danger); color: #ffffff; }
+
+/* Personal knowledge stays in the popup; reading text keeps its existing appearance. */
+#lexeme-state { margin: 8px 0; color: var(--muted); font-size: 14px; }
+/* The row owns the spacing and stretches both buttons, so neither .primary's own
+   margin nor the outline's extra border can leave the pair out of step. */
+#lexeme-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+#lexeme-actions button {
+  width: auto;
+  flex: 1 1 0;
+  margin-top: 0;
+  min-height: 48px;
+}
+
+#lexeme-actions .secondary {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  /* One pixel less than .primary, because the border makes up the difference. */
+  padding: 13px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#lexeme-actions button:disabled { opacity: .55; cursor: wait; }

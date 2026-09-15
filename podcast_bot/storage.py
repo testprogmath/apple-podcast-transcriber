@@ -98,6 +98,9 @@ class Storage:
         CREATE TABLE IF NOT EXISTS study_cache (key TEXT PRIMARY KEY, path TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS study_steps (key TEXT NOT NULL, step TEXT NOT NULL,
           result TEXT NOT NULL, PRIMARY KEY(key,step));
+        CREATE TABLE IF NOT EXISTS vocabulary_state (
+          glyph TEXT PRIMARY KEY, state TEXT NOT NULL CHECK(state IN ('learning','known')),
+          updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS hanly_glyph_notes (
           glyph TEXT PRIMARY KEY, story TEXT NOT NULL, updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS reader_documents (
@@ -110,6 +113,42 @@ class Storage:
           timestamp TEXT NOT NULL, status TEXT NOT NULL, estimated_cost REAL);
         """)
         self.db.commit()
+
+    def vocabulary_state(self, glyph: str) -> str | None:
+        return self.vocabulary_states([glyph]).get(glyph)
+
+    def vocabulary_states(self, glyphs) -> dict[str, str]:
+        """One indexed lookup per 500 unique glyphs, independent of repetitions/documents."""
+        unique = list(dict.fromkeys(glyphs))
+        result = {}
+        for start in range(0, len(unique), 500):
+            batch = unique[start : start + 500]
+            placeholders = ",".join("?" for _ in batch)
+            rows = self.db.execute(
+                f"SELECT glyph,state FROM vocabulary_state WHERE glyph IN ({placeholders})", batch
+            )
+            result.update((row["glyph"], row["state"]) for row in rows)
+        return result
+
+    def save_vocabulary_state(self, glyph: str, state: str) -> None:
+        self.save_vocabulary_states([glyph], state)
+
+    def save_vocabulary_states(self, glyphs, state: str) -> None:
+        if state not in {"learning", "known"}:
+            raise ValueError("Persist only learning or known vocabulary states")
+        glyphs = list(dict.fromkeys(glyphs))
+        if any(not isinstance(g, str) or not g.strip() for g in glyphs):
+            raise ValueError("Vocabulary glyph must be nonempty text")
+        with self.db:
+            self.db.executemany(
+                "INSERT INTO vocabulary_state(glyph,state,updated) VALUES (?,?,?) "
+                "ON CONFLICT(glyph) DO UPDATE SET state=excluded.state,updated=excluded.updated",
+                [(glyph, state, now()) for glyph in glyphs],
+            )
+
+    def delete_vocabulary_state(self, glyph: str) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM vocabulary_state WHERE glyph=?", (glyph,))
 
     def close(self) -> None:
         self.db.close()

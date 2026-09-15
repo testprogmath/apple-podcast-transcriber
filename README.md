@@ -427,3 +427,35 @@ SSH command. Pull requests run checks only. Deployment drains the worker, preser
 SQLite/transcript/authentication volumes, checks application readiness and rolls back an
 unhealthy image. See [deploy/README.md](deploy/README.md) for one-time setup, required
 `PODCAST_DEPLOY_SSH_KEY` secret, rollback limitations and manual recovery.
+
+
+### Reader personal vocabulary
+
+The Reader remembers exact Chinese words/chunks globally across its documents.
+`unknown` means no SQLite row; only `known` and `learning` are persisted in
+`vocabulary_state(glyph TEXT PRIMARY KEY, state TEXT CHECK(state IN
+('learning', 'known')) NOT NULL, updated TEXT NOT NULL)`. The table is created
+additively on startup; existing documents need no reprocessing.
+
+The popup resolves state in this order: current local Hanly basket → learning;
+otherwise saved state; otherwise unknown. **I know this / Mark as known** saves
+immediately. **Mark as unknown** deletes the row. Removing a basket item restores
+its saved state. Successful Hanly collection upload saves learning; failed upload
+leaves saved state unchanged. Marking a selected word known keeps it effectively
+learning until removal; sending it successfully saves learning again. This does
+not delete Hanly cards or synchronize knowledge from Hanly.
+
+Authenticated `POST /api/reader/<document-id>/vocabulary-state` accepts only
+`{"glyph":"获得","state":"known"}` (or `unknown`) and returns
+`{"glyph":"获得","vocabulary_state":"known"}`. Glyphs must be exposed by the
+canonical document segmentation; dictionary membership is unnecessary. The GET
+response includes `glossary[glyph].vocabulary_state`, explicitly `unknown` when
+absent. Loading performs one additional indexed SELECT per 500 unique glyphs
+(usually one; zero for no glyphs), reusing results across repeated tokens.
+
+Failed saves show an error without changing saved UI state or either basket.
+Within a WebView, pending knowledge saves and Hanly uploads cannot overlap.
+The popup is authoritative; this feature adds no document-wide coloring and
+changes neither Mandarin Mosaic nor Hanly Notes. Verify the secondary action,
+status badge, focus, and wrapping in Telegram's narrow and dark WebViews before
+release. Frontend regression tests: `node tests/frontend/app.test.js`.
