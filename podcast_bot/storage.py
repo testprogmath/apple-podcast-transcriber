@@ -88,6 +88,9 @@ class Storage:
         CREATE TABLE IF NOT EXISTS hanly_manual_collections (
           key TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
           status TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS hanly_manual_cards (
+          glyph TEXT PRIMARY KEY, pinyin TEXT NOT NULL, meaning TEXT NOT NULL,
+          example TEXT NOT NULL, example_translation TEXT NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS mosaic_packs (
           source_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, payload TEXT NOT NULL,
           status TEXT NOT NULL);
@@ -550,6 +553,23 @@ class Storage:
         with self.db:
             self.db.execute(
                 "UPDATE hanly_manual_collections SET status='verified' WHERE key=?", (key,)
+            )
+
+    def manual_card(self, glyph: str):
+        return self.db.execute(
+            "SELECT pinyin, meaning, example, example_translation FROM hanly_manual_cards"
+            " WHERE glyph=?",
+            (glyph,),
+        ).fetchone()
+
+    def save_manual_card(
+        self, glyph: str, pinyin: str, meaning: str, example: str, example_translation: str
+    ) -> None:
+        """Generated context is paid for once; a repeated command reuses it."""
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO hanly_manual_cards VALUES (?,?,?,?,?,?)",
+                (glyph, pinyin, meaning, example, example_translation, now()),
             )
 
     def hanly_note(self, glyph: str) -> str | None:

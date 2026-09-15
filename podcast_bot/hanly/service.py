@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,6 +15,7 @@ from ..study.models import StudyMaterial
 from ..study.service import pack_valid
 from . import manual
 from .auth import HanlyError
+from .cards import note_text
 from .client import HanlyClient, merge_glyphs
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,15 @@ class HanlyResult:
         return f"Hanly:\n✓ {self.name}\n✓ {self.requested} selected words/expressions verified ({self.total} cards in collection)"
 
 
+NOTE_REPORT = {
+    "created": "Note: added",
+    "updated": "Note: updated",
+    "unchanged": "Note: already there",
+    "skipped-user-modified": "Note: kept yours",
+    "failed": "Note: could not be written",
+}
+
+
 @dataclass(frozen=True)
 class ManualResult:
     collection_id: str
@@ -38,10 +48,18 @@ class ManualResult:
     glyph: str
     present: bool
     total: int
+    pinyin: str = ""
+    note: str = ""
 
     def message(self):
         state = "Already in Hanly" if self.present else "Added to Hanly"
-        return f"✓ {state}\n\n{self.glyph}\nCollection: {self.name}"
+        lines = [f"✓ {state}", "", self.glyph]
+        if self.pinyin:
+            lines.append(self.pinyin)
+        lines.append(f"Collection: {self.name}")
+        if self.note in NOTE_REPORT:
+            lines.append(NOTE_REPORT[self.note])
+        return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -52,8 +70,8 @@ class NoteOutcome:
 
 
 class HanlyUploadService:
-    def __init__(self, storage: Storage, client: HanlyClient):
-        self.storage, self.client = storage, client
+    def __init__(self, storage: Storage, client: HanlyClient, cards=None):
+        self.storage, self.client, self.cards = storage, client, cards
         self._lock = asyncio.Lock()
 
     async def merge_collection(
@@ -86,9 +104,26 @@ class HanlyUploadService:
         return HanlyResult(row["uuid"], name, len(glyphs), total)
 
     async def add_manual_glyph(self, glyph: str) -> ManualResult:
-        """One arbitrary string, merged verbatim into the stable manual collection."""
+        """One arbitrary string, merged verbatim into the stable manual collection.
+
+        The card is the primary operation. Its study note is enrichment written afterwards,
+        outside the lock write_notes takes for itself, and never turns a stored card into a
+        failure.
+        """
         async with self._lock:
-            return await self._add_manual(glyph)
+            result = await self._add_manual(glyph)
+        if self.cards is None:
+            return result
+        try:
+            card = await self.cards.card(glyph)
+            story = note_text(card)
+        except Exception as exc:
+            log.error("glyph=%s note=context-failed exception_type=%s", glyph, type(exc).__name__)
+            return result
+        if not story:
+            return result
+        outcomes = await self.write_notes([(glyph, story)], "manual")
+        return replace(result, pinyin=card["pinyin"], note=outcomes[0].action if outcomes else "")
 
     async def _add_manual(self, glyph: str) -> ManualResult:
         stored = self.storage.manual_collection(manual.KEY)

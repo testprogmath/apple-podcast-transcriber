@@ -494,8 +494,17 @@ def build_application(config: Config, storage: Storage) -> Application:
         try:
             path = auth_path()
             if path.exists() or os.getenv("HANLY_AUTH_FILE"):
+                from .hanly.cards import ManualCards
+                from .reader.bkrs import RussianDictionary
+
+                cards = ManualCards(
+                    storage,
+                    OpenAIStudyClient(openai) if config.study_enabled else None,
+                    RussianDictionary(),
+                    handlers.study_settings().model,
+                )
                 handlers.hanly = HanlyUploadService(
-                    storage, HanlyClient(client, HanlyAuth.load(path))
+                    storage, HanlyClient(client, HanlyAuth.load(path)), cards
                 )
         except UserError as exc:
             handlers.hanly_error = str(exc)

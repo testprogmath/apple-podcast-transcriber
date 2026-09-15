@@ -6,18 +6,34 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from test_hanly import API, ID_TOKEN, KEY, TOKEN, client, collection, document, firestore_calls
+from test_hanly import (
+    API,
+    ID_TOKEN,
+    KEY,
+    TOKEN,
+    NoteAPI,
+    client,
+    collection,
+    document,
+    firestore_calls,
+)
 from test_hanly import auth as _auth
 
 from podcast_bot.bot import BotHandlers
 from podcast_bot.hanly.auth import HanlyAuth, HanlyError
+from podcast_bot.hanly.cards import ManualCards, note_text
 from podcast_bot.hanly.client import VerificationError, parse_document
 from podcast_bot.hanly.manual import MAX_LENGTH, distinct_name, parse_glyph
+from podcast_bot.hanly.notes import build_hanly_note
 from podcast_bot.hanly.service import HanlyUploadService
 from podcast_bot.models import UserError
+from podcast_bot.reader.dictionary import DictionaryEntry
 from podcast_bot.storage import Storage
 
 SENTENCE = "塞翁失马，焉知非福"
+MEANING = "Нет худа без добра: неудача может обернуться удачей."
+EXAMPLE = "塞翁失马，焉知非福，别灰心。"
+EXAMPLE_RU = "Нет худа без добра, не унывай."
 
 
 @pytest.fixture
@@ -364,3 +380,188 @@ async def test_the_upload_path_for_episodes_is_untouched(service):
     assert not svc.storage.db.execute("SELECT count(*) FROM hanly_collections").fetchone()[0]
     with pytest.raises(HanlyError):
         await svc.upload(svc.storage.root)
+
+
+class Model:
+    """One structured card-context response, with the requests it received."""
+
+    def __init__(self, meaning=MEANING, example=EXAMPLE, translation=EXAMPLE_RU, error=None):
+        self.reply = (meaning, example, translation)
+        self.error = error
+        self.payloads = []
+
+    async def request(self, schema, instructions, payload, model, max_output):
+        self.payloads.append(payload)
+        if self.error:
+            raise self.error
+        meaning, example, translation = self.reply
+        return schema(meaning=meaning, example=example, example_translation=translation), {}
+
+
+class Glossary:
+    def __init__(self, entries):
+        self.entries = entries
+
+    def lookup(self, glyph):
+        senses = self.entries.get(glyph)
+        return (
+            DictionaryEntry(
+                simplified=glyph,
+                traditional=glyph,
+                pinyin="",
+                definitions=tuple(senses),
+                alternatives=(),
+            )
+            if senses
+            else None
+        )
+
+
+def test_the_reader_note_is_unchanged_when_no_reading_is_given():
+    assert build_hanly_note("Значение", "他走了。", "Он ушёл.") == (
+        "Значение\n\n原文：他走了。\nПеревод：Он ушёл."
+    )
+
+
+async def test_a_card_always_carries_its_reading(store):
+    card = await ManualCards(store).card("咕噜咕噜转的螺丝钉")
+    assert card["pinyin"] == "gū lū gū lū zhuǎn de luó sī dīng"
+    assert not card["meaning"] and not card["example"]
+    assert note_text(card) == "gū lū gū lū zhuǎn de luó sī dīng"
+
+
+async def test_the_note_carries_reading_meaning_and_a_translated_example(store):
+    card = await ManualCards(store, Model()).card(SENTENCE)
+    assert note_text(card) == (
+        f"sài wēng shī mǎ yān zhī fēi fú\n\n{MEANING}\n\n原文：{EXAMPLE}\nПеревод：{EXAMPLE_RU}"
+    )
+
+
+async def test_the_russian_dictionary_is_preferred_and_steers_the_example(store):
+    model = Model(meaning="Выдуманное значение")
+    glossary = Glossary({SENTENCE: ["нет худа без добра", "не было бы счастья"]})
+    card = await ManualCards(store, model, glossary).card(SENTENCE)
+    assert card["meaning"] == "нет худа без добра; не было бы счастья"
+    assert model.payloads[0]["known_meaning"] == card["meaning"]
+    assert model.payloads[0]["TERM"] == SENTENCE
+
+
+async def test_a_generated_meaning_fills_what_the_dictionary_lacks(store):
+    card = await ManualCards(store, Model(), Glossary({})).card(SENTENCE)
+    assert card["meaning"] == MEANING
+    assert not Glossary({}).lookup(SENTENCE)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"example": "他今天很忙。"},
+        {"example": ""},
+        {"example": SENTENCE + "，" + "他说得对啊" * 30},
+        {"meaning": "Something in English only"},
+        {"meaning": "塞翁失马的意思"},
+        {"meaning": "塞翁失马，焉知非福，这个成语的意思 да"},
+        {"meaning": "Очень длинное значение. " * 20},
+        {"translation": EXAMPLE},
+        {"translation": "只是中文"},
+        {"translation": "Перевод. " * 60},
+    ],
+)
+async def test_unusable_generated_context_is_dropped_not_stored(store, kwargs):
+    card = await ManualCards(store, Model(**kwargs)).card(SENTENCE)
+    assert not card["example"] and not card["example_translation"]
+    assert card["pinyin"]
+    assert store.manual_card(SENTENCE) is None
+
+
+async def test_a_model_failure_leaves_the_reading_and_the_dictionary_meaning(store):
+    glossary = Glossary({SENTENCE: ["нет худа без добра"]})
+    card = await ManualCards(store, Model(error=RuntimeError("boom")), glossary).card(SENTENCE)
+    assert card["meaning"] == "нет худа без добра"
+    assert card["pinyin"] and not card["example"]
+    assert note_text(card) == "sài wēng shī mǎ yān zhī fēi fú\n\nнет худа без добра"
+
+
+async def test_context_is_paid_for_once_and_reused(store):
+    model = Model()
+    cards = ManualCards(store, model)
+    first = await cards.card(SENTENCE)
+    second = await cards.card(SENTENCE)
+    assert first == second
+    assert len(model.payloads) == 1
+
+
+async def test_a_disabled_study_model_still_writes_a_dictionary_note(store):
+    glossary = Glossary({"辛苦了": ["спасибо за труды"]})
+    card = await ManualCards(store, None, glossary).card("辛苦了")
+    assert note_text(card) == "xīn kǔ le\n\nспасибо за труды"
+
+
+class BothAPI:
+    """Collections and personalizedStories behind one transport."""
+
+    def __init__(self, stories=None):
+        self.collections = API()
+        self.notes = NoteAPI(stories)
+
+    def __call__(self, request):
+        if request.url.host == "securetoken.googleapis.com" or "/collections/data" in str(
+            request.url.path
+        ):
+            return self.collections(request)
+        return self.notes(request)
+
+
+async def test_the_card_and_its_note_both_land(auth, store):
+    api = BothAPI()
+    service = HanlyUploadService(store, client(auth, api), ManualCards(store, Model()))
+    result = await service.add_manual_glyph(SENTENCE)
+    assert glyphs_of(api.collections, result.collection_id) == [SENTENCE]
+    assert api.notes.stories[SENTENCE] == (
+        f"sài wēng shī mǎ yān zhī fēi fú\n\n{MEANING}\n\n原文：{EXAMPLE}\nПеревод：{EXAMPLE_RU}"
+    )
+    assert result.note == "created"
+    assert result.pinyin == "sài wēng shī mǎ yān zhī fēi fú"
+
+
+async def test_a_note_you_edited_in_hanly_is_never_overwritten(auth, store):
+    api = BothAPI({SENTENCE: "Моя собственная заметка"})
+    service = HanlyUploadService(store, client(auth, api), ManualCards(store, Model()))
+    result = await service.add_manual_glyph(SENTENCE)
+    assert result.note == "skipped-user-modified"
+    assert api.notes.stories[SENTENCE] == "Моя собственная заметка"
+    assert glyphs_of(api.collections, result.collection_id) == [SENTENCE]
+    assert "Note: kept yours" in result.message()
+
+
+async def test_a_failing_note_never_turns_a_stored_card_into_a_failure(auth, store):
+    api = BothAPI()
+    api.notes.commit_status = 500
+    service = HanlyUploadService(store, client(auth, api), ManualCards(store, Model()))
+    result = await service.add_manual_glyph(SENTENCE)
+    assert not result.present
+    assert glyphs_of(api.collections, result.collection_id) == [SENTENCE]
+    assert result.note == "failed"
+
+
+async def test_a_broken_context_builder_never_breaks_the_card(auth, store):
+    class Exploding:
+        async def card(self, glyph):
+            raise RuntimeError("boom")
+
+    api = BothAPI()
+    service = HanlyUploadService(store, client(auth, api), Exploding())
+    result = await service.add_manual_glyph("辛苦了")
+    assert glyphs_of(api.collections, result.collection_id) == ["辛苦了"]
+    assert not result.note
+    assert result.message() == "✓ Added to Hanly\n\n辛苦了\nCollection: Manual imports"
+
+
+async def test_telegram_shows_the_reading_and_what_happened_to_the_note(auth, store, config):
+    api = BothAPI()
+    handlers = BotHandlers(config, store)
+    handlers.hanly = HanlyUploadService(store, client(auth, api), ManualCards(store, Model()))
+    assert replied(*await send(handlers, f"/add_hanly {SENTENCE}")) == (
+        f"✓ Added to Hanly\n\n{SENTENCE}\nsài wēng shī mǎ yān zhī fēi fú\n"
+        "Collection: Manual imports\nNote: added"
+    )

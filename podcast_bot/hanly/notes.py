@@ -8,8 +8,11 @@ def build_hanly_note(
     glyph_translation: str | None,
     source_sentence: str,
     sentence_translation: str | None,
+    *,
+    pinyin: str | None = None,
 ) -> str:
     """Compose a note from material that already exists. Missing parts are omitted, never labelled."""
+    reading = (pinyin or "").strip()
     meaning = (glyph_translation or "").strip()
     sentence = (source_sentence or "").strip()
     translation = (sentence_translation or "").strip()
@@ -18,4 +21,4 @@ def build_hanly_note(
         lines.append(SOURCE_LABEL + sentence)
         if translation:
             lines.append(TRANSLATION_LABEL + translation)
-    return "\n\n".join(section for section in (meaning, "\n".join(lines)) if section)
+    return "\n\n".join(section for section in (reading, meaning, "\n".join(lines)) if section)
