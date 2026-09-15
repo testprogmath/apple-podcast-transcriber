@@ -666,7 +666,7 @@ test("translations start hidden without any translation request", async () => {
   const { body, calls } = start();
   await settle();
   assert.ok(translationText(body, 0).hidden);
-  assert.strictEqual(translationButton(body, 0).textContent, "Show translation");
+  assert.strictEqual(translationButton(body, 0).getAttribute("aria-label"), "Show translation");
   assert.strictEqual(calls.length, 1);
 });
 
@@ -703,7 +703,7 @@ test("translation loading is local and repeated taps coalesce", async () => {
   const button = translationButton(body, 0);
   button.click(body);
   button.fire("click");
-  assert.strictEqual(button.textContent, "Translating…");
+  assert.strictEqual(button.getAttribute("aria-label"), "Translating…");
   assert.ok(button.disabled);
   assert.ok(translationText(body, 0).hidden);
   assert.ok(!translationButton(body, 1).disabled);
@@ -751,7 +751,7 @@ test("failed translation retries only explicitly without changing selections", a
   const button = translationButton(body, 0);
   button.click(body);
   await settle();
-  assert.strictEqual(button.textContent, "Translation unavailable · Retry");
+  assert.strictEqual(button.getAttribute("aria-label"), "Translation unavailable · Retry");
   assert.ok(translationText(body, 0).hidden);
   assert.strictEqual(calls.length, 2);
   assert.strictEqual(nodes["mosaic-counter"].textContent, selected);

@@ -100,7 +100,10 @@ function toggleSentence(id) {
   if (state.picked.has(id)) state.picked.delete(id);
   else state.picked.add(id);
   const node = document.querySelector(`[data-sentence="${id}"]`);
-  if (node) node.classList.toggle("picked", state.picked.has(id));
+  if (node) {
+    node.classList.toggle("picked", state.picked.has(id));
+    node.querySelector(".mark").setAttribute("aria-pressed", String(state.picked.has(id)));
+  }
   refreshCounters();
   if (telegram && telegram.HapticFeedback) telegram.HapticFeedback.selectionChanged();
 }
@@ -259,7 +262,16 @@ function translationControl(sentence) {
   const action = document.createElement("button");
   action.type = "button";
   action.className = "translation-action";
-  action.textContent = "Show translation";
+  const icon = document.createElement("span");
+  icon.className = "translation-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "文";
+  const letter = document.createElement("small");
+  letter.textContent = "A";
+  icon.appendChild(letter);
+  action.appendChild(icon);
+  const label = (text) => { action.setAttribute("aria-label", text); action.title = text; };
+  label("Show translation");
   action.setAttribute("aria-expanded", "false");
   const content = document.createElement("span");
   content.className = "translation-text";
@@ -276,14 +288,16 @@ function translationControl(sentence) {
     if (loading) return;
     if (!content.hidden) {
       content.hidden = true;
-      action.textContent = "Show translation";
+      label("Show translation");
       action.setAttribute("aria-expanded", "false");
       return;
     }
     if (!translated) {
       loading = true;
       action.disabled = true;
-      action.textContent = "Translating…";
+      label("Translating…");
+      status.textContent = "Translating…";
+      status.hidden = false;
       action.setAttribute("aria-busy", "true");
       try {
         const result = await api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
@@ -295,7 +309,8 @@ function translationControl(sentence) {
         translated = result.translation;
         content.textContent = translated;
       } catch (error) {
-        action.textContent = "Translation unavailable · Retry";
+        label("Translation unavailable · Retry");
+        status.textContent = "Translation unavailable · Tap the icon to retry";
         return;
       } finally {
         loading = false;
@@ -304,21 +319,29 @@ function translationControl(sentence) {
       }
     }
     content.hidden = false;
-    action.textContent = "Hide translation";
+    status.hidden = true;
+    label("Hide translation");
     action.setAttribute("aria-expanded", "true");
   });
+  const status = document.createElement("span");
+  status.className = "translation-status";
+  status.setAttribute("role", "status");
+  status.hidden = true;
   box.appendChild(content);
-  box.appendChild(action);
-  return box;
+  box.appendChild(status);
+  return { action, box } ;
 }
 
 function renderSentence(sentence) {
   const node = document.createElement("span");
   node.className = "sentence";
   node.dataset.sentence = String(sentence.id);
+  const source = document.createElement("span");
+  source.className = "sentence-source";
+  node.appendChild(source);
   for (const token of sentence.tokens) {
     if (!token.w) {
-      node.appendChild(document.createTextNode(token.t));
+      source.appendChild(document.createTextNode(token.t));
       continue;
     }
     const pinyin = (state.glossary[token.t] || {}).p || "";
@@ -343,14 +366,27 @@ function renderSentence(sentence) {
       event.stopPropagation();
       openLexeme(token, sentence.id, word);
     });
-    node.appendChild(word);
+    source.appendChild(word);
   }
-  const mark = document.createElement("span");
+  const controls = document.createElement("span");
+  controls.className = "sentence-controls";
+  const mark = document.createElement("button");
+  mark.type = "button";
   mark.className = "mark";
-  mark.textContent = "◎";
+  mark.setAttribute("aria-label", "Select sentence for Mandarin Mosaic");
+  mark.setAttribute("aria-pressed", "false");
   mark.title = "Select this sentence for Mandarin Mosaic";
-  node.appendChild(mark);
-  if (/[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) node.appendChild(translationControl(sentence));
+  mark.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleSentence(sentence.id);
+  });
+  controls.appendChild(mark);
+  node.appendChild(controls);
+  if (/[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
+    const translation = translationControl(sentence);
+    controls.appendChild(translation.action);
+    node.appendChild(translation.box);
+  }
   node.addEventListener("click", () => toggleSentence(sentence.id));
   return node;
 }
