@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # requirements.txt is a uv-generated lock, so every transitive pin is visible here.
+    # Only declared dependencies should move on their own; the rest follow from a recompile.
+    allow:
+      - dependency-type: direct
+    ignore:
+      # pydantic pins pydantic-core to an exact version, so bumping it alone can never
+      # resolve. It moves only when pydantic moves.
+      - dependency-name: pydantic-core
     groups:
       python-routine:
         update-types: [minor, patch]
