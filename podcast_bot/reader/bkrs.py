@@ -17,7 +17,8 @@ log = logging.getLogger(__name__)
 TAG = re.compile(r"\[/?[a-z!*][a-z0-9]*\]")
 EXAMPLES = re.compile(r"\[\*\].*?\[/\*\]|\[ex\].*?\[/ex\]", re.S)
 SPACES = re.compile(r"[ \t]+")
-MAX_GLOSS = 200
+MAX_SENSES = 8
+MAX_SENSE_LENGTH = 160
 
 
 def russian_path() -> Path | None:
@@ -25,14 +26,19 @@ def russian_path() -> Path | None:
     return Path(configured) if configured else None
 
 
-def plain_gloss(definition: str, limit: int = MAX_GLOSS) -> str:
-    """Strip ABBYY DSL markup and examples, leaving one short display string."""
-    text = EXAMPLES.sub("", definition)
-    text = text.replace("[/m]", "\n")
-    text = TAG.sub("", text)
-    lines = [SPACES.sub(" ", line).strip(" ;,") for line in text.split("\n")]
-    gloss = "; ".join(line for line in lines if line)
-    return gloss[:limit].rstrip(" ;,")
+def plain_senses(definition: str, limit: int = MAX_SENSES) -> tuple[str, ...]:
+    """One display line per DSL block, markup and examples removed.
+
+    Each [m1]/[m2] block is a numbered sense or a reading header, so keeping the block
+    boundaries is what stops a long entry collapsing into one unreadable run of text.
+    """
+    text = EXAMPLES.sub("", definition).replace("[/m]", "\n")
+    senses = []
+    for line in TAG.sub("", text).split("\n"):
+        line = SPACES.sub(" ", line).strip().strip(";,")
+        if line and line not in senses:
+            senses.append(line[:MAX_SENSE_LENGTH])
+    return tuple(senses[:limit])
 
 
 class RussianDictionary:
@@ -90,13 +96,13 @@ def _entry(glyph: str, rows: list[sqlite3.Row]) -> DictionaryEntry:
     primary = rows[0]
     definitions = []
     for row in rows:
-        gloss = plain_gloss(row["definition"])
-        if gloss and gloss not in definitions:
-            definitions.append(gloss)
+        for sense in plain_senses(row["definition"]):
+            if sense not in definitions:
+                definitions.append(sense)
     return DictionaryEntry(
         simplified=glyph,
         traditional=glyph,
         pinyin=primary["pinyin"],
-        definitions=tuple(definitions),
+        definitions=tuple(definitions[:MAX_SENSES]),
         alternatives=(),
     )

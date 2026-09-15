@@ -158,6 +158,16 @@ def cleanup_abandoned(storage: Storage) -> None:
                 shutil.rmtree(path)
 
 
+def source_links(metadata: dict) -> str:
+    """Where the episode came from, so the audio is one tap away beside its transcript."""
+    lines = []
+    for label, key in (("🔊 Audio", "audio_url"), ("🎧 Apple Podcasts", "apple_url")):
+        value = str(metadata.get(key) or "").strip()
+        if value.startswith("https://"):
+            lines.append(f"{label}: {value}")
+    return ("\n\n" + "\n".join(lines)) if lines else ""
+
+
 def completion(path: Path) -> str:
     metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
     if metadata.get("study_complete"):
@@ -166,6 +176,7 @@ def completion(path: Path) -> str:
             return (
                 f"🎙 {metadata.get('title', 'Episode')[:500]}\n✓ Transcript\n"
                 f"✓ {metadata['vocabulary_count']} useful words & expressions"
+                + source_links(metadata)
             )
         return (
             f"🎙 {metadata.get('podcast', 'Podcast')[:200]}\n{metadata.get('title', 'Episode')[:500]}\n"
@@ -175,10 +186,10 @@ def completion(path: Path) -> str:
             f"✓ {metadata['vocabulary_count']} useful words & expressions\n"
             f"✓ {metadata['pattern_count']} grammar patterns\n"
             f"✓ {metadata.get('mosaic_sentence_count', 0)} Mosaic sentences\n"
-            f"Level: {settings['learner_level']}"
+            f"Level: {settings['learner_level']}" + source_links(metadata)
         )
     return (
         f"Done.\nLanguage: {metadata.get('language') or 'automatic'}"
         f"\nDuration: {clock_text(metadata['duration'])}"
-        f"\nTranscription: {clock_text(metadata['transcription_seconds'])}"
+        f"\nTranscription: {clock_text(metadata['transcription_seconds'])}" + source_links(metadata)
     )
