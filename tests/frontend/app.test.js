@@ -511,6 +511,31 @@ test("basket rows carry the reading and a gloss", async () => {
   assert.match(nodes["basket-note"].textContent, /added to this document's Hanly collection/);
 });
 
+test("the two popup actions form an evenly matched row", () => {
+  const sheet = css();
+  const row = /#lexeme-actions \{([^}]*)\}/.exec(sheet)[1];
+  const button = /#lexeme-actions button \{([^}]*)\}/.exec(sheet)[1];
+  const secondary = /#lexeme-actions \.secondary \{([^}]*)\}/.exec(sheet)[1];
+  const primary = /\n\.primary \{([^}]*)\}/.exec(sheet)[1];
+
+  assert.match(row, /align-items: stretch/, "both buttons share the row height");
+  assert.match(row, /margin-top: 18px/, "the row owns the spacing");
+  assert.match(button, /margin-top: 0/, ".primary's own margin must not offset one button");
+  assert.match(button, /flex: 1 1 0/, "equal widths regardless of label length");
+
+  const pad = (block) => Number(/padding: (\d+)px/.exec(block)[1]);
+  const border = Number((/border: (\d+)px/.exec(secondary) || [0, 0])[1]);
+  assert.strictEqual(
+    pad(secondary) + border,
+    pad(primary),
+    "the outline's border is compensated so both boxes are the same height"
+  );
+  for (const property of [/font-size: 15px/, /font-weight: 600/]) {
+    assert.match(secondary, property, "labels share the primary button's text metrics");
+    assert.match(primary, property);
+  }
+});
+
 test("the stylesheet defines a full dark palette", () => {
   const sheet = css();
   assert.match(sheet, /@media \(prefers-color-scheme: dark\)/);
