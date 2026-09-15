@@ -110,6 +110,22 @@ def backup(sha):
         db.backup(target)
 
 
+class LegacyBusy(RuntimeError):
+    pass
+
+
+def stop_legacy_if_idle(old):
+    if old.get("Config", {}).get("Healthcheck"):
+        return
+    # One-time bootstrap: the old worker cannot observe deploy-drain. Hold its
+    # SQLite writer lock until it stops, so it cannot claim another paid job.
+    with sqlite3.connect(APP / "data/bot.sqlite3", timeout=30) as db:
+        db.execute("BEGIN IMMEDIATE")
+        if db.execute("SELECT 1 FROM jobs WHERE state='running'").fetchone():
+            raise LegacyBusy("Legacy bot started a job; retry deployment later")
+        run(["docker", "stop", "--time", "30", CONTAINER])
+
+
 def deploy(sha):
     image = f"podcast-telegram-bot-release:{sha}"
     # stdin is a gzip-compressed docker-save archive; no paths/commands are accepted.
@@ -137,10 +153,15 @@ def deploy(sha):
         backup(sha)
         write_image(image)
         changed = True
+        stop_legacy_if_idle(old)
         run([*COMPOSE, "up", "-d", "--no-build", "--no-deps", "bot"])
         wait_ready(info["Id"])
         (STATE / "current-sha").write_text(sha + "\n")
         print("Deployed " + sha, flush=True)
+    except LegacyBusy:
+        # The old container was not stopped. Do not recreate it over its active job.
+        write_image(old_image)
+        raise
     except Exception:
         if changed:
             write_image(old_image)

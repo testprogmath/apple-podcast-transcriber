@@ -82,7 +82,11 @@ def test_failed_release_rolls_back_and_removes_drain(tmp_path, monkeypatch):
     monkeypatch.setattr(receiver, "DRAIN", tmp_path / "drain")
     monkeypatch.setattr(receiver.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0))
     monkeypatch.setattr(receiver, "current_main", lambda: sha)
-    monkeypatch.setattr(receiver, "inspect_container", lambda: {"Image": "old-id"})
+    monkeypatch.setattr(
+        receiver,
+        "inspect_container",
+        lambda: {"Image": "old-id", "Config": {"Healthcheck": {"Test": ["CMD", "probe"]}}},
+    )
     monkeypatch.setattr(receiver, "backup", lambda _: None)
     monkeypatch.setattr(receiver, "drain", lambda: receiver.DRAIN.touch())
     monkeypatch.setattr(
@@ -139,3 +143,31 @@ def test_draining_timeout_keeps_running_job(store, monkeypatch):
     assert (
         store.db.execute("select state from jobs where id=?", (job.id,)).fetchone()[0] == "running"
     )
+
+
+def test_legacy_bootstrap_never_stops_running_job(store, monkeypatch):
+    store.enqueue(URL, "zh", "model", "", False, 42, 1)
+    store.claim()
+    monkeypatch.setattr(receiver, "APP", store.root.parent)
+
+    def unexpected(_):
+        raise AssertionError("must not stop active legacy worker")
+
+    monkeypatch.setattr(receiver, "run", unexpected)
+    with pytest.raises(receiver.LegacyBusy):
+        receiver.stop_legacy_if_idle({"Config": {}})
+
+
+def test_legacy_stop_holds_sqlite_writer_lock(store, monkeypatch):
+    monkeypatch.setattr(receiver, "APP", store.root.parent)
+    called = []
+
+    def stop(args):
+        called.append(args)
+        with receiver.sqlite3.connect(store.root / "bot.sqlite3", timeout=0) as db:
+            with pytest.raises(receiver.sqlite3.OperationalError, match="locked"):
+                db.execute("BEGIN IMMEDIATE")
+
+    monkeypatch.setattr(receiver, "run", stop)
+    receiver.stop_legacy_if_idle({"Config": {}})
+    assert called == [["docker", "stop", "--time", "30", receiver.CONTAINER]]

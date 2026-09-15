@@ -40,5 +40,7 @@ A killed deployment may leave `data/deploy-drain`: after confirming no deploymen
 remove that marker to resume the queue. To retry a failed deployment, rerun its failed GitHub job;
 stale runs will be skipped. Keep the previous image until a release is verified.
 
-Bootstrap the drain-aware version while the existing bot is idle before enabling automatic
-releases. Never use this key for an interactive shell or unrelated server administration.
+On first deployment from a legacy image without a health check, the helper stops the idle
+bot while holding SQLite’s writer lock, preventing a new claim during bootstrap. If a job
+has started, deployment fails safely and can be retried. Never use this key for an interactive
+shell or unrelated server administration.
