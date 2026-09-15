@@ -1,8 +1,9 @@
+import asyncio
 import json
 import logging
 import os
 import re
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -503,7 +504,24 @@ def build_application(config: Config, storage: Storage) -> Application:
                 handlers.reader = None
                 log.error("stage=reader-server-bind-failed port=%s", config.reader_port)
 
+        from .health import monitor
+
+        app.bot_data["health_task"] = asyncio.create_task(
+            monitor(
+                app,
+                handlers.worker,
+                lambda: (
+                    not (config.reader_enabled and config.reader_url) or handlers.reader is not None
+                ),
+            ),
+            name="readiness-monitor",
+        )
+
     async def stop(app: Application) -> None:
+        if task := app.bot_data.pop("health_task", None):
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         if handlers.reader:
             await handlers.reader.stop()
             handlers.reader = None

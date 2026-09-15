@@ -399,3 +399,12 @@ Modules: `resolver/`, `transcription/`, `reader/` (sentence parsing, lexical seg
 
 - [Firestore PATCH and update masks](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/patch)
 - [Firestore update-time preconditions](https://firebase.google.com/docs/firestore/reference/rest/v1/Precondition)
+
+
+## Automatic deployment
+
+Successful CI runs for `main` build and deploy the exact tested commit through a restricted
+SSH command. Pull requests run checks only. Deployment drains the worker, preserves the
+SQLite/transcript/authentication volumes, checks application readiness and rolls back an
+unhealthy image. See [deploy/README.md](deploy/README.md) for one-time setup, required
+`PODCAST_DEPLOY_SSH_KEY` secret, rollback limitations and manual recovery.

@@ -18,4 +18,6 @@ RUN pip install --no-cache-dir --no-deps . \
     && useradd --uid 1000 --create-home bot \
     && mkdir -p /app/data && chown bot:bot /app/data
 USER bot
+HEALTHCHECK --interval=5s --timeout=3s --start-period=60s --retries=3 \
+    CMD python -m podcast_bot.health
 CMD ["python", "-m", "podcast_bot"]

@@ -173,6 +173,10 @@ class Storage:
 
     def claim(self) -> Job | None:
         with self.db:
+            # Serialize claims with deployment's drain check, including its marker write.
+            self.db.execute("BEGIN IMMEDIATE")
+            if (self.root / "deploy-drain").exists():
+                return None
             if self.db.execute("SELECT 1 FROM jobs WHERE state='running'").fetchone():
                 return None
             row = self.db.execute(

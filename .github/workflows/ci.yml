@@ -39,3 +39,39 @@ jobs:
         run: |
           node --check podcast_bot/reader/static/app.js
           node tests/frontend/app.test.js
+
+  deploy:
+    name: Deploy production
+    needs: quality
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    environment: production
+    concurrency:
+      group: podcast-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build tested revision
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+            --tag "podcast-telegram-bot-release:$RELEASE_SHA" .
+      - name: Send image to restricted deployment command
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.PODCAST_DEPLOY_SSH_KEY }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keyfile=$(mktemp)
+          trap 'rm -f "$keyfile"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$keyfile"
+          docker save "podcast-telegram-bot-release:$RELEASE_SHA" | gzip -1 | \
+            ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=deploy/known_hosts -o ConnectTimeout=20 \
+              -o ServerAliveInterval=15 -o ServerAliveCountMax=120 \
+              -i "$keyfile" deploy@204.168.217.208 "deploy $RELEASE_SHA"
