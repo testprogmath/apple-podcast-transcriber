@@ -88,6 +88,7 @@ def test_failed_release_rolls_back_and_removes_drain(tmp_path, monkeypatch):
         lambda: {"Image": "old-id", "Config": {"Healthcheck": {"Test": ["CMD", "probe"]}}},
     )
     monkeypatch.setattr(receiver, "backup", lambda _: None)
+    monkeypatch.setattr(receiver, "compose_command", lambda _: ["docker", "compose"])
     monkeypatch.setattr(receiver, "drain", lambda: receiver.DRAIN.touch())
     monkeypatch.setattr(
         receiver,
@@ -173,3 +174,25 @@ def test_legacy_stop_holds_sqlite_writer_lock(store, monkeypatch):
     monkeypatch.setattr(receiver, "run", stop)
     receiver.stop_legacy_if_idle({"Config": {}})
     assert called == [["docker", "stop", "--time", "30", receiver.CONTAINER]]
+
+
+def test_compose_preserves_all_running_overrides(tmp_path, monkeypatch):
+    monkeypatch.setattr(receiver, "APP", tmp_path)
+    override = tmp_path / "docker-compose.release.yml"
+    monkeypatch.setattr(receiver, "OVERRIDE", override)
+    paths = [
+        tmp_path / name
+        for name in ("docker-compose.yml", "docker-compose.hanly.yml", "docker-compose.bkrs.yml")
+    ]
+    for path in paths:
+        path.touch()
+    old = {
+        "Config": {
+            "Labels": {
+                "com.docker.compose.project.config_files": ",".join(map(str, [*paths, override]))
+            }
+        }
+    }
+    result = receiver.compose_command(old)
+    assert all(str(path) in result for path in paths)
+    assert result.count(str(override)) == 1

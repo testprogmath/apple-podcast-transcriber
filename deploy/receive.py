@@ -18,18 +18,6 @@ STATE = Path("/home/deploy/.local/state/podcast-deploy")
 OVERRIDE = APP / "docker-compose.release.yml"
 DRAIN = APP / "data/deploy-drain"
 CONTAINER = "podcast-telegram-bot-bot-1"
-COMPOSE = [
-    "docker",
-    "compose",
-    "--project-directory",
-    str(APP),
-    "-f",
-    str(APP / "docker-compose.yml"),
-    "-f",
-    str(APP / "docker-compose.hanly.yml"),
-    "-f",
-    str(OVERRIDE),
-]
 REPOSITORY = "testprogmath/apple-podcast-transcriber"
 
 
@@ -51,6 +39,20 @@ def current_main():
 
 def inspect_container():
     return json.loads(run(["docker", "inspect", CONTAINER]))[0]
+
+
+def compose_command(old):
+    # Use the actual running service's file set, including optional dictionary mounts.
+    files = old["Config"]["Labels"]["com.docker.compose.project.config_files"].split(",")
+    command = ["docker", "compose", "--project-directory", str(APP)]
+    for filename in files:
+        path = Path(filename).resolve()
+        if path == OVERRIDE:
+            continue
+        if path.parent != APP or not path.is_file():
+            raise RuntimeError("Unexpected or missing Compose configuration file")
+        command.extend(["-f", str(path)])
+    return [*command, "-f", str(OVERRIDE)]
 
 
 def write_image(image):
@@ -143,6 +145,7 @@ def deploy(sha):
         return
     old = inspect_container()
     old_image = old["Image"]
+    compose = compose_command(old)
     run(["docker", "tag", old_image, "podcast-telegram-bot-rollback:previous"])
     changed = False
     try:
@@ -154,7 +157,7 @@ def deploy(sha):
         write_image(image)
         changed = True
         stop_legacy_if_idle(old)
-        run([*COMPOSE, "up", "-d", "--no-build", "--no-deps", "bot"])
+        run([*compose, "up", "-d", "--no-build", "--no-deps", "bot"])
         wait_ready(info["Id"])
         (STATE / "current-sha").write_text(sha + "\n")
         print("Deployed " + sha, flush=True)
@@ -165,7 +168,7 @@ def deploy(sha):
     except Exception:
         if changed:
             write_image(old_image)
-            run([*COMPOSE, "up", "-d", "--no-build", "--no-deps", "bot"])
+            run([*compose, "up", "-d", "--no-build", "--no-deps", "bot"])
             wait_ready(old_image, allow_legacy=True)
             print("Previous image restored; deployment failed", flush=True)
         raise
