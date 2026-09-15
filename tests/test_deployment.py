@@ -164,9 +164,11 @@ def test_legacy_stop_holds_sqlite_writer_lock(store, monkeypatch):
 
     def stop(args):
         called.append(args)
-        with receiver.sqlite3.connect(store.root / "bot.sqlite3", timeout=0) as db:
-            with pytest.raises(receiver.sqlite3.OperationalError, match="locked"):
-                db.execute("BEGIN IMMEDIATE")
+        with (
+            receiver.sqlite3.connect(store.root / "bot.sqlite3", timeout=0) as db,
+            pytest.raises(receiver.sqlite3.OperationalError, match="locked"),
+        ):
+            db.execute("BEGIN IMMEDIATE")
 
     monkeypatch.setattr(receiver, "run", stop)
     receiver.stop_legacy_if_idle({"Config": {}})
