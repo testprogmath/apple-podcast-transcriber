@@ -45,6 +45,7 @@ from .study.service import StudyService, pack_valid
 from .study.settings import StudySettings, learner_level
 from .transcription.audio import check_ffmpeg
 from .transcription.openai import OpenAITranscriber
+from .version import release
 
 log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 2_000_000
@@ -192,6 +193,7 @@ class BotHandlers:
             await message.reply_text(
                 self.storage.status()
                 + f"\nLearning: {settings.target_language} → {settings.native_language}; {settings.learner_level}"
+                + f"\nVersion: {release()}"
             )
             return
         if command == "/retry":

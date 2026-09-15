@@ -128,7 +128,7 @@ def stop_legacy_if_idle(old):
         run(["docker", "stop", "--time", "30", CONTAINER])
 
 
-def deploy(sha):
+def deploy(sha, manual=False):
     image = f"podcast-telegram-bot-release:{sha}"
     # stdin is a gzip-compressed docker-save archive; no paths/commands are accepted.
     with (STATE / "load.log").open("wb") as log:
@@ -140,7 +140,8 @@ def deploy(sha):
     info = json.loads(run(["docker", "image", "inspect", image]))[0]
     if info["Config"].get("Labels", {}).get("org.opencontainers.image.revision") != sha:
         raise RuntimeError("Image revision mismatch")
-    if sha != current_main():
+    # A dispatched release names its own ref, so the stale check applies to automatic ones.
+    if not manual and sha != current_main():
         print("Skipped: a newer main commit exists", flush=True)
         return
     old = inspect_container()
@@ -150,7 +151,7 @@ def deploy(sha):
     changed = False
     try:
         drain()
-        if sha != current_main():
+        if not manual and sha != current_main():
             print("Skipped: main advanced while waiting", flush=True)
             return
         backup(sha)
@@ -160,7 +161,7 @@ def deploy(sha):
         run([*compose, "up", "-d", "--no-build", "--no-deps", "bot"])
         wait_ready(info["Id"])
         (STATE / "current-sha").write_text(sha + "\n")
-        print("Deployed " + sha, flush=True)
+        print("Deployed " + sha + (" (dispatched)" if manual else ""), flush=True)
     except LegacyBusy:
         # The old container was not stopped. Do not recreate it over its active job.
         write_image(old_image)
@@ -182,15 +183,15 @@ def interrupted(signum, _frame):
 
 def main():
     command = os.environ.get("SSH_ORIGINAL_COMMAND", "")
-    match = re.fullmatch(r"deploy ([0-9a-f]{40})", command)
+    match = re.fullmatch(r"deploy ([0-9a-f]{40})( manual)?", command)
     if not match:
-        raise RuntimeError("Only deploy <40-character commit SHA> is allowed")
+        raise RuntimeError("Only deploy <40-character commit SHA> [manual] is allowed")
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGHUP, interrupted)
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (STATE / "lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        deploy(match[1])
+        deploy(match[1], manual=bool(match[2]))
 
 
 if __name__ == "__main__":
