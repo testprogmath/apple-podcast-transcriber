@@ -45,6 +45,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 /reader
 /mosaic
 /hanly
+/add_hanly 不知不觉
 /status
 /retry
 /force <URL>
@@ -60,6 +61,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 - `/zip` retrieves the latest completed pack, even if a newer job is still processing.
 - The finished-job message links the episode audio and its Apple Podcasts page, so the recording sits beside its transcript.
 - `/reader` opens the latest transcript or study pack in the Reader. It never retranscribes; it reuses the stored transcript.
+- `/add_hanly <text>` files any Chinese word, phrase or sentence as a single Hanly card, with pinyin, a Russian meaning and a translated example in its note, and no episode, transcript or study pack involved.
 - Long jobs update one status message. Study failures leave the transcript usable and deliver it on its own, with an explanation and `/retry` guidance.
 
 ## Interactive Reader
@@ -265,6 +267,45 @@ For Mandarin Mosaic:
 - English is used regardless of `NATIVE_LANGUAGE`. No pinyin, Russian, reasons, tags, or timestamps enter the CSV.
 - Deterministic filtering removes obvious support/advertising material and repeated listening sentences. Punctuation-only repetitions and harmless interjection variants are deduplicated; global model ranking handles semantic overlap.
 - Reasons are retained in `study.json`. Timestamp fields remain null because the study stage does not invent audio alignment.
+
+## Manual Hanly cards
+
+Hanly's own interface only offers words its dictionary knows. The Firestore collection behind it does not care, so `/add_hanly` puts arbitrary text on a card:
+
+```text
+/add_hanly 辛苦了
+/add_hanly 不知不觉
+/add_hanly 塞翁失马，焉知非福
+```
+
+The whole argument is one card. Nothing is segmented, normalised or looked up: `塞翁失马，焉知非福` becomes a single glyph string, not four words, and an expression no dictionary has heard of is filed exactly as typed. Surrounding whitespace is trimmed and everything inside is kept.
+
+Everything lands in one collection named **Manual imports**, whose UUID is allocated once and stored in SQLite before the first network call, so it survives restarts and is keyed by neither the message nor the text. Repeating a card is a no-op that answers `✓ Already in Hanly` rather than claiming a new one. Delete the collection in Hanly and the next command restores it under the same UUID.
+
+A collection you created yourself that happens to be called *Manual imports* is never adopted: ownership comes from the stored UUID alone, and the integration takes the distinguishable name *Manual imports (bot)* instead.
+
+Arguments are checked only for the obvious: non-empty, at most 200 characters, one line, and containing at least one Chinese character. The cap sits well above any real sentence — the Reader's own limit for a sentence sent as translation context is 600 characters — while still rejecting a pasted paragraph. Dictionary membership is never a test.
+
+The write reuses the same Firestore path as episode uploads: conditional `currentDocument.updateTime`, bounded conflict retry, and a read-back that must show the card before Telegram reports success.
+
+### What the card's note says
+
+Hanly's own **Definitions** header comes from Hanly's dictionary, which is exactly what these expressions are missing, so the study context goes into the card's **Notes** document instead:
+
+```text
+sài wēng shī mǎ yān zhī fēi fú
+
+Нет худа без добра: неудача может обернуться удачей.
+
+原文：塞翁失马，焉知非福，别灰心。
+Перевод：Нет худа без добра, не унывай.
+```
+
+Three sources, in order of authority. Pinyin is local, deterministic and always present. The Russian meaning comes from 大БКРС when it knows the expression and is treated as authoritative: the model is told what it means rather than asked. Everything left over — a meaning for the expressions no dictionary carries, and the example sentence in every case, since nothing local supplies one — is generated in a single request and cached in `hanly_manual_cards`, so repeating a command never pays for it twice. Without `READER_DICTIONARY_RU` or with study generation disabled, the note simply gets shorter.
+
+Generated text is checked before it is stored: the meaning and the translation must be Russian prose rather than echoed Chinese, and the example must quote the expression verbatim. Anything that fails is dropped rather than written, and is not cached, so the next command tries again.
+
+The note is enrichment, never the point. It is written after the card is already verified in the collection, through the same ownership rule the Reader uses: SQLite records the exact text this integration last wrote, and a remote note is replaced only when it still matches that record. Edit a note in Hanly and the next command reports `Note: kept yours` and leaves your writing alone. A note that cannot be written at all still leaves the card added.
 
 ## Direct Mandarin Mosaic upload
 
