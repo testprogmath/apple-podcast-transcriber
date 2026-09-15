@@ -387,3 +387,13 @@ ruby { ruby-align: center; }
 }
 
 #toast.bad { background: var(--danger); color: #ffffff; }
+
+/* Personal knowledge stays in the popup; reading text keeps its existing appearance. */
+#lexeme-state { margin: 8px 0; color: var(--muted); font-size: 14px; }
+#lexeme-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+#lexeme-actions button { width: auto; flex: 1 1 130px; }
+#lexeme-actions .secondary {
+  background: transparent; color: var(--muted); border: 1px solid currentColor;
+  border-radius: 12px; padding: 12px; font: inherit; cursor: pointer;
+}
+#lexeme-actions button:disabled { opacity: .55; cursor: wait; }

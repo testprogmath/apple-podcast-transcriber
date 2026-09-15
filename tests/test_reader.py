@@ -1181,3 +1181,112 @@ def test_the_summary_refuses_a_non_https_audio_link(tmp_path):
         {"duration": 1.0, "transcription_seconds": 1.0, "audio_url": "javascript:alert(1)"},
     )
     assert "javascript:" not in completion(tmp_path)
+
+
+async def test_vocabulary_is_global_and_reads_do_not_create_rows(reader):
+    route = f"/api/reader/{reader.document.id}"
+    status, data = await call(reader, "GET", route)
+    assert status == 200
+    assert all(v["vocabulary_state"] == "unknown" for v in data["glossary"].values())
+    assert reader.store.db.execute("SELECT count(*) FROM vocabulary_state").fetchone()[0] == 0
+    for state in ("known", "unknown"):
+        status, result = await call(
+            reader, "POST", route + "/vocabulary-state", {"glyph": "获得", "state": state}
+        )
+        assert status == 200
+        assert result == {"glyph": "获得", "vocabulary_state": state}
+        other = from_text(42, "他们获得了奖。")
+        reader.store.save_reader_document(other)
+        _, data = await call(reader, "GET", f"/api/reader/{other.id}")
+        assert data["glossary"]["获得"]["vocabulary_state"] == state
+    reader.store.save_vocabulary_state("获得", "learning")
+    _, data = await call(reader, "GET", route)
+    assert data["glossary"]["获得"]["vocabulary_state"] == "learning"
+    await call(reader, "POST", route + "/vocabulary-state", {"glyph": "获得", "state": "known"})
+    assert reader.store.vocabulary_state("获得") == "known"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"glyph": "获得", "state": "learning"},
+        {"glyph": "获得", "state": []},
+        {"glyph": "获得", "state": "known", "sentence": "fake"},
+        {},
+        *(
+            {"glyph": glyph, "state": "known"}
+            for glyph in [
+                None,
+                [],
+                "",
+                " 获得",
+                "获得 ",
+                "english",
+                "中" * 41,
+                "不存在的词",
+                "他们获得",
+            ]
+        ),
+    ],
+)
+async def test_vocabulary_rejects_invalid_payload(reader, payload):
+    status, _ = await call(
+        reader, "POST", f"/api/reader/{reader.document.id}/vocabulary-state", payload
+    )
+    assert status == 400
+    assert reader.store.vocabulary_state("获得") is None
+
+
+@pytest.mark.parametrize("auth", ["", "invalid", valid_init_data(99), valid_init_data(age=90000)])
+async def test_vocabulary_requires_auth(reader, auth):
+    status, _ = await call(
+        reader,
+        "POST",
+        f"/api/reader/{reader.document.id}/vocabulary-state",
+        {"glyph": "获得", "state": "known"},
+        headers={"x-telegram-init-data": auth},
+    )
+    assert status == 401
+    assert reader.store.vocabulary_state("获得") is None
+
+
+@pytest.mark.parametrize("prior", [None, "known", "learning"])
+@pytest.mark.parametrize("failed", [False, True])
+async def test_hanly_vocabulary_changes_only_on_success(reader, prior, failed):
+    if prior:
+        reader.store.save_vocabulary_state("获得", prior)
+    if failed:
+        reader.services.hanly.client.error = UserError("Upload failed")
+    status, data = await call(
+        reader, "POST", f"/api/reader/{reader.document.id}/hanly", item("获得", 2)
+    )
+    if failed:
+        assert status != 200
+        assert reader.store.vocabulary_state("获得") == prior
+    else:
+        assert status == 200
+        assert data["vocabulary_states"] == {"获得": "learning"}
+        assert reader.store.vocabulary_state("获得") == "learning"
+
+
+async def test_vocabulary_accepts_source_chunks_without_dictionary(notes):
+    document = study_document(
+        notes.store, text="老师说辛苦了。\n", vocabulary=[{"term": "辛苦了", "meaning": "Хорошо!"}]
+    )
+    route = f"/api/reader/{document.id}"
+    status, _ = await call(
+        notes, "POST", route + "/vocabulary-state", {"glyph": "辛苦了", "state": "known"}
+    )
+    assert status == 200
+    notes.services.hanly.client.note_error = UserError("Notes failed")
+    status, _ = await call(notes, "POST", route + "/hanly", item("辛苦了", 0))
+    assert status == 200
+    assert notes.store.vocabulary_state("辛苦了") == "learning"
+
+
+async def test_document_vocabulary_lookup_is_batched(reader):
+    queries = []
+    reader.store.db.set_trace_callback(queries.append)
+    await call(reader, "GET", f"/api/reader/{reader.document.id}")
+    reader.store.db.set_trace_callback(None)
+    assert len([q for q in queries if "FROM vocabulary_state" in q]) == 1

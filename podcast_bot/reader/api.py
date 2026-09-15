@@ -82,6 +82,8 @@ class ReaderApi:
             document = self.authorize(headers, parts[2])
             if method == "GET" and len(parts) == 3:
                 return self.read(document)
+            if method == "POST" and parts[3:] == ["vocabulary-state"]:
+                return self.vocabulary(document, self.payload(body))
             if method == "POST" and parts[3:] == ["hanly"]:
                 return await self.hanly(document, self.payload(body))
             if method == "POST" and parts[3:] == ["mandarin-mosaic"]:
@@ -131,9 +133,10 @@ class ReaderApi:
         )
         # Keyed by glyph rather than repeated per token: a transcript repeats each word
         # about three times, and this is what makes carrying both languages affordable.
+        states = self.storage.vocabulary_states(lexemes)
         glossary = {}
         for glyph, lexeme in lexemes.items():
-            entry = {"p": lexeme.pinyin}
+            entry = {"p": lexeme.pinyin, "vocabulary_state": states.get(glyph, "unknown")}
             if lexeme.native():
                 entry["ru"] = list(lexeme.native())
                 entry["rs"] = lexeme.native_source
@@ -167,6 +170,30 @@ class ReaderApi:
                 ],
             },
         )
+
+    def vocabulary(self, document: ReaderDocument, data: dict):
+        if set(data) != {"glyph", "state"}:
+            raise ApiError(400, "Send only glyph and state.")
+        glyph, state = data["glyph"], data["state"]
+        if not isinstance(state, str) or state not in {"known", "unknown"}:
+            raise ApiError(400, "Choose known or unknown.")
+        if (
+            not isinstance(glyph, str)
+            or not 1 <= len(glyph) <= MAX_GLYPH_LENGTH
+            or glyph != glyph.strip()
+            or not HAN.search(glyph)
+        ):
+            raise ApiError(400, "Invalid vocabulary item.")
+        # Use the same source-owned tokenization as the popup, never browser-supplied text.
+        tokens = document.tokens(document.sentences())
+        if not any(token.word and token.text == glyph for group in tokens for token in group):
+            raise ApiError(400, "That item is not a Reader word in this document.")
+        if state == "unknown":
+            self.storage.delete_vocabulary_state(glyph)
+        else:
+            self.storage.save_vocabulary_state(glyph, state)
+        # Basket membership is local; the frontend derives effective state from this value.
+        return json_response(200, {"glyph": glyph, "vocabulary_state": state})
 
     def items(self, document: ReaderDocument, data: dict):
         """Resolve client selections into (glyph, canonical sentence) pairs, first occurrence wins."""
@@ -234,6 +261,7 @@ class ReaderApi:
         log.info(
             "reader=%s collection=%s glyphs=%s", document.id, result.collection_id, len(glyphs)
         )
+        self.storage.save_vocabulary_states(glyphs, "learning")
         # Enrichment is secondary: it never turns a stored glyph into a failed upload.
         outcomes = await service.write_notes(self.stories(document, chosen), document.id)
         return json_response(
@@ -243,6 +271,7 @@ class ReaderApi:
                 "name": result.name,
                 "uploaded": result.requested,
                 "total": result.total,
+                "vocabulary_states": dict.fromkeys(glyphs, "learning"),
                 "notes": [
                     {"glyph": o.glyph, "action": o.action, "error": o.error or ""} for o in outcomes
                 ],

@@ -17,6 +17,8 @@ const state = {
   pinyin: false,
   language: "ru",
   glossary: {},
+  vocabularyPending: new Set(),
+  hanlyUploading: false,
 };
 
 const el = (id) => document.getElementById(id);
@@ -142,11 +144,59 @@ function closeLexeme() {
   closeLexeme.origin = null;
 }
 
+// Current Hanly selection > persisted learning/known > unknown (absence).
+function persistedVocabulary(glyph) {
+  return (state.glossary[glyph] || {}).vocabulary_state || "unknown";
+}
+
+function effectiveVocabulary(glyph) {
+  return isPicked(glyph) ? "learning" : persistedVocabulary(glyph);
+}
+
+function saveVocabularyLocally(glyph, value) {
+  state.glossary[glyph] = { ...(state.glossary[glyph] || {}), vocabulary_state: value };
+}
+
+async function changeVocabulary(event) {
+  event.stopPropagation();
+  if (!state.lexeme || state.hanlyUploading) return;
+  const glyph = state.lexeme.glyph;
+  if (state.vocabularyPending.has(glyph)) return;
+  const next = persistedVocabulary(glyph) === "known" ? "unknown" : "known";
+  state.vocabularyPending.add(glyph);
+  renderLexemeAction();
+  try {
+    const result = await api(`/api/reader/${documentId}/vocabulary-state`, {
+      method: "POST", body: JSON.stringify({ glyph, state: next }),
+    });
+    if (result.glyph !== glyph || !["known", "unknown"].includes(result.vocabulary_state)) {
+      throw new Error("Vocabulary state could not be confirmed.");
+    }
+    // Commit UI state only after the backend confirms persistence.
+    saveVocabularyLocally(glyph, result.vocabulary_state);
+  } catch (error) {
+    toast(`Could not save vocabulary state. ${error.message}`, true);
+  } finally {
+    state.vocabularyPending.delete(glyph);
+    if (state.lexeme) renderLexemeAction();
+  }
+}
+
 function renderLexemeAction() {
   const action = el("lexeme-action");
   const picked = isPicked(state.lexeme.glyph);
   action.textContent = picked ? "✓ In Hanly — remove" : "+ Add to Hanly";
   action.classList.toggle("remove", picked);
+  const glyph = state.lexeme.glyph;
+  const value = effectiveVocabulary(glyph);
+  const status = el("lexeme-state");
+  status.textContent = value === "known" ? "✓ Known" : value === "learning" ? "Learning · Hanly" : "";
+  status.hidden = value === "unknown";
+  const knowledge = el("lexeme-knowledge");
+  knowledge.disabled = state.vocabularyPending.has(glyph) || state.hanlyUploading;
+  knowledge.textContent = state.vocabularyPending.has(glyph) ? "Saving…"
+    : persistedVocabulary(glyph) === "known" ? "Mark as unknown"
+    : value === "learning" ? "✓ Mark as known" : "✓ I know this";
 }
 
 /** The sentence the word was tapped in, with every occurrence of it marked. */
@@ -367,6 +417,12 @@ function noteSummary(notes) {
 
 async function upload() {
   const hanly = state.open === "hanly";
+  if (hanly && state.vocabularyPending.size) {
+    toast("Wait for vocabulary changes to finish saving.", true);
+    return;
+  }
+  if (hanly) state.hanlyUploading = true;
+  if (state.lexeme) renderLexemeAction();
   const button = el("basket-upload");
   const original = button.textContent;
   button.disabled = true;
@@ -381,7 +437,10 @@ async function upload() {
         }),
       });
       state.words = state.words.filter((w) => !sent.some((s) => s.glyph === w.glyph));
-      sent.forEach((w) => paintWord(w.glyph));
+      sent.forEach((w) => {
+        saveVocabularyLocally(w.glyph, result.vocabulary_states?.[w.glyph] || "learning");
+        paintWord(w.glyph);
+      });
       state.failed = null;
       closeBasket();
       toast(
@@ -414,6 +473,8 @@ async function upload() {
       true
     );
   } finally {
+    if (hanly) state.hanlyUploading = false;
+    if (state.lexeme) renderLexemeAction();
     button.disabled = false;
     button.textContent = original;
     refreshCounters();
@@ -429,6 +490,7 @@ counters.hanly.addEventListener("click", () => openBasket("hanly"));
 counters.mosaic.addEventListener("click", () => openBasket("mosaic"));
 el("basket-close").addEventListener("click", closeBasket);
 el("basket-upload").addEventListener("click", upload);
+el("lexeme-knowledge").addEventListener("click", changeVocabulary);
 el("lexeme-close").addEventListener("click", closeLexeme);
 el("scrim").addEventListener("click", dismissTop);
 el("lexeme-action").addEventListener("click", (event) => {
