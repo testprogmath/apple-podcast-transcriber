@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: Which part of the version to raise
+        type: choice
+        default: patch
+        options: [patch, minor, major]
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Bump version and tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Raise the version and tag the commit
+        env:
+          LEVEL: ${{ inputs.level }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(python3 tools/bump_version.py "$LEVEL")
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "Tag v$version already exists" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): v$version"
+          git tag -a "v$version" -m "v$version"
+          git push origin HEAD:main "refs/tags/v$version"
+          # --verify-tag releases the tag just pushed rather than letting gh create its own.
+          gh release create "v$version" --verify-tag --generate-notes
+          echo "Released v$version. Deploy it from Actions: CI, Run workflow, ref v$version, deploy checked." \
+            >> "$GITHUB_STEP_SUMMARY"

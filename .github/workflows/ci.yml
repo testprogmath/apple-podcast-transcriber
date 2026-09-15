@@ -4,6 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy this ref to production once the checks pass
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -43,7 +49,9 @@ jobs:
   deploy:
     name: Deploy production
     needs: quality
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'workflow_dispatch' && inputs.deploy)
     runs-on: ubuntu-latest
     timeout-minutes: 55
     environment: production
@@ -58,15 +66,23 @@ jobs:
         env:
           RELEASE_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
+          version=$(python3 tools/bump_version.py --show)
+          echo "Building $version from $RELEASE_SHA ($GITHUB_REF)"
           docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+            --label "org.opencontainers.image.version=$version" \
             --tag "podcast-telegram-bot-release:$RELEASE_SHA" .
       - name: Send image to restricted deployment command
         env:
           DEPLOY_SSH_KEY: ${{ secrets.PODCAST_DEPLOY_SSH_KEY }}
           RELEASE_SHA: ${{ github.sha }}
+          DISPATCHED: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
           umask 077
+          # A dispatched release names its own ref, so the server skips its main check.
+          command="deploy $RELEASE_SHA"
+          if [ "$DISPATCHED" = true ]; then command="$command manual"; fi
           keyfile=$(mktemp)
           trap 'rm -f "$keyfile"' EXIT
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$keyfile"
@@ -74,4 +90,4 @@ jobs:
             ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile=deploy/known_hosts -o ConnectTimeout=20 \
               -o ServerAliveInterval=15 -o ServerAliveCountMax=120 \
-              -i "$keyfile" deploy@204.168.217.208 "deploy $RELEASE_SHA"
+              -i "$keyfile" deploy@204.168.217.208 "$command"
