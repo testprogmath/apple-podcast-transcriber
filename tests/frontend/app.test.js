@@ -690,7 +690,7 @@ for (const source of ["study", "generated"]) {
     await settle();
     assert.ok(!translationText(body, 0).hidden);
     assert.strictEqual(calls.length, 2);
-    assert.strictEqual(calls[1].body, "{}");
+    assert.deepStrictEqual(JSON.parse(calls[1].body), { language: "ru" });
   });
 }
 
@@ -704,7 +704,7 @@ test("translation loading is local and repeated taps coalesce", async () => {
   button.click(body);
   button.fire("click");
   assert.strictEqual(button.getAttribute("aria-label"), "Translating…");
-  assert.ok(button.disabled);
+  assert.strictEqual(button.getAttribute("aria-busy"), "true");
   assert.ok(translationText(body, 0).hidden);
   assert.ok(!translationButton(body, 1).disabled);
   word(body, "获得").click(body);
@@ -760,6 +760,43 @@ test("failed translation retries only explicitly without changing selections", a
   await settle();
   assert.ok(!translationText(body, 0).hidden);
   assert.strictEqual(calls.length, 3);
+});
+
+test("language toggle updates open translation and reuses each language cache", async () => {
+  let count = 0;
+  const { body, nodes, calls } = start({ responses: {
+    "/sentences/0/translation": () => ({ ok: true, json: async () => ({ sentence_id: 0,
+      translation: ++count === 1 ? "Они получили медаль." : "They received a medal.", source: "generated" }) }),
+  }});
+  await settle();
+  translationButton(body, 0).click(body);
+  await settle();
+  nodes["language-toggle"].fire("click");
+  await settle();
+  assert.strictEqual(translationText(body, 0).textContent, "They received a medal.");
+  assert.strictEqual(translationText(body, 0).getAttribute("lang"), "en");
+  assert.deepStrictEqual(JSON.parse(calls.at(-1).body), { language: "en" });
+  nodes["language-toggle"].fire("click");
+  await settle();
+  assert.strictEqual(translationText(body, 0).textContent, "Они получили медаль.");
+  assert.strictEqual(count, 2);
+});
+
+test("late Russian response cannot replace the selected English translation", async () => {
+  let finish;
+  let count = 0;
+  const { body, nodes } = start({ responses: {
+    "/sentences/0/translation": () => ++count === 1
+      ? new Promise((resolve) => { finish = resolve; })
+      : { ok: true, json: async () => ({ sentence_id: 0, translation: "They received a medal.", source: "generated" }) },
+  }});
+  await settle();
+  translationButton(body, 0).click(body);
+  nodes["language-toggle"].fire("click");
+  await settle();
+  finish({ ok: true, json: async () => ({ sentence_id: 0, translation: "Они получили медаль.", source: "generated" }) });
+  await settle();
+  assert.strictEqual(translationText(body, 0).textContent, "They received a medal.");
 });
 
 (async () => {

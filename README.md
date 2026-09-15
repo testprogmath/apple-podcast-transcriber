@@ -509,3 +509,12 @@ Manual Telegram checks before release (paid generation requires explicit approva
 - Select a Hanly word and a Mosaic sentence, reveal several translations and
   toggle Pinyin: all selections and visible translations remain independent.
 - Check narrow/light/dark WebViews, focus, readable secondary text and retry UI.
+
+
+Sentence translation now follows the Reader RU/EN toggle. Requests accept only
+an optional `language` field (`ru` or `en`, default `ru`). Open translations refresh
+on language changes; late responses cannot overwrite the selected language.
+The additive `reader_translations_by_language` table keys cached results by
+(document_id, sentence_id, language); existing Russian cache entries are copied
+without deleting the legacy table. Exact English Mosaic study translations may
+be reused for EN. Hidden sentences never generate merely because language changes.

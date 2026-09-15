@@ -97,7 +97,8 @@ async def test_direct_mixed_source_generated_cached_and_persisted(translation):
     assert reopened.reader_translation(r.document.id, 0, payload["TARGET"]) == RUSSIAN
     reopened.close()
     assert (
-        r.store.db.execute("SELECT count(*) FROM reader_sentence_translations").fetchone()[0] == 1
+        r.store.db.execute("SELECT count(*) FROM reader_translations_by_language").fetchone()[0]
+        == 1
     )
 
 
@@ -232,4 +233,64 @@ def test_translation_migration_is_additive(tmp_path):
     storage = Storage(tmp_path)
     assert storage.reader_document(document.id) == document
     assert storage.reader_translation(document.id, 0, "你好。") is None
+    storage.close()
+
+
+async def test_ru_en_have_separate_prompts_and_caches(translation):
+    r = translation.reader
+    translation.client.request.side_effect = [
+        (TranslationResult(translation=RUSSIAN), {}),
+        (TranslationResult(translation="Hello, welcome back to Mami Chinese."), {}),
+    ]
+    results = {}
+    for language in ("ru", "en", "ru", "en"):
+        status, result = await call(r, "POST", route(r.document), {"language": language})
+        assert status == 200
+        results[language] = result["translation"]
+    assert results["ru"] == RUSSIAN
+    assert results["en"].startswith("Hello")
+    assert translation.client.request.await_count == 2
+    assert "natural English" in translation.client.request.call_args_list[1].args[1]
+
+
+async def test_english_study_mosaic_translation_reused(translation, tmp_path):
+    r = translation.reader
+    document = with_study(r, tmp_path, [])
+    (tmp_path / "study.json").write_text(
+        json.dumps(
+            {
+                "mosaic_sentences": [
+                    {
+                        "chinese": document.sentences()[0].text,
+                        "english": "Hello, welcome back to Mami Chinese.",
+                    }
+                ]
+            }
+        )
+    )
+    status, data = await call(r, "POST", route(document), {"language": "en"})
+    assert status == 200 and data["source"] == "study"
+    translation.client.request.assert_not_called()
+
+
+@pytest.mark.parametrize("language", ["de", "", None, [], 1])
+async def test_invalid_translation_language_rejected(translation, language):
+    r = translation.reader
+    assert (await call(r, "POST", route(r.document), {"language": language}))[0] == 400
+    translation.client.request.assert_not_called()
+
+
+def test_legacy_russian_cache_is_preserved(tmp_path):
+    storage = Storage(tmp_path)
+    storage.db.execute(
+        "INSERT INTO reader_sentence_translations VALUES (?,?,?,?,'generated',?,?)",
+        ("doc", 0, "你好。", "Привет.", "before", "before"),
+    )
+    storage.db.commit()
+    storage.close()
+    storage = Storage(tmp_path)
+    assert storage.reader_translation("doc", 0, "你好。", "ru") == "Привет."
+    assert storage.reader_translation("doc", 0, "你好。", "en") is None
+    storage.save_reader_translation("doc", 0, "你好。", "Hello.", "en")
+    assert storage.reader_translation("doc", 0, "你好。", "ru") == "Привет."
     storage.close()

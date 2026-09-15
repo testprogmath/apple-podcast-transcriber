@@ -1,4 +1,4 @@
-"""Lazy Russian translations; source-owned inputs and one-replica request coalescing."""
+"""Lazy language-specific translations; source-owned inputs and one-replica request coalescing."""
 
 import asyncio
 import re
@@ -34,21 +34,20 @@ def exact_key(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFC", text))
 
 
-def clean_translation(source: str, value: str) -> str:
+def clean_translation(source: str, value: str, language: str = "ru") -> str:
     value = " ".join(value.split())
     if (
         not value
         or len(value) > MAX_TRANSLATION
-        or untranslated(source, value, "ru")
-        or not re.search(r"[А-Яа-яЁё]", value)
+        or untranslated(source, value, language)
+        or not re.search(r"[А-Яа-яЁё]" if language == "ru" else r"[A-Za-z]", value)
+        or (language == "en" and bool(re.search(r"[А-Яа-яЁё]", value)))
     ):
-        raise ValueError("Invalid Russian translation")
+        raise ValueError("Invalid translation language")
     return value
 
 
-def study_translation(document, sentence) -> str | None:
-    if document.native_language() != "ru":
-        return None
+def study_translation(document, sentence, language="ru") -> str | None:
     matches = set()
     material = document.material()
     pairs = [
@@ -62,6 +61,14 @@ def study_translation(document, sentence) -> str | None:
         for item in material.get("passages", [])
         if isinstance(item, dict)
     ]
+    if document.native_language() != language:
+        pairs = []
+    if language == "en":
+        pairs += [
+            (item.get("chinese"), item.get("english"))
+            for item in material.get("mosaic_sentences", [])
+            if isinstance(item, dict)
+        ]
     for source, translated in pairs:
         if (
             isinstance(source, str)
@@ -69,7 +76,7 @@ def study_translation(document, sentence) -> str | None:
             and exact_key(source) == exact_key(sentence.text)
         ):
             with suppress(ValueError):
-                matches.add(clean_translation(sentence.text, translated))
+                matches.add(clean_translation(sentence.text, translated, language))
     # Multiple conflicting normalized matches are uncertain: use generation instead.
     return next(iter(matches)) if len(matches) == 1 else None
 
@@ -80,11 +87,13 @@ class SentenceTranslations:
         self.pending = {}
         self.slots = asyncio.Semaphore(2)
 
-    async def resolve(self, document, sentence):
-        existing = study_translation(document, sentence)
+    async def resolve(self, document, sentence, language="ru"):
+        if language not in {"ru", "en"}:
+            raise UserError("Choose ru or en for translation.")
+        existing = study_translation(document, sentence, language)
         if existing:
             return {"sentence_id": sentence.id, "translation": existing, "source": "study"}
-        cached = self.storage.reader_translation(document.id, sentence.id, sentence.text)
+        cached = self.storage.reader_translation(document.id, sentence.id, sentence.text, language)
         if cached:
             return {"sentence_id": sentence.id, "translation": cached, "source": "generated"}
         if not HAN.search(sentence.text) or len(sentence.text) > MAX_SOURCE:
@@ -93,12 +102,12 @@ class SentenceTranslations:
             )
         if self.client is None:
             raise UserError("Translation generation is unavailable. Please try again later.")
-        key = (document.id, sentence.id, sentence.text)
+        key = (document.id, sentence.id, sentence.text, language)
         task = self.pending.get(key)
         if task is None:
             if len(self.pending) >= 8:
                 raise UserError("Translation is busy. Please retry shortly.")
-            task = asyncio.create_task(self.generate(document, sentence))
+            task = asyncio.create_task(self.generate(document, sentence, language))
             self.pending[key] = task
 
             def finished(done):
@@ -109,7 +118,7 @@ class SentenceTranslations:
             task.add_done_callback(finished)
         return await asyncio.shield(task)
 
-    async def generate(self, document, sentence):
+    async def generate(self, document, sentence, language):
         try:
             async with asyncio.timeout(TIMEOUT):
                 async with self.slots:
@@ -123,11 +132,15 @@ class SentenceTranslations:
                         else "",
                     }
                     result, _ = await self.client.request(
-                        TranslationResult, PROMPT, payload, self.model, 2400
+                        TranslationResult,
+                        PROMPT.replace("Russian", "Russian" if language == "ru" else "English"),
+                        payload,
+                        self.model,
+                        2400,
                     )
-                    translated = clean_translation(sentence.text, result.translation)
+                    translated = clean_translation(sentence.text, result.translation, language)
                     self.storage.save_reader_translation(
-                        document.id, sentence.id, sentence.text, translated
+                        document.id, sentence.id, sentence.text, translated, language
                     )
                     return {
                         "sentence_id": sentence.id,

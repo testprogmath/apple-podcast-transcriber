@@ -17,6 +17,7 @@ const state = {
   pinyin: false,
   language: "ru",
   glossary: {},
+  translationViews: [],
   vocabularyPending: new Set(),
   hanlyUploading: false,
 };
@@ -122,6 +123,7 @@ function applyLanguage(language) {
   toggle.setAttribute("aria-pressed", language === "ru" ? "true" : "false");
   toggle.textContent = language.toUpperCase();
   if (state.lexeme) renderLexemeBody(state.lexeme.glyph);
+  state.translationViews.forEach((refresh) => refresh());
 }
 
 /** The chosen language, falling back to the other rather than showing nothing. */
@@ -280,49 +282,65 @@ function translationControl(sentence) {
   content.setAttribute("aria-live", "polite");
   action.setAttribute("aria-controls", content.id);
   content.hidden = true;
-  let translated = "";
-  let loading = false;
+  const cache = {};
+  const pending = {};
+  let visible = false;
+  let revision = 0;
   box.addEventListener("click", (event) => event.stopPropagation());
-  action.addEventListener("click", async (event) => {
-    event.stopPropagation();
-    if (loading) return;
-    if (!content.hidden) {
-      content.hidden = true;
+  async function show() {
+    const language = state.language;
+    const requestRevision = ++revision;
+    content.hidden = true;
+    content.setAttribute("lang", language);
+    status.hidden = true;
+    action.setAttribute("aria-expanded", String(visible));
+    if (!visible) {
       label("Show translation");
-      action.setAttribute("aria-expanded", "false");
+      action.setAttribute("aria-busy", "false");
       return;
     }
-    if (!translated) {
-      loading = true;
-      action.disabled = true;
-      label("Translating…");
+    label("Hide translation");
+    if (!cache[language]) {
       status.textContent = "Translating…";
       status.hidden = false;
+      label("Translating…");
       action.setAttribute("aria-busy", "true");
       try {
-        const result = await api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
-          method: "POST", body: "{}",
-        });
-        if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
-          throw new Error("Invalid translation");
+        if (!pending[language]) {
+          pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
+            method: "POST", body: JSON.stringify({ language }),
+          }).then((result) => {
+            if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
+              throw new Error("Invalid translation");
+            }
+            cache[language] = result.translation;
+          }).finally(() => { delete pending[language]; });
         }
-        translated = result.translation;
-        content.textContent = translated;
+        await pending[language];
       } catch (error) {
+        if (requestRevision !== revision) return;
+        visible = false;
+        action.setAttribute("aria-expanded", "false");
         label("Translation unavailable · Retry");
         status.textContent = "Translation unavailable · Tap the icon to retry";
         return;
       } finally {
-        loading = false;
-        action.disabled = false;
-        action.setAttribute("aria-busy", "false");
+        if (requestRevision === revision) action.setAttribute("aria-busy", "false");
       }
     }
+    if (requestRevision !== revision || !visible) return;
+    content.textContent = cache[language];
     content.hidden = false;
     status.hidden = true;
     label("Hide translation");
-    action.setAttribute("aria-expanded", "true");
+  }
+  action.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (visible && pending[state.language]) return;
+    visible = !visible;
+    show();
   });
+  state.translationViews.push(() => { if (visible) show(); });
   const status = document.createElement("span");
   status.className = "translation-status";
   status.setAttribute("role", "status");

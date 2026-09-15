@@ -96,14 +96,20 @@ class ReaderApi:
             document = self.authorize(headers, parts[2])
             if method != "POST":
                 raise ApiError(405, "Use POST for sentence translation.")
-            if body and self.payload(body) != {}:
-                raise ApiError(400, "Translation requests accept no fields.")
+            data = self.payload(body) if body else {}
+            language = data.get("language", "ru")
+            if (
+                set(data) - {"language"}
+                or not isinstance(language, str)
+                or language not in {"ru", "en"}
+            ):
+                raise ApiError(400, "Translation accepts only language: ru or en.")
             if not re.fullmatch(r"0|[1-9][0-9]{0,5}", parts[4]):
                 raise ApiError(400, "Invalid sentence ID.")
             sentence = next((s for s in document.sentences() if s.id == int(parts[4])), None)
             if sentence is None:
                 raise ApiError(404, "Unknown Reader sentence.")
-            return json_response(200, await self.translations.resolve(document, sentence))
+            return json_response(200, await self.translations.resolve(document, sentence, language))
         if parts[:2] == ["api", "reader"] and len(parts) in (3, 4):
             document = self.authorize(headers, parts[2])
             if method == "GET" and len(parts) == 3:
