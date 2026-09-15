@@ -309,8 +309,8 @@ test("CSS hides rt when the toggle is off and reveals it when on", () => {
   const sheet = css();
   assert.match(sheet, /#text rt \{\s*display: none;/, "rt hidden by default");
   assert.match(sheet, /#text\.pinyin rt \{ display: revert; \}/, "rt shown when enabled");
-  assert.ok(!/^#text \{[^}]*line-height: 2\.5/m.test(sheet), "no extra leading while off");
-  assert.match(sheet, /#text\.pinyin \{ line-height: 2\.5; \}/);
+  assert.ok(!/^#text \{[^}]*line-height: 2\.6/m.test(sheet), "no extra leading while off");
+  assert.match(sheet, /#text\.pinyin \{ line-height: 2\.6; \}/);
 });
 
 test("tapping a token never toggles the Mandarin Mosaic sentence around it", async () => {
@@ -318,7 +318,7 @@ test("tapping a token never toggles the Mandarin Mosaic sentence around it", asy
   await settle();
   word(body, "获得").click(body);
   nodes["lexeme-action"].fire("click");
-  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mandarin Mosaic · 0");
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 0");
   assert.ok(!sentence(body, 0).classes.has("picked"));
 });
 
@@ -329,7 +329,7 @@ test("sentence selection and lexical selection coexist", async () => {
   word(body, "获得").click(body);
   nodes["lexeme-action"].fire("click");
   assert.strictEqual(nodes["hanly-counter"].textContent, "Hanly · 1");
-  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mandarin Mosaic · 1");
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 1");
   assert.ok(sentence(body, 1).classes.has("picked"));
   assert.ok(word(body, "获得").classes.has("picked"));
 });
@@ -435,9 +435,89 @@ test("partial Mandarin Mosaic upload preserves the failed sentence", async () =>
   nodes["mosaic-counter"].fire("click");
   await nodes["basket-upload"].listeners.click[0]();
   await settle();
-  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mandarin Mosaic · 1");
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 1");
   assert.ok(!sentence(body, 0).classes.has("picked"));
   assert.ok(sentence(body, 1).classes.has("picked"));
+});
+
+test("the header splits the podcast from the episode title", async () => {
+  const { nodes } = start();
+  await settle();
+  assert.strictEqual(nodes["source-line"].textContent, "Mami Chinese");
+  assert.strictEqual(nodes.title.textContent, "菲尔兹奖");
+});
+
+test("a title with no separator stays on one line", async () => {
+  const plain = { ...DOCUMENT, title: "transcript (5).txt" };
+  const { nodes } = start({ document: plain });
+  await settle();
+  assert.strictEqual(nodes["source-line"].textContent, "");
+  assert.strictEqual(nodes.title.textContent, "transcript (5).txt");
+});
+
+test("the popup shows the sentence the word was tapped in, with the word marked", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "获得").click(body);
+  assert.strictEqual(nodes["lexeme-context"].textContent, "他们获得了菲尔兹奖。");
+  assert.strictEqual(nodes["lexeme-context-label"].hidden, false);
+  const marked = nodes["lexeme-context"].children.filter((n) => n.classes.has("hit"));
+  assert.deepStrictEqual(
+    marked.map((n) => n.textContent),
+    ["获得"],
+    "only the tapped word is highlighted"
+  );
+});
+
+test("the context follows the occurrence, not the first sentence", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "很难").click(body);
+  assert.strictEqual(nodes["lexeme-context"].textContent, "做研究很难。");
+});
+
+test("the meaning label names where the meaning came from", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "获得").click(body);
+  assert.match(nodes["lexeme-senses-label"].textContent, /в этом эпизоде/);
+  nodes["lexeme-close"].fire("click");
+  word(body, "很难").click(body);
+  assert.match(nodes["lexeme-senses-label"].textContent, /из словаря/);
+});
+
+test("a word with no meaning hides the label rather than leaving it bare", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "做研究").click(body);
+  assert.strictEqual(nodes["lexeme-senses-label"].hidden, true);
+  assert.strictEqual(nodes["lexeme-source"].textContent, "");
+});
+
+test("basket rows carry the reading and a gloss", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "很难").click(body);
+  nodes["lexeme-action"].fire("click");
+  nodes["hanly-counter"].fire("click");
+  assert.strictEqual(nodes["basket-title"].textContent, "Hanly vocabulary (1)");
+  const row = nodes["basket-items"].children[0];
+  const entry = row.children.find((n) => n.classes.has("entry"));
+  assert.strictEqual(entry.textContent, "很难hěn nánтрудный");
+  assert.strictEqual(row.children[row.children.length - 1].getAttribute("aria-label"), "Remove");
+  assert.match(nodes["basket-note"].textContent, /added to this document's Hanly collection/);
+});
+
+test("the stylesheet defines a full dark palette", () => {
+  const sheet = css();
+  assert.match(sheet, /@media \(prefers-color-scheme: dark\)/);
+  for (const token of ["--blue", "--green", "--bg", "--surface", "--fg", "--muted", "--border"]) {
+    const light = new RegExp(`:root \\{[\\s\\S]*?${token}:`);
+    const dark = new RegExp(`prefers-color-scheme: dark[\\s\\S]*?${token}:`);
+    assert.match(sheet, light, `${token} missing from the light palette`);
+    assert.match(sheet, dark, `${token} missing from the dark palette`);
+  }
+  assert.ok(!/var\(--tg-theme/.test(sheet), "the palette is explicit, not inherited from Telegram");
 });
 
 test("the layout has no fixed width that would overflow a narrow WebView", () => {
