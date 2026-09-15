@@ -66,7 +66,7 @@ function toast(message, bad) {
 
 function refreshCounters() {
   counters.hanly.textContent = `Hanly · ${state.words.length}`;
-  counters.mosaic.textContent = `Mandarin Mosaic · ${state.picked.size}`;
+  counters.mosaic.textContent = `Mosaic · ${state.picked.size}`;
   counters.hanly.classList.toggle("active", state.words.length > 0);
   counters.mosaic.classList.toggle("active", state.picked.size > 0);
 }
@@ -149,6 +149,30 @@ function renderLexemeAction() {
   action.classList.toggle("remove", picked);
 }
 
+/** The sentence the word was tapped in, with every occurrence of it marked. */
+function renderContext(glyph, sentenceId) {
+  const node = el("lexeme-context");
+  node.textContent = "";
+  const sentence = state.sentences.find((s) => s.id === sentenceId);
+  const text = sentence ? sentence.text : "";
+  el("lexeme-context-label").hidden = !text;
+  if (!text) return;
+  let rest = text;
+  while (rest) {
+    const at = glyph ? rest.indexOf(glyph) : -1;
+    if (at === -1) {
+      node.appendChild(document.createTextNode(rest));
+      break;
+    }
+    if (at > 0) node.appendChild(document.createTextNode(rest.slice(0, at)));
+    const hit = document.createElement("span");
+    hit.className = "hit";
+    hit.textContent = glyph;
+    node.appendChild(hit);
+    rest = rest.slice(at + glyph.length);
+  }
+}
+
 function renderLexemeBody(glyph) {
   const entry = state.glossary[glyph] || {};
   el("lexeme-glyph").textContent = glyph;
@@ -161,7 +185,11 @@ function renderLexemeBody(glyph) {
     item.textContent = sense;
     list.appendChild(item);
   }
+  el("lexeme-senses-label").hidden = !senses.length;
+  el("lexeme-senses-label").textContent =
+    source === "contextual" ? "Значение (в этом эпизоде)" : "Значение (из словаря)";
   el("lexeme-source").textContent = senses.length ? SOURCE_LABELS[source] || "" : "";
+  if (state.lexeme) renderContext(glyph, state.lexeme.sentenceId);
 }
 
 function openLexeme(token, sentenceId, node) {
@@ -223,7 +251,9 @@ function render(data) {
   state.glossary = data.glossary || {};
   state.available = { hanly: data.hanly_available, mosaic: data.mosaic_available };
   state.reasons = { hanly: data.hanly_error, mosaic: data.mosaic_error };
-  el("title").textContent = data.title;
+  const parts = String(data.title).split("｜");
+  el("source-line").textContent = parts.length > 1 ? parts[0] : "";
+  el("title").textContent = parts.length > 1 ? parts.slice(1).join("｜") : data.title;
   document.title = data.title;
   const byId = new Map(data.sentences.map((s) => [s.id, s]));
   const main = el("text");
@@ -250,7 +280,9 @@ function closeBasket() {
 function openBasket(kind) {
   state.open = kind;
   const hanly = kind === "hanly";
-  el("basket-title").textContent = hanly ? "Hanly vocabulary" : "Mandarin Mosaic sentences";
+  el("basket-title").textContent = hanly
+    ? `Hanly vocabulary (${state.words.length})`
+    : `Mosaic sentences (${state.picked.size})`;
   const items = el("basket-items");
   items.textContent = "";
   const entries = hanly
@@ -262,30 +294,55 @@ function openBasket(kind) {
   for (const entry of entries) {
     const row = document.createElement("li");
     if (state.failed && state.failed.has(entry.key)) row.className = "failed";
-    const label = document.createElement("span");
-    label.textContent = entry.text;
+    const cell = document.createElement("div");
+    cell.className = "entry";
+    const head = document.createElement("div");
+    const glyph = document.createElement("span");
+    glyph.className = "glyph";
+    glyph.textContent = entry.text;
+    head.appendChild(glyph);
+    if (hanly) {
+      const info = state.glossary[entry.key] || {};
+      if (info.p) {
+        const reading = document.createElement("span");
+        reading.className = "reading";
+        reading.textContent = info.p;
+        head.appendChild(reading);
+      }
+      const { senses } = sensesFor(entry.key);
+      if (senses.length) {
+        const gloss = document.createElement("div");
+        gloss.className = "gloss";
+        gloss.textContent = senses[0];
+        cell.append(head, gloss);
+      } else {
+        cell.appendChild(head);
+      }
+    } else {
+      cell.appendChild(head);
+    }
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "remove";
-    remove.textContent = "×";
+    remove.textContent = "✕";
     remove.setAttribute("aria-label", "Remove");
     remove.addEventListener("click", () => {
       if (hanly) toggleWord(entry.key);
       else toggleSentence(entry.key);
       openBasket(kind);
     });
-    row.append(label, remove);
+    row.append(cell, remove);
     items.appendChild(row);
   }
   const available = state.available[kind];
   const note = hanly
-    ? "Tapped words and chunks are merged into this document's Hanly collection."
-    : "Complete sentences are uploaded to this document's Mandarin Mosaic pack.";
+    ? "Selected words will be added to this document's Hanly collection."
+    : "Selected sentences will be added to this document's Mandarin Mosaic pack.";
   el("basket-note").textContent = available
     ? note
     : state.reasons[kind] || "Not configured on the server.";
   const upload = el("basket-upload");
-  upload.textContent = `Upload ${entries.length} to ${hanly ? "Hanly" : "Mandarin Mosaic"}`;
+  upload.textContent = `Upload ${entries.length} to ${hanly ? "Hanly" : "Mosaic"}`;
   upload.disabled = entries.length === 0 || !available;
   el("basket").hidden = false;
   el("scrim").hidden = false;

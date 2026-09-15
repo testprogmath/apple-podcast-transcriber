@@ -10,13 +10,18 @@
 <body>
 <header id="bar">
   <div id="titlerow">
-    <h1 id="title">Reader</h1>
-    <button id="pinyin-toggle" type="button" class="toggle" aria-pressed="false">拼音 OFF</button>
-    <button id="language-toggle" type="button" class="toggle" aria-pressed="true">RU</button>
+    <div id="titleblock">
+      <p id="source-line"></p>
+      <h1 id="title">Reader</h1>
+    </div>
+    <div id="toggles">
+      <button id="pinyin-toggle" type="button" class="toggle" aria-pressed="false">拼音 OFF</button>
+      <button id="language-toggle" type="button" class="toggle" aria-pressed="true">RU</button>
+    </div>
   </div>
   <div id="counters">
-    <button id="hanly-counter" type="button" class="counter">Hanly · 0</button>
-    <button id="mosaic-counter" type="button" class="counter">Mandarin Mosaic · 0</button>
+    <button id="hanly-counter" type="button" class="counter hanly">Hanly · 0</button>
+    <button id="mosaic-counter" type="button" class="counter mosaic">Mosaic · 0</button>
   </div>
 </header>
 
@@ -31,22 +36,27 @@
 <div id="scrim" hidden></div>
 
 <section id="lexeme" hidden role="dialog" aria-modal="true" aria-labelledby="lexeme-glyph">
+  <div class="handle" aria-hidden="true"></div>
   <div id="lexeme-head">
     <div>
       <h2 id="lexeme-glyph"></h2>
       <p id="lexeme-pinyin"></p>
-      <ul id="lexeme-senses"></ul>
-      <p id="lexeme-source"></p>
     </div>
-    <button id="lexeme-close" type="button" class="plain">Close</button>
+    <button id="lexeme-close" type="button" class="icon" aria-label="Close">✕</button>
   </div>
+  <p class="label" id="lexeme-senses-label" hidden>Значение</p>
+  <ul id="lexeme-senses"></ul>
+  <p class="label" id="lexeme-context-label" hidden>В контексте</p>
+  <p id="lexeme-context"></p>
+  <p id="lexeme-source"></p>
   <button id="lexeme-action" type="button" class="primary"></button>
 </section>
 
 <section id="basket" hidden role="dialog" aria-modal="true" aria-labelledby="basket-title">
+  <div class="handle" aria-hidden="true"></div>
   <div id="basket-head">
     <h2 id="basket-title">Hanly</h2>
-    <button id="basket-close" type="button" class="plain">Close</button>
+    <button id="basket-close" type="button" class="icon" aria-label="Close">✕</button>
   </div>
   <ul id="basket-items"></ul>
   <p id="basket-note"></p>
