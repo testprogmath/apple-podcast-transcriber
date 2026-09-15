@@ -1,26 +1,35 @@
-"""Lexical enrichment for the Reader popup: pinyin and meaning with explicit precedence."""
+"""Lexical enrichment for the Reader popup: pinyin and meanings with explicit precedence."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .dictionary import Dictionary, DictionaryEntry
+from .dictionary import Dictionary
 from .pinyin import pinyin_for
 
 CONTEXTUAL = "contextual"
+BKRS = "bkrs"
 CEDICT = "cc-cedict"
-NONE = "none"
-MAX_POPUP_DEFINITIONS = 3
+MAX_SENSES = 8
 
 
 @dataclass(frozen=True)
 class Lexeme:
+    """Both language tracks are carried so the Reader can switch without another request."""
+
     glyph: str
     pinyin: str
-    meaning: str = ""
-    meaning_source: str = NONE
+    contextual: str = ""
+    russian: tuple[str, ...] = field(default=())
+    english: tuple[str, ...] = field(default=())
 
+    @property
+    def native_source(self) -> str:
+        if self.contextual:
+            return CONTEXTUAL
+        return BKRS if self.russian else ""
 
-def _definition(entry: DictionaryEntry) -> str:
-    return "; ".join(entry.definitions[:MAX_POPUP_DEFINITIONS])
+    def native(self) -> tuple[str, ...]:
+        """The learner's own language: the pack's contextual meaning, else the Russian gloss."""
+        return (self.contextual,) if self.contextual else self.russian
 
 
 def enrich(
@@ -28,27 +37,27 @@ def enrich(
     meanings: dict[str, str],
     pronunciations: dict[str, str],
     dictionary: Dictionary | None = None,
+    russian=None,
 ) -> dict[str, Lexeme]:
     """Resolve every distinct glyph once.
 
-    Pinyin: study pronunciation, then an exact CC-CEDICT entry, then the local fallback.
-    Meaning: study meaning, then a CC-CEDICT definition, then nothing. A contextual
-    meaning is never replaced by a generic dictionary definition.
+    Pinyin: study pronunciation, then CC-CEDICT, then the local fallback. The Russian
+    source is skipped for pinyin because it writes syllables unseparated (rènwéi).
     """
     wanted = list(dict.fromkeys(glyphs))
     entries = dictionary.lookup_many(wanted) if dictionary is not None else {}
+    glosses = russian.lookup_many(wanted) if russian is not None else {}
     result = {}
     for glyph in wanted:
-        entry = entries.get(glyph)
+        entry, gloss = entries.get(glyph), glosses.get(glyph)
         pinyin = pronunciations.get(glyph, "").strip()
         if not pinyin and entry is not None:
             pinyin = entry.pinyin
-        if not pinyin:
-            pinyin = pinyin_for(glyph)
-        meaning = meanings.get(glyph, "").strip()
-        source = CONTEXTUAL if meaning else NONE
-        if not meaning and entry is not None:
-            meaning = _definition(entry)
-            source = CEDICT if meaning else NONE
-        result[glyph] = Lexeme(glyph, pinyin, meaning, source)
+        result[glyph] = Lexeme(
+            glyph=glyph,
+            pinyin=pinyin or pinyin_for(glyph),
+            contextual=meanings.get(glyph, "").strip(),
+            russian=gloss.definitions[:MAX_SENSES] if gloss else (),
+            english=entry.definitions[:MAX_SENSES] if entry else (),
+        )
     return result

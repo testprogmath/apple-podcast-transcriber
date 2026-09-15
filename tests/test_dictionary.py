@@ -5,7 +5,7 @@ import pytest
 
 from podcast_bot.reader.cedict import build, parse_line, source_version, tone_marks
 from podcast_bot.reader.dictionary import Dictionary
-from podcast_bot.reader.enrich import CEDICT, CONTEXTUAL, NONE, enrich
+from podcast_bot.reader.enrich import CONTEXTUAL, enrich
 
 SAMPLE = """# CC-CEDICT sample used only by these tests
 #! version=1
@@ -180,23 +180,24 @@ def test_the_build_indexes_both_written_forms(database):
     connection.close()
 
 
-def test_a_contextual_meaning_beats_the_dictionary(dictionary):
-    result = enrich(["银行"], {"银行": "банк (контекст)"}, {}, dictionary)
-    assert result["银行"].meaning == "банк (контекст)"
-    assert result["银行"].meaning_source == CONTEXTUAL
+def test_a_contextual_meaning_is_preferred_for_the_native_track(dictionary):
+    lexeme = enrich(["银行"], {"银行": "банк (контекст)"}, {}, dictionary)["银行"]
+    assert lexeme.native() == ("банк (контекст)",)
+    assert lexeme.native_source == CONTEXTUAL
+    assert lexeme.english == ("bank", "CL:家[jia1]"), "English stays available alongside"
 
 
-def test_the_dictionary_fills_in_when_no_contextual_meaning_exists(dictionary):
-    result = enrich(["银行"], {}, {}, dictionary)
-    assert result["银行"].meaning == "bank; CL:家[jia1]"
-    assert result["银行"].meaning_source == CEDICT
+def test_the_english_track_is_populated_from_the_dictionary(dictionary):
+    lexeme = enrich(["银行"], {}, {}, dictionary)["银行"]
+    assert lexeme.english == ("bank", "CL:家[jia1]")
+    assert lexeme.native() == (), "no contextual meaning and no Russian source configured"
 
 
 def test_a_glyph_known_to_neither_source_carries_no_meaning(dictionary):
-    result = enrich(["研究成果"], {}, {}, dictionary)
-    assert result["研究成果"].meaning == ""
-    assert result["研究成果"].meaning_source == NONE
-    assert result["研究成果"].pinyin == "yán jiū chéng guǒ", "local fallback still produces pinyin"
+    lexeme = enrich(["研究成果"], {}, {}, dictionary)["研究成果"]
+    assert lexeme.native() == () and lexeme.english == ()
+    assert lexeme.native_source == ""
+    assert lexeme.pinyin == "yán jiū chéng guǒ", "local fallback still produces pinyin"
 
 
 def test_pinyin_precedence_prefers_study_then_dictionary_then_fallback(dictionary):
@@ -226,9 +227,5 @@ def test_enrichment_looks_each_distinct_glyph_up_once(dictionary, monkeypatch):
     assert set(result) == {"银行", "学习"}
 
 
-def test_popup_definitions_are_bounded(dictionary):
-    assert enrich(["行"], {}, {}, dictionary)["行"].meaning.count(";") <= 4
-    assert (
-        enrich(["行"], {}, {}, dictionary)["行"].meaning
-        == "row; line; line of business; to walk; to go"
-    )
+def test_senses_are_bounded(dictionary):
+    assert len(enrich(["行"], {}, {}, dictionary)["行"].english) <= 8

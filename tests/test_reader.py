@@ -15,6 +15,7 @@ from podcast_bot.hanly.service import HanlyUploadService
 from podcast_bot.models import UserError
 from podcast_bot.mosaic.client import BatchResult
 from podcast_bot.mosaic.service import MosaicUploadService
+from podcast_bot.pipeline import completion
 from podcast_bot.reader.api import STATIC, ReaderApi
 from podcast_bot.reader.auth import sign, telegram_user_id
 from podcast_bot.reader.cedict import build as cedict_build
@@ -899,12 +900,14 @@ async def test_token_representation_exposes_pinyin_and_known_meanings(notes):
     )
     status, data = await call(notes, "GET", f"/api/reader/{document.id}")
     assert status == 200
-    tokens = data["sentences"][0]["tokens"]
-    words = {t["t"]: t for t in tokens if t["w"]}
-    assert words["获得"]["p"] == "huò dé"
-    assert words["获得"]["m"] == "получать"
-    assert "m" not in words["他们"], "an unknown meaning is omitted, never an empty label"
-    assert words["他们"]["p"] == "tā men"
+    glossary = data["glossary"]
+    assert glossary["获得"]["p"] == "huò dé"
+    assert glossary["获得"]["ru"] == ["получать"]
+    assert glossary["获得"]["rs"] == "contextual"
+    assert "ru" not in glossary["他们"], "an unknown meaning is omitted, never an empty label"
+    assert "en" not in glossary["他们"]
+    assert glossary["他们"]["p"] == "tā men"
+    assert {t["t"] for t in data["sentences"][0]["tokens"] if t["w"]} <= set(glossary)
 
 
 async def test_punctuation_tokens_carry_no_pinyin_field(notes):
@@ -913,15 +916,16 @@ async def test_punctuation_tokens_carry_no_pinyin_field(notes):
     punctuation = [t for t in data["sentences"][0]["tokens"] if not t["w"]]
     assert punctuation
     assert all(set(t) == {"t", "w"} for t in punctuation)
+    assert all(t["t"] not in data["glossary"] for t in punctuation), "no pinyin for punctuation"
 
 
 async def test_direct_text_tokens_still_carry_pinyin_without_meanings(notes):
     document = from_text(42, "老师说辛苦了。\n")
     notes.store.save_reader_document(document)
     _, data = await call(notes, "GET", f"/api/reader/{document.id}")
-    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
-    assert all(token["p"] for token in words.values())
-    assert all("m" not in token for token in words.values())
+    glossary = data["glossary"]
+    assert all(entry["p"] for entry in glossary.values())
+    assert all("ru" not in entry and "en" not in entry for entry in glossary.values())
 
 
 CEDICT_SAMPLE = """# sample
@@ -957,10 +961,10 @@ async def test_dictionary_supplies_meaning_and_pinyin_for_direct_text(lexical):
     document = from_text(42, "他在银行学习。\n")
     lexical.store.save_reader_document(document)
     _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
-    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
-    assert words["银行"]["p"] == "yín háng"
-    assert words["银行"]["m"] == "bank"
-    assert words["银行"]["ms"] == "cc-cedict"
+    glossary = data["glossary"]
+    assert glossary["银行"]["p"] == "yín háng"
+    assert glossary["银行"]["en"] == ["bank"]
+    assert "ru" not in glossary["银行"], "no Russian source configured in this fixture"
 
 
 async def test_contextual_meaning_wins_over_the_dictionary(lexical):
@@ -970,18 +974,19 @@ async def test_contextual_meaning_wins_over_the_dictionary(lexical):
         vocabulary=[{"term": "获得", "meaning": "получать", "pinyin": "huò dé"}],
     )
     _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
-    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
-    assert words["获得"]["m"] == "получать"
-    assert words["获得"]["ms"] == "contextual"
+    glossary = data["glossary"]
+    assert glossary["获得"]["ru"] == ["получать"]
+    assert glossary["获得"]["rs"] == "contextual"
+    assert glossary["获得"]["en"] == ["to obtain; to receive"], "English stays available"
 
 
 async def test_a_glyph_in_neither_source_omits_meaning_but_keeps_pinyin(lexical):
     document = from_text(42, "这是研究成果。\n")
     lexical.store.save_reader_document(document)
     _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
-    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
-    assert "m" not in words["研究成果"] and "ms" not in words["研究成果"]
-    assert words["研究成果"]["p"] == "yán jiū chéng guǒ"
+    entry = data["glossary"]["研究成果"]
+    assert "ru" not in entry and "en" not in entry
+    assert entry["p"] == "yán jiū chéng guǒ"
 
 
 async def test_a_chunk_absent_from_the_dictionary_is_still_uploadable_to_hanly(lexical):
@@ -989,9 +994,8 @@ async def test_a_chunk_absent_from_the_dictionary_is_still_uploadable_to_hanly(l
         lexical.store, text="老师说辛苦了。\n", vocabulary=[{"term": "辛苦了"}]
     )
     _, data = await call(lexical, "GET", f"/api/reader/{document.id}")
-    words = {t["t"]: t for t in data["sentences"][0]["tokens"] if t["w"]}
-    assert "辛苦了" in words, "segmentation still exposes it"
-    assert "m" not in words["辛苦了"], "no dictionary entry"
+    assert "辛苦了" in data["glossary"], "segmentation still exposes it"
+    assert "en" not in data["glossary"]["辛苦了"], "no dictionary entry"
     status, _ = await call(lexical, "POST", f"/api/reader/{document.id}/hanly", item("辛苦了", 0))
     assert status == 200, "dictionary membership is never validation"
     assert lexical.services.hanly.client.calls[0][2] == ["辛苦了"]
@@ -1001,8 +1005,7 @@ async def test_the_reader_works_with_no_dictionary_at_all(reader):
     assert not reader.api.dictionary.available
     status, data = await call(reader, "GET", f"/api/reader/{reader.document.id}")
     assert status == 200
-    words = [t for t in data["sentences"][2]["tokens"] if t["w"]]
-    assert all(token["p"] for token in words), "local pinyin fallback still applies"
+    assert all(entry["p"] for entry in data["glossary"].values()), "local pinyin fallback applies"
 
 
 async def test_the_dictionary_is_queried_once_per_document_request(lexical, monkeypatch):
@@ -1140,7 +1143,41 @@ def test_the_note_falls_back_to_the_dictionary_when_the_pack_has_no_usable_meani
     sentence = document.sentences()[0]
     story = notes_api(store, dictionary).stories(document, [("认为", sentence)])[0][1]
     assert story == (
-        "to think; to consider; to be of the opinion that\n\n原文：很多人认为要做好研究。"
+        "to think; to consider\nto be of the opinion that\n\n原文：很多人认为要做好研究。"
     )
     assert "Перевод" not in story
     dictionary.close()
+
+
+def test_the_completion_summary_links_the_episode_audio(tmp_path):
+    atomic_json(
+        tmp_path / "metadata.json",
+        {
+            "title": "China's New Maths Stars",
+            "duration": 600.0,
+            "transcription_seconds": 42.0,
+            "language": "zh",
+            "audio_url": "https://www.buzzsprout.com/1426696/episodes/19584588.mp3",
+            "apple_url": "https://podcasts.apple.com/nl/podcast/id1490732024?i=1000789324203",
+        },
+    )
+    summary = completion(tmp_path)
+    assert "🔊 Audio: https://www.buzzsprout.com/1426696/episodes/19584588.mp3" in summary
+    assert "🎧 Apple Podcasts: https://podcasts.apple.com/nl/podcast/" in summary
+
+
+def test_the_summary_omits_links_the_metadata_does_not_have(tmp_path):
+    atomic_json(
+        tmp_path / "metadata.json",
+        {"duration": 1.0, "transcription_seconds": 1.0, "audio_url": "", "apple_url": None},
+    )
+    summary = completion(tmp_path)
+    assert "🔊" not in summary and "🎧" not in summary
+
+
+def test_the_summary_refuses_a_non_https_audio_link(tmp_path):
+    atomic_json(
+        tmp_path / "metadata.json",
+        {"duration": 1.0, "transcription_seconds": 1.0, "audio_url": "javascript:alert(1)"},
+    )
+    assert "javascript:" not in completion(tmp_path)

@@ -9,9 +9,10 @@ from ..hanly.client import merge_glyphs
 from ..hanly.notes import build_hanly_note
 from ..models import UserError
 from .auth import telegram_user_id
+from .bkrs import RussianDictionary
 from .dictionary import Dictionary
 from .documents import ReaderDocument
-from .enrich import NONE, enrich
+from .enrich import enrich
 from .tokens import HAN, tokenize
 
 log = logging.getLogger(__name__)
@@ -52,10 +53,13 @@ def json_response(status: int, payload: dict):
 
 
 class ReaderApi:
-    def __init__(self, config, storage, services, dev_mode: bool = False, dictionary=None):
+    def __init__(
+        self, config, storage, services, dev_mode: bool = False, dictionary=None, russian=None
+    ):
         self.config, self.storage, self.services = config, storage, services
         self.dev_mode = dev_mode
         self.dictionary = Dictionary() if dictionary is None else dictionary
+        self.russian = RussianDictionary() if russian is None else russian
 
     async def dispatch(self, method: str, path: str, headers: dict, body: bytes):
         try:
@@ -123,17 +127,22 @@ class ReaderApi:
             document.glyph_meanings(),
             document.glyph_pronunciations(),
             self.dictionary,
+            self.russian,
         )
+        # Keyed by glyph rather than repeated per token: a transcript repeats each word
+        # about three times, and this is what makes carrying both languages affordable.
+        glossary = {}
+        for glyph, lexeme in lexemes.items():
+            entry = {"p": lexeme.pinyin}
+            if lexeme.native():
+                entry["ru"] = list(lexeme.native())
+                entry["rs"] = lexeme.native_source
+            if lexeme.english:
+                entry["en"] = list(lexeme.english)
+            glossary[glyph] = entry
 
         def describe(token):
-            if not token.word:
-                return {"t": token.text, "w": False}
-            lexeme = lexemes[token.text]
-            item = {"t": token.text, "w": True, "p": lexeme.pinyin}
-            if lexeme.meaning_source != NONE:
-                item["m"] = lexeme.meaning
-                item["ms"] = lexeme.meaning_source
-            return item
+            return {"t": token.text, "w": True} if token.word else {"t": token.text, "w": False}
 
         return json_response(
             200,
@@ -145,6 +154,8 @@ class ReaderApi:
                 "hanly_error": self.services.hanly_error or "",
                 "mosaic_available": self.services.mosaic is not None,
                 "mosaic_error": self.services.mosaic_error or "",
+                "native_language": document.native_language() or "ru",
+                "glossary": glossary,
                 "paragraphs": document.paragraphs(sentences),
                 "sentences": [
                     {
@@ -245,13 +256,15 @@ class ReaderApi:
             document.glyph_meanings(),
             document.glyph_pronunciations(),
             self.dictionary,
+            self.russian,
         )
         translations = document.sentence_translations()
         notes = []
         for glyph, sentence in chosen:
             lexeme = lexemes[glyph]
+            meaning = lexeme.native() or lexeme.english
             story = build_hanly_note(
-                lexeme.meaning or None,
+                "\n".join(meaning) or None,
                 sentence.text,
                 translations.get(sentence.text.strip()),
             )
