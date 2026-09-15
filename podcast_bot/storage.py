@@ -85,6 +85,9 @@ class Storage:
         self.db.executescript("""
         CREATE TABLE IF NOT EXISTS hanly_collections (
           episode_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, status TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS hanly_manual_collections (
+          key TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+          status TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS mosaic_packs (
           source_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, payload TEXT NOT NULL,
           status TEXT NOT NULL);
@@ -525,6 +528,29 @@ class Storage:
             (chat_id,),
         ).fetchone()
         return self.reader_document(row[0]) if row else None
+
+    def manual_collection(self, key: str):
+        return self.db.execute(
+            "SELECT uuid, name, status FROM hanly_manual_collections WHERE key=?", (key,)
+        ).fetchone()
+
+    def reserve_manual_collection(self, key: str, uuid: str, name: str):
+        """Identity and display name are committed before any Hanly network write."""
+        with self.db:
+            self.db.execute(
+                "INSERT OR IGNORE INTO hanly_manual_collections VALUES (?,?,?,?)",
+                (key, uuid, name, "pending"),
+            )
+            self.db.execute(
+                "UPDATE hanly_manual_collections SET status='unconfirmed' WHERE key=?", (key,)
+            )
+        return self.manual_collection(key)
+
+    def confirm_manual_collection(self, key: str) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE hanly_manual_collections SET status='verified' WHERE key=?", (key,)
+            )
 
     def hanly_note(self, glyph: str) -> str | None:
         """The note this integration last wrote for a glyph, or None if it never wrote one."""

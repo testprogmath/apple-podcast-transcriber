@@ -40,6 +40,7 @@ async def test_command_menu_scoped_to_owner():
         "zip",
         "reader",
         "hanly",
+        "add_hanly",
         "mosaic",
         "retry",
         "force",

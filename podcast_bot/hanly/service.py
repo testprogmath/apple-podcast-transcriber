@@ -13,6 +13,7 @@ from ..models import UserError
 from ..storage import Storage
 from ..study.models import StudyMaterial
 from ..study.service import pack_valid
+from . import manual
 from .auth import HanlyError
 from .client import HanlyClient, merge_glyphs
 
@@ -28,6 +29,19 @@ class HanlyResult:
 
     def message(self):
         return f"Hanly:\n✓ {self.name}\n✓ {self.requested} selected words/expressions verified ({self.total} cards in collection)"
+
+
+@dataclass(frozen=True)
+class ManualResult:
+    collection_id: str
+    name: str
+    glyph: str
+    present: bool
+    total: int
+
+    def message(self):
+        state = "Already in Hanly" if self.present else "Added to Hanly"
+        return f"✓ {state}\n\n{self.glyph}\nCollection: {self.name}"
 
 
 @dataclass(frozen=True)
@@ -70,6 +84,31 @@ class HanlyUploadService:
                 "UPDATE hanly_collections SET status='verified' WHERE episode_id=?", (episode,)
             )
         return HanlyResult(row["uuid"], name, len(glyphs), total)
+
+    async def add_manual_glyph(self, glyph: str) -> ManualResult:
+        """One arbitrary string, merged verbatim into the stable manual collection."""
+        async with self._lock:
+            return await self._add_manual(glyph)
+
+    async def _add_manual(self, glyph: str) -> ManualResult:
+        stored = self.storage.manual_collection(manual.KEY)
+        document = await self.client.get_collections_document()
+        row = self.storage.reserve_manual_collection(
+            manual.KEY,
+            stored["uuid"] if stored else str(uuid4()),
+            stored["name"] if stored else manual.distinct_name(document.collections),
+        )
+        collection = document.collections.get(row["uuid"])
+        present = bool(
+            collection
+            and not collection["deleted"]
+            and glyph in {g.strip() for g in collection["glyphs"]}
+        )
+        total = await self.client.upsert_episode_collection(
+            row["uuid"], row["name"], manual.COMMENT, [glyph], manual.KEY
+        )
+        self.storage.confirm_manual_collection(manual.KEY)
+        return ManualResult(row["uuid"], row["name"], glyph, present, total)
 
     async def write_notes(
         self, notes: list[tuple[str, str]], document_id: str = ""

@@ -45,6 +45,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 /reader
 /mosaic
 /hanly
+/add_hanly 不知不觉
 /status
 /retry
 /force <URL>
@@ -60,6 +61,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 - `/zip` retrieves the latest completed pack, even if a newer job is still processing.
 - The finished-job message links the episode audio and its Apple Podcasts page, so the recording sits beside its transcript.
 - `/reader` opens the latest transcript or study pack in the Reader. It never retranscribes; it reuses the stored transcript.
+- `/add_hanly <text>` files any Chinese word, phrase or sentence as a single Hanly card, with no episode, transcript or study pack involved.
 - Long jobs update one status message. Study failures leave the transcript usable and deliver it on its own, with an explanation and `/retry` guidance.
 
 ## Interactive Reader
@@ -265,6 +267,26 @@ For Mandarin Mosaic:
 - English is used regardless of `NATIVE_LANGUAGE`. No pinyin, Russian, reasons, tags, or timestamps enter the CSV.
 - Deterministic filtering removes obvious support/advertising material and repeated listening sentences. Punctuation-only repetitions and harmless interjection variants are deduplicated; global model ranking handles semantic overlap.
 - Reasons are retained in `study.json`. Timestamp fields remain null because the study stage does not invent audio alignment.
+
+## Manual Hanly cards
+
+Hanly's own interface only offers words its dictionary knows. The Firestore collection behind it does not care, so `/add_hanly` puts arbitrary text on a card:
+
+```text
+/add_hanly 辛苦了
+/add_hanly 不知不觉
+/add_hanly 塞翁失马，焉知非福
+```
+
+The whole argument is one card. Nothing is segmented, normalised or looked up: `塞翁失马，焉知非福` becomes a single glyph string, not four words, and an expression no dictionary has heard of is filed exactly as typed. Surrounding whitespace is trimmed and everything inside is kept.
+
+Everything lands in one collection named **Manual imports**, whose UUID is allocated once and stored in SQLite before the first network call, so it survives restarts and is keyed by neither the message nor the text. Repeating a card is a no-op that answers `✓ Already in Hanly` rather than claiming a new one. Delete the collection in Hanly and the next command restores it under the same UUID.
+
+A collection you created yourself that happens to be called *Manual imports* is never adopted: ownership comes from the stored UUID alone, and the integration takes the distinguishable name *Manual imports (bot)* instead.
+
+Arguments are checked only for the obvious: non-empty, at most 200 characters, one line, and containing at least one Chinese character. The cap sits well above any real sentence — the Reader's own limit for a sentence sent as translation context is 600 characters — while still rejecting a pasted paragraph. Dictionary membership is never a test.
+
+The write reuses the same Firestore path as episode uploads: conditional `currentDocument.updateTime`, bounded conflict retry, and a read-back that must show the card before Telegram reports success.
 
 ## Direct Mandarin Mosaic upload
 
