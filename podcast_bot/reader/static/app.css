@@ -420,3 +420,36 @@ ruby { ruby-align: center; }
 }
 
 #lexeme-actions button:disabled { opacity: .55; cursor: wait; }
+
+/* Source and compact controls share a row; translations span its full width. */
+.sentence { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 4px; margin: 14px 0; }
+.sentence-source { min-width: 0; }
+.sentence-controls { display: inline-flex; align-items: center; gap: 2px; }
+.sentence-controls button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0; margin: 0; border: 0;
+  border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer;
+  font: inherit; vertical-align: middle;
+}
+.sentence-controls .mark::before {
+  content: ""; width: 20px; height: 20px; border: 2px solid currentColor; border-radius: 50%;
+}
+.sentence-controls .mark[aria-pressed="true"] { color: var(--green); }
+.sentence-controls .mark[aria-pressed="true"]::before {
+  background: radial-gradient(circle, var(--green) 0 5px, transparent 6px);
+}
+.translation-icon {
+  display: inline-flex; align-items: center; justify-content: center; position: relative;
+  width: 28px; height: 28px; border-radius: 50%; background: var(--surface-alt);
+  font-size: 18px; font-weight: 600; line-height: 1;
+}
+.translation-icon small { font-size: 10px; margin-top: 10px; margin-left: -3px; }
+.translation-action[aria-expanded="true"] .translation-icon { background: var(--blue); color: var(--on-accent); }
+.sentence-controls button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.translation-action[aria-busy="true"] { opacity: .5; cursor: wait; }
+.sentence-translation { grid-column: 1 / -1; }
+.translation-text:not([hidden]), .translation-status:not([hidden]) {
+  display: block; margin: 6px 0 2px; color: var(--muted);
+  font-size: 16px; line-height: 1.55; font-weight: 400; cursor: text;
+}
+.translation-status:not([hidden]) { font-size: 12px; }

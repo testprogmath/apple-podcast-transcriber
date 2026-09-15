@@ -17,6 +17,7 @@ const state = {
   pinyin: false,
   language: "ru",
   glossary: {},
+  translationViews: [],
   vocabularyPending: new Set(),
   hanlyUploading: false,
 };
@@ -100,7 +101,10 @@ function toggleSentence(id) {
   if (state.picked.has(id)) state.picked.delete(id);
   else state.picked.add(id);
   const node = document.querySelector(`[data-sentence="${id}"]`);
-  if (node) node.classList.toggle("picked", state.picked.has(id));
+  if (node) {
+    node.classList.toggle("picked", state.picked.has(id));
+    node.querySelector(".mark").setAttribute("aria-pressed", String(state.picked.has(id)));
+  }
   refreshCounters();
   if (telegram && telegram.HapticFeedback) telegram.HapticFeedback.selectionChanged();
 }
@@ -119,6 +123,7 @@ function applyLanguage(language) {
   toggle.setAttribute("aria-pressed", language === "ru" ? "true" : "false");
   toggle.textContent = language.toUpperCase();
   if (state.lexeme) renderLexemeBody(state.lexeme.glyph);
+  state.translationViews.forEach((refresh) => refresh());
 }
 
 /** The chosen language, falling back to the other rather than showing nothing. */
@@ -253,13 +258,108 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme-action").focus();
 }
 
+function translationControl(sentence) {
+  const box = document.createElement("span");
+  box.className = "sentence-translation";
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "translation-action";
+  const icon = document.createElement("span");
+  icon.className = "translation-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "文";
+  const letter = document.createElement("small");
+  letter.textContent = "A";
+  icon.appendChild(letter);
+  action.appendChild(icon);
+  const label = (text) => { action.setAttribute("aria-label", text); action.title = text; };
+  label("Show translation");
+  action.setAttribute("aria-expanded", "false");
+  const content = document.createElement("span");
+  content.className = "translation-text";
+  content.id = `translation-${sentence.id}`;
+  content.setAttribute("lang", "ru");
+  content.setAttribute("aria-live", "polite");
+  action.setAttribute("aria-controls", content.id);
+  content.hidden = true;
+  const cache = {};
+  const pending = {};
+  let visible = false;
+  let revision = 0;
+  box.addEventListener("click", (event) => event.stopPropagation());
+  async function show() {
+    const language = state.language;
+    const requestRevision = ++revision;
+    content.hidden = true;
+    content.setAttribute("lang", language);
+    status.hidden = true;
+    action.setAttribute("aria-expanded", String(visible));
+    if (!visible) {
+      label("Show translation");
+      action.setAttribute("aria-busy", "false");
+      return;
+    }
+    label("Hide translation");
+    if (!cache[language]) {
+      status.textContent = "Translating…";
+      status.hidden = false;
+      label("Translating…");
+      action.setAttribute("aria-busy", "true");
+      try {
+        if (!pending[language]) {
+          pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
+            method: "POST", body: JSON.stringify({ language }),
+          }).then((result) => {
+            if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
+              throw new Error("Invalid translation");
+            }
+            cache[language] = result.translation;
+          }).finally(() => { delete pending[language]; });
+        }
+        await pending[language];
+      } catch (error) {
+        if (requestRevision !== revision) return;
+        visible = false;
+        action.setAttribute("aria-expanded", "false");
+        label("Translation unavailable · Retry");
+        status.textContent = "Translation unavailable · Tap the icon to retry";
+        return;
+      } finally {
+        if (requestRevision === revision) action.setAttribute("aria-busy", "false");
+      }
+    }
+    if (requestRevision !== revision || !visible) return;
+    content.textContent = cache[language];
+    content.hidden = false;
+    status.hidden = true;
+    label("Hide translation");
+  }
+  action.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (visible && pending[state.language]) return;
+    visible = !visible;
+    show();
+  });
+  state.translationViews.push(() => { if (visible) show(); });
+  const status = document.createElement("span");
+  status.className = "translation-status";
+  status.setAttribute("role", "status");
+  status.hidden = true;
+  box.appendChild(content);
+  box.appendChild(status);
+  return { action, box } ;
+}
+
 function renderSentence(sentence) {
   const node = document.createElement("span");
   node.className = "sentence";
   node.dataset.sentence = String(sentence.id);
+  const source = document.createElement("span");
+  source.className = "sentence-source";
+  node.appendChild(source);
   for (const token of sentence.tokens) {
     if (!token.w) {
-      node.appendChild(document.createTextNode(token.t));
+      source.appendChild(document.createTextNode(token.t));
       continue;
     }
     const pinyin = (state.glossary[token.t] || {}).p || "";
@@ -284,13 +384,27 @@ function renderSentence(sentence) {
       event.stopPropagation();
       openLexeme(token, sentence.id, word);
     });
-    node.appendChild(word);
+    source.appendChild(word);
   }
-  const mark = document.createElement("span");
+  const controls = document.createElement("span");
+  controls.className = "sentence-controls";
+  const mark = document.createElement("button");
+  mark.type = "button";
   mark.className = "mark";
-  mark.textContent = "◎";
+  mark.setAttribute("aria-label", "Select sentence for Mandarin Mosaic");
+  mark.setAttribute("aria-pressed", "false");
   mark.title = "Select this sentence for Mandarin Mosaic";
-  node.appendChild(mark);
+  mark.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleSentence(sentence.id);
+  });
+  controls.appendChild(mark);
+  node.appendChild(controls);
+  if (/[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
+    const translation = translationControl(sentence);
+    controls.appendChild(translation.action);
+    node.appendChild(translation.box);
+  }
   node.addEventListener("click", () => toggleSentence(sentence.id));
   return node;
 }

@@ -14,6 +14,7 @@ from .dictionary import Dictionary
 from .documents import ReaderDocument
 from .enrich import enrich
 from .tokens import HAN, tokenize
+from .translations import SentenceTranslations
 
 log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
@@ -54,9 +55,17 @@ def json_response(status: int, payload: dict):
 
 class ReaderApi:
     def __init__(
-        self, config, storage, services, dev_mode: bool = False, dictionary=None, russian=None
+        self,
+        config,
+        storage,
+        services,
+        dev_mode: bool = False,
+        dictionary=None,
+        russian=None,
+        translations=None,
     ):
         self.config, self.storage, self.services = config, storage, services
+        self.translations = translations or SentenceTranslations(storage)
         self.dev_mode = dev_mode
         self.dictionary = Dictionary() if dictionary is None else dictionary
         self.russian = RussianDictionary() if russian is None else russian
@@ -78,6 +87,29 @@ class ReaderApi:
         if method == "GET" and path.startswith("/reader/"):
             return self.static(path[len("/reader/") :])
         parts = path.strip("/").split("/")
+        if (
+            parts[:2] == ["api", "reader"]
+            and len(parts) == 6
+            and parts[3] == "sentences"
+            and parts[5] == "translation"
+        ):
+            document = self.authorize(headers, parts[2])
+            if method != "POST":
+                raise ApiError(405, "Use POST for sentence translation.")
+            data = self.payload(body) if body else {}
+            language = data.get("language", "ru")
+            if (
+                set(data) - {"language"}
+                or not isinstance(language, str)
+                or language not in {"ru", "en"}
+            ):
+                raise ApiError(400, "Translation accepts only language: ru or en.")
+            if not re.fullmatch(r"0|[1-9][0-9]{0,5}", parts[4]):
+                raise ApiError(400, "Invalid sentence ID.")
+            sentence = next((s for s in document.sentences() if s.id == int(parts[4])), None)
+            if sentence is None:
+                raise ApiError(404, "Unknown Reader sentence.")
+            return json_response(200, await self.translations.resolve(document, sentence, language))
         if parts[:2] == ["api", "reader"] and len(parts) in (3, 4):
             document = self.authorize(headers, parts[2])
             if method == "GET" and len(parts) == 3:

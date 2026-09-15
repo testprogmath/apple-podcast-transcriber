@@ -103,6 +103,20 @@ class Storage:
           updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS hanly_glyph_notes (
           glyph TEXT PRIMARY KEY, story TEXT NOT NULL, updated TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS reader_sentence_translations (
+          document_id TEXT NOT NULL, sentence_id INTEGER NOT NULL,
+          source_text TEXT NOT NULL, translation TEXT NOT NULL,
+          source TEXT NOT NULL CHECK(source='generated'), created TEXT NOT NULL,
+          updated TEXT NOT NULL, PRIMARY KEY(document_id,sentence_id));
+        CREATE TABLE IF NOT EXISTS reader_translations_by_language (
+          document_id TEXT NOT NULL, sentence_id INTEGER NOT NULL,
+          language TEXT NOT NULL CHECK(language IN ('ru','en')),
+          source_text TEXT NOT NULL, translation TEXT NOT NULL,
+          source TEXT NOT NULL CHECK(source='generated'), created TEXT NOT NULL,
+          updated TEXT NOT NULL, PRIMARY KEY(document_id,sentence_id,language));
+        INSERT OR IGNORE INTO reader_translations_by_language
+          SELECT document_id,sentence_id,'ru',source_text,translation,source,created,updated
+          FROM reader_sentence_translations;
         CREATE TABLE IF NOT EXISTS reader_documents (
           id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, title TEXT NOT NULL,
           source_type TEXT NOT NULL, source_reference TEXT NOT NULL, raw_text TEXT NOT NULL,
@@ -149,6 +163,42 @@ class Storage:
     def delete_vocabulary_state(self, glyph: str) -> None:
         with self.db:
             self.db.execute("DELETE FROM vocabulary_state WHERE glyph=?", (glyph,))
+
+    def reader_translation(
+        self, document_id: str, sentence_id: int, source_text: str, language: str = "ru"
+    ) -> str | None:
+        row = self.db.execute(
+            "SELECT translation FROM reader_translations_by_language "
+            "WHERE document_id=? AND sentence_id=? AND source_text=? AND language=?",
+            (document_id, sentence_id, source_text, language),
+        ).fetchone()
+        return row["translation"] if row else None
+
+    def save_reader_translation(
+        self,
+        document_id: str,
+        sentence_id: int,
+        source_text: str,
+        translation: str,
+        language: str = "ru",
+    ) -> None:
+        timestamp = now()
+        with self.db:
+            self.db.execute(
+                "INSERT INTO reader_translations_by_language VALUES (?,?,?,?,?,'generated',?,?) "
+                "ON CONFLICT(document_id,sentence_id,language) DO UPDATE SET "
+                "source_text=excluded.source_text,translation=excluded.translation,"
+                "source=excluded.source,updated=excluded.updated",
+                (
+                    document_id,
+                    sentence_id,
+                    language,
+                    source_text,
+                    translation,
+                    timestamp,
+                    timestamp,
+                ),
+            )
 
     def close(self) -> None:
         self.db.close()
