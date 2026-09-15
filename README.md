@@ -481,8 +481,9 @@ away (see [deploy/README.md](deploy/README.md)).
 `pyproject.toml` holds the version and everything else follows it: the git tag, the
 `org.opencontainers.image.version` label on the released image, and the `Version:` line in
 `/status`. **Actions → Release → Run workflow** on `main` takes `patch`, `minor` or `major`,
-raises that part with `tools/bump_version.py`, commits `chore(release): vX.Y.Z` and pushes an
-annotated `vX.Y.Z` tag.
+raises that part with `tools/bump_version.py`, commits `chore(release): vX.Y.Z`, pushes an
+annotated `vX.Y.Z` tag and opens a GitHub release for it whose notes are generated from the pull
+requests merged since the previous one.
 
 Tagging never deploys. A push made with the workflow's own token deliberately does not cascade
 into another workflow, so releasing and shipping stay two separate decisions: tag first, then

@@ -103,6 +103,13 @@ def test_the_release_workflow_tags_main_and_never_deploys():
     assert "docker" not in RELEASE and "ssh" not in RELEASE
 
 
+def test_the_release_notes_describe_the_tag_that_was_just_pushed():
+    assert 'gh release create "v$version" --verify-tag --generate-notes\n' in RELEASE
+    assert "GH_TOKEN: ${{ github.token }}\n" in RELEASE
+    push = RELEASE.index('git push origin HEAD:main "refs/tags/v$version"')
+    assert push < RELEASE.index("gh release create")
+
+
 def test_the_release_secret_stays_out_of_pull_requests():
     assert "PODCAST_DEPLOY_SSH_KEY" in CI
     assert "pull_request_target" not in CI
