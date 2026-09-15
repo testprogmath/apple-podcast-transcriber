@@ -459,3 +459,53 @@ The popup is authoritative; this feature adds no document-wide coloring and
 changes neither Mandarin Mosaic nor Hanly Notes. Verify the secondary action,
 status badge, focus, and wrapping in Telegram's narrow and dark WebViews before
 release. Frontend regression tests: `node tests/frontend/app.test.js`.
+
+### On-demand Reader sentence translations
+
+Each Chinese sentence has a compact **Show translation** action. Reveal or hide
+several Russian translations independently; word taps, Pinyin, Hanly and Mosaic
+selection keep their existing behavior. Opening a document never generates translations.
+
+`POST /api/reader/<document-id>/sentences/<sentence-id>/translation` requires the
+same Telegram authentication and document ownership as other Reader endpoints.
+Send an empty body or `{}`; source text and prompts are never accepted from the
+browser. The response contains `sentence_id`, `translation`, and `source`
+(`study` or `generated`).
+
+Resolution order: Russian study material → generated SQLite cache → one lazy
+model request. Study examples/passages match the **whole canonical sentence**,
+ignoring only whitespace and NFC differences (the existing study normalization
+rule). Punctuation and all other characters must agree. Conflicting matches,
+partial passages, non-Russian packs and untranslated output are not reused.
+English Mosaic export translations are not used for this Russian reading aid.
+
+The additive `reader_sentence_translations` table stores document/sentence IDs,
+exact source text, translation, source, created and updated timestamps, with a
+composite primary key. Generated cache hits require identical source text;
+stale entries are replaced after successful generation. Study translations stay
+in their existing material files. Hiding does not delete either cache.
+
+Generation reuses `OpenAIStudyClient` and the bot's shared OpenAI connection,
+using the existing mini default (`StudySettings.model`). The structured response
+contains only a translation. A consistent single-answer prompt includes up to
+3,000 target characters and 600 characters from each neighboring sentence;
+only the target translation is saved. Output is bounded to 2,400 tokens and
+6,000 characters and must contain Russian text. No extra temperature parameter
+is passed through the shared model abstraction.
+
+The total request budget, including waiting for a slot, is 45 seconds. Up to two
+generations run concurrently, with at most eight distinct pending requests.
+Same-sentence concurrent requests share one task, including its failure. SDK
+retries remain disabled; failures require an explicit retry and may have been
+billed. No public translation service or full-document generation is exposed.
+
+Manual Telegram checks before release (paid generation requires explicit approval):
+
+- Open a study sentence with an exact Russian translation: reveal immediately,
+  confirm `source=study` and no model request.
+- Open direct text: first reveal loads locally, then displays Russian; reopen
+  the Reader and confirm cached reuse without another generation.
+- Try `大家好，欢迎回来，Mami Chinese。`: preserve the show name in natural Russian.
+- Select a Hanly word and a Mosaic sentence, reveal several translations and
+  toggle Pinyin: all selections and visible translations remain independent.
+- Check narrow/light/dark WebViews, focus, readable secondary text and retry UI.

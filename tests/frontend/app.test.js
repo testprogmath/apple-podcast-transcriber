@@ -659,6 +659,109 @@ test("late vocabulary response updates its glyph and blocks an overlapping Hanly
   assert.strictEqual(nodes["lexeme-state"].textContent, "✓ Known");
 });
 
+const translationButton = (body, id) => sentence(body, id).querySelector(".translation-action");
+const translationText = (body, id) => sentence(body, id).querySelector(".translation-text");
+
+test("translations start hidden without any translation request", async () => {
+  const { body, calls } = start();
+  await settle();
+  assert.ok(translationText(body, 0).hidden);
+  assert.strictEqual(translationButton(body, 0).textContent, "Show translation");
+  assert.strictEqual(calls.length, 1);
+});
+
+for (const source of ["study", "generated"]) {
+  test(`${source} translation shows, hides and reopens without another request`, async () => {
+    const { body, calls } = start({ responses: {
+      "/sentences/0/translation": () => ({ ok: true, json: async () => ({
+        sentence_id: 0, translation: "Они получили медаль.", source,
+      }) }),
+    }});
+    await settle();
+    const button = translationButton(body, 0);
+    button.click(body);
+    await settle();
+    assert.strictEqual(translationText(body, 0).textContent, "Они получили медаль.");
+    assert.ok(!translationText(body, 0).hidden);
+    assert.strictEqual(button.getAttribute("aria-expanded"), "true");
+    button.click(body);
+    assert.ok(translationText(body, 0).hidden);
+    button.click(body);
+    await settle();
+    assert.ok(!translationText(body, 0).hidden);
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls[1].body, "{}");
+  });
+}
+
+test("translation loading is local and repeated taps coalesce", async () => {
+  let finish;
+  const { body, nodes, calls } = start({ responses: {
+    "/sentences/0/translation": () => new Promise((resolve) => { finish = resolve; }),
+  }});
+  await settle();
+  const button = translationButton(body, 0);
+  button.click(body);
+  button.fire("click");
+  assert.strictEqual(button.textContent, "Translating…");
+  assert.ok(button.disabled);
+  assert.ok(translationText(body, 0).hidden);
+  assert.ok(!translationButton(body, 1).disabled);
+  word(body, "获得").click(body);
+  assert.ok(!nodes.lexeme.hidden);
+  finish({ ok: true, json: async () => ({ sentence_id: 0, translation: "Они получили медаль.", source: "generated" }) });
+  await settle();
+  assert.ok(!button.disabled);
+  assert.strictEqual(calls.length, 2);
+});
+
+test("several translations coexist with Hanly, Mosaic and pinyin", async () => {
+  const { body, nodes } = start({ responses: {
+    "/sentences/0/translation": () => ({ ok: true, json: async () => ({ sentence_id: 0, translation: "Они получили медаль.", source: "study" }) }),
+    "/sentences/1/translation": () => ({ ok: true, json: async () => ({ sentence_id: 1, translation: "Исследовать трудно.", source: "generated" }) }),
+  }});
+  await settle();
+  word(body, "获得").click(body);
+  nodes["lexeme-action"].fire("click");
+  sentence(body, 0).click(body);
+  const mosaic = nodes["mosaic-counter"].textContent;
+  const hanly = nodes["hanly-counter"].textContent;
+  translationButton(body, 0).click(body);
+  translationButton(body, 1).click(body);
+  await settle();
+  assert.ok(!translationText(body, 0).hidden && !translationText(body, 1).hidden);
+  translationText(body, 0).click(body);
+  nodes["pinyin-toggle"].fire("click");
+  assert.ok(!translationText(body, 0).hidden);
+  assert.strictEqual(nodes["mosaic-counter"].textContent, mosaic);
+  assert.strictEqual(nodes["hanly-counter"].textContent, hanly);
+  assert.ok(nodes.lexeme.hidden);
+});
+
+test("failed translation retries only explicitly without changing selections", async () => {
+  let fails = true;
+  const { body, nodes, calls } = start({ responses: {
+    "/sentences/0/translation": () => fails
+      ? { ok: false, json: async () => ({ error: "Unavailable" }) }
+      : { ok: true, json: async () => ({ sentence_id: 0, translation: "Они получили медаль.", source: "generated" }) },
+  }});
+  await settle();
+  sentence(body, 0).click(body);
+  const selected = nodes["mosaic-counter"].textContent;
+  const button = translationButton(body, 0);
+  button.click(body);
+  await settle();
+  assert.strictEqual(button.textContent, "Translation unavailable · Retry");
+  assert.ok(translationText(body, 0).hidden);
+  assert.strictEqual(calls.length, 2);
+  assert.strictEqual(nodes["mosaic-counter"].textContent, selected);
+  fails = false;
+  button.click(body);
+  await settle();
+  assert.ok(!translationText(body, 0).hidden);
+  assert.strictEqual(calls.length, 3);
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of Object.entries(tests)) {

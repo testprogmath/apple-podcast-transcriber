@@ -253,6 +253,65 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme-action").focus();
 }
 
+function translationControl(sentence) {
+  const box = document.createElement("span");
+  box.className = "sentence-translation";
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "translation-action";
+  action.textContent = "Show translation";
+  action.setAttribute("aria-expanded", "false");
+  const content = document.createElement("span");
+  content.className = "translation-text";
+  content.id = `translation-${sentence.id}`;
+  content.setAttribute("lang", "ru");
+  content.setAttribute("aria-live", "polite");
+  action.setAttribute("aria-controls", content.id);
+  content.hidden = true;
+  let translated = "";
+  let loading = false;
+  box.addEventListener("click", (event) => event.stopPropagation());
+  action.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    if (loading) return;
+    if (!content.hidden) {
+      content.hidden = true;
+      action.textContent = "Show translation";
+      action.setAttribute("aria-expanded", "false");
+      return;
+    }
+    if (!translated) {
+      loading = true;
+      action.disabled = true;
+      action.textContent = "Translating…";
+      action.setAttribute("aria-busy", "true");
+      try {
+        const result = await api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
+          method: "POST", body: "{}",
+        });
+        if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
+          throw new Error("Invalid translation");
+        }
+        translated = result.translation;
+        content.textContent = translated;
+      } catch (error) {
+        action.textContent = "Translation unavailable · Retry";
+        return;
+      } finally {
+        loading = false;
+        action.disabled = false;
+        action.setAttribute("aria-busy", "false");
+      }
+    }
+    content.hidden = false;
+    action.textContent = "Hide translation";
+    action.setAttribute("aria-expanded", "true");
+  });
+  box.appendChild(content);
+  box.appendChild(action);
+  return box;
+}
+
 function renderSentence(sentence) {
   const node = document.createElement("span");
   node.className = "sentence";
@@ -291,6 +350,7 @@ function renderSentence(sentence) {
   mark.textContent = "◎";
   mark.title = "Select this sentence for Mandarin Mosaic";
   node.appendChild(mark);
+  if (/[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) node.appendChild(translationControl(sentence));
   node.addEventListener("click", () => toggleSentence(sentence.id));
   return node;
 }

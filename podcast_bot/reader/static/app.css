@@ -420,3 +420,28 @@ ruby { ruby-align: center; }
 }
 
 #lexeme-actions button:disabled { opacity: .55; cursor: wait; }
+
+/* Sentence translations are a reading aid, independent of Mosaic selection. */
+.translation-action {
+  display: inline-block;
+  padding: 4px 0;
+  margin: 0 0 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.translation-action:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.translation-action:disabled { cursor: wait; }
+.translation-text:not([hidden]) {
+  display: block;
+  margin: 6px 0 2px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.55;
+  font-weight: 400;
+  cursor: text;
+}

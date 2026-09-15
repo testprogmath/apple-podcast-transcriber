@@ -496,7 +496,15 @@ def build_application(config: Config, storage: Storage) -> Application:
         handlers.worker = Worker(storage, pipeline, status, deliver, upload=handlers.uploads.run)
         handlers.worker.start()
         if config.reader_enabled and config.reader_url:
-            api = ReaderApi(config, storage, handlers, dev_mode=config.reader_dev_mode)
+            from .reader.translations import SentenceTranslations
+
+            api = ReaderApi(
+                config,
+                storage,
+                handlers,
+                dev_mode=config.reader_dev_mode,
+                translations=SentenceTranslations(storage, OpenAIStudyClient(openai)),
+            )
             handlers.reader = ReaderServer(api, config.reader_host, config.reader_port)
             try:
                 await handlers.reader.start()
