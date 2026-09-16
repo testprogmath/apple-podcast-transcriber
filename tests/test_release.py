@@ -103,10 +103,17 @@ def test_the_release_workflow_tags_main_and_never_deploys():
     assert "docker" not in RELEASE and "ssh" not in RELEASE
 
 
+def test_the_tag_and_the_branch_move_together_or_not_at_all():
+    # Without --atomic a protected branch rejects HEAD:main while the tag still lands,
+    # leaving a version tag on a commit no branch can reach.
+    assert 'git push --atomic origin HEAD:main "refs/tags/v$version"\n' in RELEASE
+    assert "git push origin HEAD:main" not in RELEASE
+
+
 def test_the_release_notes_describe_the_tag_that_was_just_pushed():
     assert 'gh release create "v$version" --verify-tag --generate-notes\n' in RELEASE
     assert "GH_TOKEN: ${{ github.token }}\n" in RELEASE
-    push = RELEASE.index('git push origin HEAD:main "refs/tags/v$version"')
+    push = RELEASE.index('git push --atomic origin HEAD:main "refs/tags/v$version"')
     assert push < RELEASE.index("gh release create")
 
 

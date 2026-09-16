@@ -38,7 +38,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "chore(release): v$version"
           git tag -a "v$version" -m "v$version"
-          git push origin HEAD:main "refs/tags/v$version"
+          # One ref update, not two: a rejected branch push must not leave the tag behind.
+          git push --atomic origin HEAD:main "refs/tags/v$version"
           # --verify-tag releases the tag just pushed rather than letting gh create its own.
           gh release create "v$version" --verify-tag --generate-notes
           echo "Released v$version. Deploy it from Actions: CI, Run workflow, ref v$version, deploy checked." \
