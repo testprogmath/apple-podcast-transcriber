@@ -140,7 +140,92 @@ function markInspecting(node) {
   if (node) node.classList.add("inspecting");
 }
 
+/** Select by BCP-47 metadata, never platform-specific voice names. */
+function selectMandarinVoice(voices) {
+  const rank = (voice) => {
+    const lang = String(voice.lang || "").toLowerCase().replace(/_/g, "-");
+    if (lang === "zh-cn") return 0;
+    if (/^(zh-(cn|hans|sg)(-|$)|cmn(-|$))/.test(lang)) return 1;
+    if (/^zh(-|$)/.test(lang) && !/^zh-(hk|mo)(-|$)/.test(lang)) return 2;
+    if (/^zh-/.test(lang)) return 3;
+    return 99;
+  };
+  return voices.filter((voice) => rank(voice) < 99).sort((a, b) => rank(a) - rank(b))[0];
+}
+
+const speech = {
+  synth: window.speechSynthesis,
+  Utterance: window.SpeechSynthesisUtterance,
+  voices: [],
+  active: null,
+};
+const pronunciationButton = el("lexeme-pronounce");
+const canPronounce = !!(speech.synth && typeof speech.Utterance === "function"
+  && typeof speech.synth.speak === "function" && typeof speech.synth.cancel === "function");
+pronunciationButton.hidden = !canPronounce;
+
+function refreshVoices() {
+  try { speech.voices = Array.from(speech.synth.getVoices() || []); }
+  catch (error) { speech.voices = []; }
+}
+
+function stopPronunciation() {
+  // cancel() is global to this page's synthesizer: call it only while we own an utterance.
+  if (!speech.active) return;
+  speech.active = null;
+  pronunciationButton.classList.remove("speaking");
+  try { speech.synth.cancel(); } catch (error) { /* Popup remains usable. */ }
+}
+
+function pronounce(event) {
+  event.stopPropagation();
+  if (!canPronounce || !state.lexeme) return;
+  const glyph = state.lexeme.glyph.trim();
+  if (!glyph) return;
+  stopPronunciation();
+  let utterance;
+  let reported = false;
+  const unavailable = () => {
+    if (!reported) toast("Pronunciation unavailable", true);
+    reported = true;
+  };
+  const finish = (failed) => {
+    if (speech.active !== utterance) return;
+    speech.active = null;
+    pronunciationButton.classList.remove("speaking");
+    if (failed) unavailable();
+  };
+  try {
+    refreshVoices();
+    utterance = new speech.Utterance(glyph);
+    utterance.lang = "zh-CN";
+    const voice = selectMandarinVoice(speech.voices);
+    if (voice) utterance.voice = voice;
+    utterance.onstart = () => {
+      if (speech.active === utterance) pronunciationButton.classList.add("speaking");
+    };
+    utterance.onend = () => finish(false);
+    utterance.onerror = () => finish(true);
+    speech.active = utterance;
+    speech.synth.speak(utterance);
+  } catch (error) {
+    if (utterance && speech.active === utterance) stopPronunciation();
+    unavailable();
+  }
+}
+
+if (canPronounce) {
+  refreshVoices();
+  speech.synth.addEventListener?.("voiceschanged", refreshVoices);
+  pronunciationButton.addEventListener("click", pronounce);
+  window.addEventListener?.("pagehide", stopPronunciation);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopPronunciation();
+  });
+}
+
 function closeLexeme() {
+  stopPronunciation();
   state.lexeme = null;
   el("lexeme").hidden = true;
   markInspecting(null);
@@ -248,6 +333,8 @@ function renderLexemeBody(glyph) {
 }
 
 function openLexeme(token, sentenceId, node) {
+  stopPronunciation();
+  pronunciationButton.setAttribute("aria-label", `Pronounce ${token.t.trim()}`);
   state.lexeme = { glyph: token.t, sentenceId };
   closeLexeme.origin = node;
   renderLexemeBody(token.t);

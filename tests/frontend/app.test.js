@@ -46,6 +46,7 @@ const senses = (nodes) => nodes["lexeme-senses"].children.map((li) => li.textCon
 
 function start(options = {}) {
   const env = setup(options);
+  if (options.speech) Object.assign(window, options.speech);
   const calls = [];
   const responses = options.responses || {};
   const payload = structuredClone(options.document || DOCUMENT);
@@ -797,6 +798,158 @@ test("late Russian response cannot replace the selected English translation", as
   finish({ ok: true, json: async () => ({ sentence_id: 0, translation: "Они получили медаль.", source: "generated" }) });
   await settle();
   assert.strictEqual(translationText(body, 0).textContent, "They received a medal.");
+});
+
+function fakeSpeech(voices = []) {
+  const events = {};
+  const spoken = [];
+  let cancelled = 0;
+  return {
+    spoken, events, get cancelled() { return cancelled; },
+    speechSynthesis: {
+      getVoices: () => voices,
+      addEventListener: (name, handler) => { events[name] = handler; },
+      speak: (utterance) => { spoken.push(utterance); utterance.onstart(); },
+      cancel: () => { cancelled += 1; },
+    },
+    SpeechSynthesisUtterance: class { constructor(text) { this.text = text; } },
+    addEventListener: (name, handler) => { events[name] = handler; },
+  };
+}
+
+for (const [langs, expected] of [
+  [["en-US", "zh-HK", "zh-TW", "zh-CN"], "zh-CN"],
+  [["zh-TW", "ZH-cn"], "ZH-cn"],
+  [["zh-HK", "zh-SG"], "zh-SG"],
+  [["zh-HK", "zh-Hans"], "zh-Hans"],
+  [["zh-HK", "cmn-TW"], "cmn-TW"],
+  [["zh-HK", "zh-TW"], "zh-TW"],
+  [["zh-HK"], "zh-HK"],
+  [["en-US", "ru-RU"], undefined],
+  [[], undefined],
+]) {
+  test(`speech voice metadata ranking: ${langs.join(",") || "empty"}`, async () => {
+    const speech = fakeSpeech(langs.map((lang, index) => ({ lang, name: `Voice ${index}` })));
+    const { body, nodes } = start({ speech });
+    await settle();
+    word(body, "获得").click(body);
+    nodes["lexeme-pronounce"].click(body);
+    assert.strictEqual(speech.spoken[0].voice?.lang, expected);
+    assert.strictEqual(speech.spoken[0].lang, "zh-CN");
+    assert.strictEqual(speech.spoken[0].text, "获得");
+  });
+}
+
+test("unsupported speech is hidden and popup still works", async () => {
+  const { body, nodes } = start();
+  await settle();
+  word(body, "获得").click(body);
+  assert.ok(nodes["lexeme-pronounce"].hidden);
+  assert.ok(!nodes.lexeme.hidden);
+});
+
+test("voiceschanged refreshes voices without autoplay", async () => {
+  const voices = [];
+  const speech = fakeSpeech(voices);
+  const { body, nodes } = start({ speech });
+  await settle();
+  word(body, "获得").click(body);
+  assert.ok(!nodes["lexeme-pronounce"].hidden);
+  assert.strictEqual(speech.spoken.length, 0);
+  voices.push({ lang: "zh-CN", name: "Any platform voice" });
+  speech.events.voiceschanged();
+  assert.strictEqual(speech.spoken.length, 0);
+  nodes["lexeme-pronounce"].click(body);
+  assert.strictEqual(speech.spoken[0].voice, voices[0]);
+});
+
+test("repeat restarts; old callbacks cannot clear current playback", async () => {
+  const speech = fakeSpeech();
+  const { body, nodes } = start({ speech });
+  await settle();
+  word(body, "获得").click(body);
+  const button = nodes["lexeme-pronounce"];
+  button.click(body);
+  assert.ok(button.classes.has("speaking"));
+  button.click(body);
+  assert.strictEqual(speech.cancelled, 1);
+  assert.strictEqual(speech.spoken.length, 2);
+  speech.spoken[0].onerror();
+  assert.ok(button.classes.has("speaking"));
+  speech.spoken[1].onend();
+  assert.ok(!button.classes.has("speaking"));
+  nodes["lexeme-close"].fire("click");
+  assert.strictEqual(speech.cancelled, 1, "idle popup close does not cancel unrelated speech");
+});
+
+test("switching word, closing popup and leaving page stop Reader speech", async () => {
+  const speech = fakeSpeech();
+  const { body, nodes } = start({ speech });
+  await settle();
+  word(body, "获得").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  word(body, "做研究").click(body);
+  assert.strictEqual(speech.cancelled, 1);
+  nodes["lexeme-pronounce"].click(body);
+  assert.strictEqual(speech.spoken[1].text, "做研究");
+  nodes["lexeme-close"].fire("click");
+  assert.strictEqual(speech.cancelled, 2);
+  word(body, "获得").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  speech.events.pagehide();
+  assert.strictEqual(speech.cancelled, 3);
+});
+
+for (const glyph of ["歡迎", "辛苦了", "研究成果", "  第3届AI奖！  "]) {
+  test(`speech preserves arbitrary glyph: ${glyph}`, async () => {
+    const document = structuredClone(DOCUMENT);
+    document.sentences[0].tokens[0] = { t: glyph, w: true };
+    const speech = fakeSpeech();
+    const { body, nodes } = start({ speech, document });
+    await settle();
+    word(body, glyph).click(body);
+    nodes["lexeme-pronounce"].click(body);
+    assert.strictEqual(speech.spoken[0].text, glyph.trim());
+    assert.strictEqual(nodes["lexeme-pronounce"].getAttribute("aria-label"), `Pronounce ${glyph.trim()}`);
+  });
+}
+
+test("speech leaves translation, baskets and pinyin independent", async () => {
+  const speech = fakeSpeech();
+  const { body, nodes, calls } = start({ speech, responses: {
+    "/sentences/0/translation": () => ({ ok: true, json: async () => ({ sentence_id: 0, translation: "Перевод.", source: "study" }) }),
+  }});
+  await settle();
+  word(body, "获得").click(body);
+  nodes["lexeme-action"].fire("click");
+  sentence(body, 0).click(body);
+  translationButton(body, 0).click(body);
+  await settle();
+  const mosaic = nodes["mosaic-counter"].textContent;
+  const hanly = nodes["hanly-counter"].textContent;
+  const requests = calls.length;
+  word(body, "获得").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  nodes["pinyin-toggle"].fire("click");
+  assert.strictEqual(speech.spoken.length, 1);
+  nodes["lexeme-pronounce"].click(body);
+  assert.ok(speech.spoken.every((utterance) => utterance.text === "获得"));
+  assert.strictEqual(nodes["hanly-counter"].textContent, hanly);
+  assert.strictEqual(nodes["mosaic-counter"].textContent, mosaic);
+  assert.strictEqual(calls.length, requests);
+  assert.ok(!nodes.lexeme.hidden && !translationText(body, 0).hidden);
+});
+
+test("speech failures clear active state without affecting the popup", async () => {
+  const speech = fakeSpeech();
+  speech.speechSynthesis.speak = () => { throw new Error("Platform failure"); };
+  const { body, nodes } = start({ speech });
+  await settle();
+  word(body, "获得").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  assert.ok(!nodes["lexeme-pronounce"].classes.has("speaking"));
+  assert.strictEqual(nodes.toast.textContent, "Pronunciation unavailable");
+  assert.ok(!nodes.lexeme.hidden);
 });
 
 (async () => {

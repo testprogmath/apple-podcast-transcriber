@@ -518,3 +518,39 @@ The additive `reader_translations_by_language` table keys cached results by
 (document_id, sentence_id, language); existing Russian cache entries are copied
 without deleting the legacy table. Exact English Mosaic study translations may
 be reused for EN. Hidden sentences never generate merely because language changes.
+
+
+### System word pronunciation
+
+Tap the compact speaker beside pinyin in the lexical popup to pronounce the exact
+trimmed Chinese word/chunk, including traditional characters and mixed text.
+Only a tap starts speech; Pinyin, definitions and sentence translations are never
+spoken. The button is hidden when Web Speech is unsupported. Playback uses the
+browser/system speech engine with no backend API, audio storage or per-play
+application charge. Availability and offline behavior depend on installed voices
+and the browser's speech provider; the Reader does not guarantee offline synthesis.
+
+Voice selection uses language metadata: zh-CN first, then zh-Hans/zh-SG/cmn,
+then other Chinese voices with zh-HK/zh-MO last. Empty voice discovery falls back
+to `utterance.lang = "zh-CN"` without choosing an English/Russian voice. Voices
+refresh on `voiceschanged` and on tap. Rate/pitch remain natural system defaults.
+Repeat taps cancel/restart the Reader's utterance. Changing or closing the popup,
+hiding the page or leaving it stops active Reader speech; idle actions do not
+cancel speech. No voice telemetry is logged.
+
+Manual smoke matrix (not yet verified on physical devices):
+
+| Browser/device | Checks |
+| --- | --- |
+| iOS Telegram WebView | Mandarin voice, delayed voice loading, repeat taps, popup close |
+| Android Telegram WebView | Mandarin voice availability, repeat taps, switching words |
+| Telegram Desktop | Voice availability, keyboard activation and focus |
+| Safari | User-gesture playback, delayed voices, page hide |
+| Chrome | Mandarin ranking, repeat taps, keyboard activation |
+
+For every row, open a word, tap the speaker repeatedly, switch to another word,
+and verify no queued speech and unchanged Hanly/Mosaic/translation state. Repeat
+with Pinyin off/on, a non-dictionary chunk and traditional text. Inspect selected
+`voice.name`/`voice.lang` temporarily in developer tools if diagnosing a device;
+do not record telemetry. Test a device without Chinese voices and one without
+Web Speech support. No paid API calls are necessary.
