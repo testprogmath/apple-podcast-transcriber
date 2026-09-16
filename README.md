@@ -616,3 +616,55 @@ with Pinyin off/on, a non-dictionary chunk and traditional text. Inspect selecte
 `voice.name`/`voice.lang` temporarily in developer tools if diagnosing a device;
 do not record telemetry. Test a device without Chinese voices and one without
 Web Speech support. No paid API calls are necessary.
+
+### Reader sentence pronunciation
+
+Every sentence carries a compact speaker control between its Mosaic mark and its
+translation action. Tapping it speaks the canonical Chinese sentence through the
+system's Mandarin voice; the control turns blue while that sentence plays and
+returns to slate when it stops. Nothing speaks until you tap. Opening a document,
+scrolling, toggling Pinyin, revealing a translation and selecting for Mosaic are
+all silent.
+
+The Reader owns one utterance at a time, and the word popup shares it. Starting
+sentence B stops sentence A and clears A's active state; tapping the same sentence
+again restarts it instead of queueing a second reading; pronouncing a word stops a
+playing sentence and the reverse. `speakMandarin` is that single channel, so there
+is one Web Speech implementation rather than two. Merely opening or closing a word
+popup is not a playback command and leaves a playing sentence alone.
+
+Spoken text is the canonical sentence the backend stored, read from the document
+payload and never reassembled from the DOM. Pinyin, a visible Russian translation,
+the ○ and 文 controls and any lexical popup content cannot reach the synthesizer.
+Chinese punctuation is passed through untouched because it carries the prosody,
+and a long sentence is spoken whole rather than split or truncated.
+
+Voices are chosen by BCP-47 metadata, never by platform voice name: `zh-CN` first,
+then another Mandarin tag (`cmn`, `zh-Hans`, `zh-SG`), then any remaining `zh-*`.
+With no Chinese voice at all the utterance still declares `lang="zh-CN"` and lets
+the system choose. An empty first `getVoices()` is not a permanent failure;
+`voiceschanged` refreshes the list.
+
+The UI boundary is source-agnostic. The control calls `playSentenceAudio(sentence)`,
+which speaks the sentence today. A later feature that ships per-sentence source
+timings can play the original podcast range inside that one function, leaving the
+control, its active state and its tests unchanged. This release adds no timestamps,
+no clipping, no cache and no shadowing.
+
+Where `speechSynthesis` or `SpeechSynthesisUtterance` is missing the control is not
+rendered at all, and Mosaic, translations, Hanly and word taps behave exactly as
+before. A synthesizer that refuses to start reports `Pronunciation unavailable` in
+the usual toast and leaves the transcript alone.
+
+Verify before release, on devices rather than a desktop browser alone (iOS Telegram
+WebView, Android Telegram WebView, Telegram Desktop, Safari, Chrome):
+
+- Tap a sentence: the complete Mandarin sentence is heard and the control is blue.
+- Tap another sentence: the first stops at once and its control returns to slate.
+- Tap one sentence repeatedly: it restarts cleanly and no readings pile up.
+- Reveal a translation, then tap the speaker: only the Chinese is spoken, and the
+  translation stays open.
+- Select the sentence for Mosaic and play it: the selection is unchanged.
+- Toggle Pinyin on and play again: the spoken text is identical.
+
+Frontend regression tests: `node tests/frontend/app.test.js`.

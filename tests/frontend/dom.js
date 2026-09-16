@@ -64,6 +64,7 @@ class Node {
 
   setAttribute(name, value) {
     this.attrs[name] = String(value);
+    if (name === "class") this.className = value;
   }
 
   getAttribute(name) {
@@ -179,6 +180,7 @@ function setup({ storage = memoryStorage(), telegram = null, search = "?doc=" + 
     title: "",
     getElementById: (id) => nodes[id],
     createElement: (tag) => new Node(tag),
+    createElementNS: (namespace, tag) => new Node(tag),
     createTextNode: (text) => {
       const n = new Node("#text");
       n._text = text;
@@ -212,4 +214,53 @@ function markup() {
   return fs.readFileSync(path.join(STATIC, "index.html"), "utf8");
 }
 
-module.exports = { Node, setup, loadApp, memoryStorage, failingStorage, css, markup, STATIC };
+/** A Web Speech double that records what the Reader asked to say, and when it stopped. */
+function speechStub({ voices = [], broken = false } = {}) {
+  const spoken = [];
+  const queue = [];
+  const listeners = {};
+  class Utterance {
+    constructor(text) {
+      this.text = text;
+      this.lang = "";
+      this.voice = null;
+    }
+  }
+  const synth = {
+    speak(utterance) {
+      if (broken) throw new Error("speech is blocked");
+      spoken.push(utterance);
+      queue.push(utterance);
+    },
+    cancel: () => (queue.length = 0),
+    getVoices: () => voices,
+    addEventListener: (name, handler) => ((listeners[name] ||= []).push(handler)),
+  };
+  const live = () => queue[queue.length - 1];
+  const settle = (event) => {
+    const utterance = live();
+    queue.length = 0;
+    if (utterance && utterance[event]) utterance[event]();
+  };
+  const windowEvents = {};
+  return {
+    window: {
+      speechSynthesis: synth,
+      SpeechSynthesisUtterance: Utterance,
+      addEventListener: (name, handler) => ((windowEvents[name] ||= []).push(handler)),
+    },
+    spoken,
+    queue,
+    voices,
+    live,
+    last: () => spoken[spoken.length - 1],
+    end: () => settle("onend"),
+    fail: () => settle("onerror"),
+    voicesArrived: () => (listeners.voiceschanged || []).forEach((handler) => handler()),
+    leave: () => (windowEvents.pagehide || []).forEach((handler) => handler()),
+  };
+}
+
+module.exports = {
+  Node, setup, loadApp, memoryStorage, failingStorage, speechStub, css, markup, STATIC,
+};

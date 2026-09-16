@@ -158,74 +158,109 @@ const speech = {
   Utterance: window.SpeechSynthesisUtterance,
   voices: [],
   active: null,
+  release: null,
+  owner: null,
 };
 const pronunciationButton = el("lexeme-pronounce");
-const canPronounce = !!(speech.synth && typeof speech.Utterance === "function"
+const canSpeak = !!(speech.synth && typeof speech.Utterance === "function"
   && typeof speech.synth.speak === "function" && typeof speech.synth.cancel === "function");
-pronunciationButton.hidden = !canPronounce;
+pronunciationButton.hidden = !canSpeak;
 
 function refreshVoices() {
   try { speech.voices = Array.from(speech.synth.getVoices() || []); }
   catch (error) { speech.voices = []; }
 }
 
-function stopPronunciation() {
-  // cancel() is global to this page's synthesizer: call it only while we own an utterance.
-  if (!speech.active) return;
+/** Stop what the Reader is saying; given an owner, only if that control started it. */
+function stopSpeaking(owner) {
+  if (!speech.active || (owner && speech.owner !== owner)) return;
+  const release = speech.release;
   speech.active = null;
-  pronunciationButton.classList.remove("speaking");
-  try { speech.synth.cancel(); } catch (error) { /* Popup remains usable. */ }
+  speech.release = null;
+  speech.owner = null;
+  if (release) release();
+  // cancel() is global to this page's synthesizer: call it only while we own an utterance.
+  try { speech.synth.cancel(); } catch (error) { /* Reading remains usable. */ }
 }
 
-function pronounce(event) {
-  event.stopPropagation();
-  if (!canPronounce || !state.lexeme) return;
-  const glyph = state.lexeme.glyph.trim();
-  if (!glyph) return;
-  stopPronunciation();
+/** The Reader owns one utterance at a time, whichever control asked for it. */
+function speakMandarin(text, handlers = {}) {
+  const words = String(text || "").trim();
+  if (!canSpeak || !words) return false;
+  stopSpeaking();
   let utterance;
+  let started = false;
   let reported = false;
   const unavailable = () => {
     if (!reported) toast("Pronunciation unavailable", true);
     reported = true;
   };
+  const begin = () => {
+    if (started || speech.active !== utterance) return;
+    started = true;
+    if (handlers.onStart) handlers.onStart();
+  };
   const finish = (failed) => {
     if (speech.active !== utterance) return;
     speech.active = null;
-    pronunciationButton.classList.remove("speaking");
+    speech.release = null;
+    speech.owner = null;
+    if (handlers.onEnd) handlers.onEnd();
     if (failed) unavailable();
   };
   try {
     refreshVoices();
-    utterance = new speech.Utterance(glyph);
+    utterance = new speech.Utterance(words);
     utterance.lang = "zh-CN";
     const voice = selectMandarinVoice(speech.voices);
     if (voice) utterance.voice = voice;
-    utterance.onstart = () => {
-      if (speech.active === utterance) pronunciationButton.classList.add("speaking");
-    };
+    utterance.onstart = begin;
     utterance.onend = () => finish(false);
     utterance.onerror = () => finish(true);
     speech.active = utterance;
+    speech.release = () => { if (handlers.onEnd) handlers.onEnd(); };
+    speech.owner = handlers.owner || null;
     speech.synth.speak(utterance);
   } catch (error) {
-    if (utterance && speech.active === utterance) stopPronunciation();
+    if (utterance && speech.active === utterance) stopSpeaking();
     unavailable();
+    return false;
   }
+  begin();
+  return true;
 }
 
-if (canPronounce) {
+function pronounce(event) {
+  event.stopPropagation();
+  if (!state.lexeme) return;
+  speakMandarin(state.lexeme.glyph, {
+    owner: "word",
+    onStart: () => pronunciationButton.classList.add("speaking"),
+    onEnd: () => pronunciationButton.classList.remove("speaking"),
+  });
+}
+
+/**
+ * The Reader's sentence playback boundary. Sentences are spoken by system Mandarin
+ * TTS today; one that later carries its own source timings can be played from the
+ * podcast audio here, and the control that calls this never has to change.
+ */
+function playSentenceAudio(sentence, handlers) {
+  return speakMandarin(sentence.text, { ...handlers, owner: "sentence" });
+}
+
+if (canSpeak) {
   refreshVoices();
   speech.synth.addEventListener?.("voiceschanged", refreshVoices);
   pronunciationButton.addEventListener("click", pronounce);
-  window.addEventListener?.("pagehide", stopPronunciation);
+  window.addEventListener?.("pagehide", stopSpeaking);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) stopPronunciation();
+    if (document.hidden) stopSpeaking();
   });
 }
 
 function closeLexeme() {
-  stopPronunciation();
+  stopSpeaking("word");
   state.lexeme = null;
   el("lexeme").hidden = true;
   markInspecting(null);
@@ -333,7 +368,7 @@ function renderLexemeBody(glyph) {
 }
 
 function openLexeme(token, sentenceId, node) {
-  stopPronunciation();
+  stopSpeaking("word");
   pronunciationButton.setAttribute("aria-label", `Pronounce ${token.t.trim()}`);
   state.lexeme = { glyph: token.t, sentenceId };
   closeLexeme.origin = node;
@@ -437,6 +472,45 @@ function translationControl(sentence) {
   return { action, box } ;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function speakerIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "audio-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const cone = document.createElementNS(SVG_NS, "path");
+  cone.setAttribute("d", "M4 9h3.3L12 5.1v13.8L7.3 15H4z");
+  cone.setAttribute("fill", "currentColor");
+  const waves = document.createElementNS(SVG_NS, "path");
+  waves.setAttribute("d", "M15.5 9.3a3.9 3.9 0 0 1 0 5.4M18.1 6.7a7.6 7.6 0 0 1 0 10.6");
+  waves.setAttribute("fill", "none");
+  waves.setAttribute("stroke", "currentColor");
+  waves.setAttribute("stroke-width", "1.7");
+  waves.setAttribute("stroke-linecap", "round");
+  svg.append(cone, waves);
+  return svg;
+}
+
+function audioControl(sentence) {
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "audio-action";
+  action.appendChild(speakerIcon());
+  const label = (text) => { action.setAttribute("aria-label", text); action.title = text; };
+  label("Pronounce sentence");
+  action.addEventListener("click", (event) => {
+    // Playback is not a selection: it must not reach the Mosaic mark or the sentence.
+    event.stopPropagation();
+    playSentenceAudio(sentence, {
+      onStart: () => { action.classList.add("speaking"); label("Restart sentence pronunciation"); },
+      onEnd: () => { action.classList.remove("speaking"); label("Pronounce sentence"); },
+    });
+  });
+  return action;
+}
+
 function renderSentence(sentence) {
   const node = document.createElement("span");
   node.className = "sentence";
@@ -486,6 +560,7 @@ function renderSentence(sentence) {
     toggleSentence(sentence.id);
   });
   controls.appendChild(mark);
+  if (canSpeak) controls.appendChild(audioControl(sentence));
   node.appendChild(controls);
   if (/[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
     const translation = translationControl(sentence);
@@ -497,6 +572,7 @@ function renderSentence(sentence) {
 }
 
 function render(data) {
+  stopSpeaking();
   state.title = data.title;
   state.sentences = data.sentences;
   state.glossary = data.glossary || {};
