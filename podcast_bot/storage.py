@@ -85,6 +85,12 @@ class Storage:
         self.db.executescript("""
         CREATE TABLE IF NOT EXISTS hanly_collections (
           episode_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, status TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS hanly_manual_collections (
+          key TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+          status TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS hanly_manual_cards (
+          glyph TEXT PRIMARY KEY, pinyin TEXT NOT NULL, meaning TEXT NOT NULL,
+          example TEXT NOT NULL, example_translation TEXT NOT NULL, created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS mosaic_packs (
           source_id TEXT PRIMARY KEY, uuid TEXT UNIQUE NOT NULL, payload TEXT NOT NULL,
           status TEXT NOT NULL);
@@ -525,6 +531,46 @@ class Storage:
             (chat_id,),
         ).fetchone()
         return self.reader_document(row[0]) if row else None
+
+    def manual_collection(self, key: str):
+        return self.db.execute(
+            "SELECT uuid, name, status FROM hanly_manual_collections WHERE key=?", (key,)
+        ).fetchone()
+
+    def reserve_manual_collection(self, key: str, uuid: str, name: str):
+        """Identity and display name are committed before any Hanly network write."""
+        with self.db:
+            self.db.execute(
+                "INSERT OR IGNORE INTO hanly_manual_collections VALUES (?,?,?,?)",
+                (key, uuid, name, "pending"),
+            )
+            self.db.execute(
+                "UPDATE hanly_manual_collections SET status='unconfirmed' WHERE key=?", (key,)
+            )
+        return self.manual_collection(key)
+
+    def confirm_manual_collection(self, key: str) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE hanly_manual_collections SET status='verified' WHERE key=?", (key,)
+            )
+
+    def manual_card(self, glyph: str):
+        return self.db.execute(
+            "SELECT pinyin, meaning, example, example_translation FROM hanly_manual_cards"
+            " WHERE glyph=?",
+            (glyph,),
+        ).fetchone()
+
+    def save_manual_card(
+        self, glyph: str, pinyin: str, meaning: str, example: str, example_translation: str
+    ) -> None:
+        """Generated context is paid for once; a repeated command reuses it."""
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO hanly_manual_cards VALUES (?,?,?,?,?,?)",
+                (glyph, pinyin, meaning, example, example_translation, now()),
+            )
 
     def hanly_note(self, glyph: str) -> str | None:
         """The note this integration last wrote for a glyph, or None if it never wrote one."""

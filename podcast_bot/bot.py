@@ -22,6 +22,7 @@ from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from .config import Config, language_code
+from .hanly import manual
 from .hanly.auth import HanlyAuth, auth_path
 from .hanly.client import HanlyClient
 from .hanly.service import HanlyUploadService
@@ -44,6 +45,7 @@ from .study.service import StudyService, pack_valid
 from .study.settings import StudySettings, learner_level
 from .transcription.audio import check_ffmpeg
 from .transcription.openai import OpenAITranscriber
+from .version import release
 
 log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 2_000_000
@@ -55,6 +57,7 @@ Other languages: transcript and vocabulary/expressions only; no external uploads
 /regenerate [HSK4] — rebuild the latest study pack without speech-to-text
 /reader — open the latest transcript in the interactive Reader
 /hanly — merge selected vocabulary into the latest episode collection
+/add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
 /transcribe nl <URL> — override language (zh, nl, en, auto)
@@ -78,6 +81,7 @@ async def setup_command_menu(bot, chat_id: int) -> None:
         ("zip", "Скачать последние материалы архивом"),
         ("reader", "Открыть интерактивную читалку"),
         ("hanly", "Слова в Hanly — только zh"),
+        ("add_hanly", "Добавить своё слово или фразу в Hanly"),
         ("mosaic", "Предложения в Mandarin Mosaic — только zh"),
         ("retry", "Повторить неудавшуюся задачу"),
         ("force", "Новая платная транскрипция: /force ссылка"),
@@ -189,6 +193,7 @@ class BotHandlers:
             await message.reply_text(
                 self.storage.status()
                 + f"\nLearning: {settings.target_language} → {settings.native_language}; {settings.learner_level}"
+                + f"\nVersion: {release()}"
             )
             return
         if command == "/retry":
@@ -241,6 +246,23 @@ class BotHandlers:
                     await status.edit_text(result.message())
                 except UserError as exc:
                     await status.edit_text(str(exc))
+                return
+            if command == "/add_hanly":
+                glyph = manual.parse_glyph(text)
+                if self.hanly is None:
+                    raise UserError(
+                        self.hanly_error
+                        or "Hanly auth config is missing. Set HANLY_AUTH_FILE on the server."
+                    )
+                status = await message.reply_text("Adding to Hanly…")
+                try:
+                    result = await self.hanly.add_manual_glyph(glyph)
+                    await status.edit_text(result.message())
+                except UserError as exc:
+                    await status.edit_text(str(exc))
+                except Exception as exc:
+                    log.error("operation=add-hanly exception_type=%s", type(exc).__name__)
+                    await status.edit_text("Could not add this to Hanly. Please try again.")
                 return
             if command == "/mosaic":
                 if self.mosaic is None:
@@ -474,8 +496,17 @@ def build_application(config: Config, storage: Storage) -> Application:
         try:
             path = auth_path()
             if path.exists() or os.getenv("HANLY_AUTH_FILE"):
+                from .hanly.cards import ManualCards
+                from .reader.bkrs import RussianDictionary
+
+                cards = ManualCards(
+                    storage,
+                    OpenAIStudyClient(openai) if config.study_enabled else None,
+                    RussianDictionary(),
+                    handlers.study_settings().model,
+                )
                 handlers.hanly = HanlyUploadService(
-                    storage, HanlyClient(client, HanlyAuth.load(path))
+                    storage, HanlyClient(client, HanlyAuth.load(path)), cards
                 )
         except UserError as exc:
             handlers.hanly_error = str(exc)
@@ -566,6 +597,7 @@ def build_application(config: Config, storage: Storage) -> Application:
         "zip",
         "mosaic",
         "hanly",
+        "add_hanly",
         "reader",
     ):
         app.add_handler(CommandHandler(command, handlers.handle))

@@ -1,8 +1,34 @@
 # Production deployment
 
-The `CI` workflow deploys **pushes to main only**, after `Python quality and tests` succeeds.
-PRs never receive the deployment secret. GitHub builds a SHA-tagged image, then streams it
-through SSH to a forced command. No registry credentials or passwordless sudo are needed.
+The `CI` workflow deploys **pushes to main**, and any ref dispatched with the **Deploy this ref
+to production** box ticked, after `Python quality and tests` succeeds. PRs never receive the
+deployment secret, and neither `pull_request_target` nor `issue_comment` is used. GitHub builds
+a SHA-tagged image, then streams it through SSH to a forced command. No registry credentials or
+passwordless sudo are needed.
+
+## Two deployment modes
+
+The forced command accepts `deploy <sha>` and `deploy <sha> manual`. Automatic releases send the
+first form and the helper refuses any SHA that is not the current tip of `main`, which is what
+keeps out-of-order CI runs from moving production backwards. A dispatched release sends the
+second form: a person chose that ref in the Actions UI, so the staleness question does not apply
+and the check is skipped. Everything else is identical, including draining, the SQLite backup,
+the image revision check, readiness and rollback. Both modes serialise on the same file lock, so
+a dispatched branch and an automatic main release cannot interleave; the later one simply wins.
+
+Dispatching is gated by write access to the repository, the same permission as merging to main.
+Add required reviewers to the `production` environment if that should be a second pair of eyes.
+
+**Update `podcast-receive.py` on the server before using a dispatched release.** Releases never
+replace this helper. The new grammar still accepts the old `deploy <sha>` command, so installing
+it early is safe; an old helper receiving `deploy <sha> manual` refuses the command and fails the
+workflow loudly rather than deploying the wrong thing.
+
+```bash
+scp deploy/receive.py you@server:/tmp/podcast-receive.py
+ssh you@server 'sudo install -o deploy -g deploy -m 0700 /tmp/podcast-receive.py \
+  /home/deploy/bin/podcast-receive.py && rm /tmp/podcast-receive.py'
+```
 
 ## One-time server setup
 
