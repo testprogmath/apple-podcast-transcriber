@@ -453,3 +453,11 @@ ruby { ruby-align: center; }
   font-size: 16px; line-height: 1.55; font-weight: 400; cursor: text;
 }
 .translation-status:not([hidden]) { font-size: 12px; }
+
+/* A stable, secondary control alongside pinyin, not another primary action. */
+#lexeme-reading { display: flex; align-items: center; gap: 8px; }
+#lexeme-reading #lexeme-pinyin { margin: 0; }
+#lexeme-pronounce { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 0; color: var(--muted); }
+#lexeme-pronounce[hidden] { display: none; }
+#lexeme-pronounce.speaking { color: var(--blue); background: var(--blue-soft); }
+#lexeme-pronounce:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
