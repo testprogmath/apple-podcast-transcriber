@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import unicodedata
 import zipfile
 from dataclasses import replace
 from types import SimpleNamespace
@@ -277,6 +278,7 @@ def test_asr_suggestions_never_rewrite_source():
 async def test_generate_pack_caches_preserves_canonical_and_records_usage(store, canonical):
     svc, client = service(store)
     job = enqueue_study(store, canonical)
+    (canonical / "audio-timing.json").write_text('{"version": 1}')
     before = (canonical / "transcript.txt").read_bytes()
     pack = await svc.generate(canonical, StudySettings(), job, AsyncMock())
     assert (
@@ -284,6 +286,9 @@ async def test_generate_pack_caches_preserves_canonical_and_records_usage(store,
         == before
         == (pack / "transcript.txt").read_bytes()
     )
+    assert (pack / "audio-timing.json").read_bytes() == (
+        canonical / "audio-timing.json"
+    ).read_bytes()
     assert pack_valid(pack)
     assert {
         "transcript.txt",
@@ -687,6 +692,48 @@ def test_passages_bound_to_exact_source_despite_wrong_ids(reversed_order):
     assert [p.source for p in result.passages] == [b.text for b in blocks]
     assert [p.lines[0].source for p in result.passages] == [b.text for b in blocks]
     validate_chunk(result, blocks, "zh")  # Checkpoint validation remains idempotent.
+
+
+@pytest.mark.parametrize(
+    "rewrite",
+    [
+        lambda t: " " + t,
+        lambda t: t + "\n",
+        lambda t: t.replace("。", "。 "),
+        lambda t: unicodedata.normalize("NFD", t),
+    ],
+)
+def test_spacing_and_nfc_differences_still_bind_to_canonical_source(rewrite):
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(0, "你好。"), SourceBlock(1, "谢谢。")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    for passage in result.passages:
+        passage.source = rewrite(passage.source)
+    validate_chunk(result, blocks, "zh")
+    # The model's spacing never reaches the pack: the canonical block text wins.
+    assert [p.source for p in result.passages] == [b.text for b in blocks]
+    assert [p.block_id for p in result.passages] == [0, 1]
+
+
+def test_genuinely_rewritten_source_is_still_rejected():
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(0, "你好。"), SourceBlock(1, "谢谢。")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[1].source = "多谢。"
+    with pytest.raises(UserError, match="complete transcript paragraphs"):
+        validate_chunk(result, blocks, "zh")
+
+
+def test_reading_lines_must_still_reconstruct_the_block():
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(0, "你好。")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[0].lines[0].source = "你好吗。"
+    with pytest.raises(UserError, match="changed the source text"):
+        validate_chunk(result, blocks, "zh")
 
 
 def test_extra_passage_rejected():

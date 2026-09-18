@@ -51,6 +51,7 @@ class Transcript:
     segments: list[Segment] = field(default_factory=list)
     language: str | None = None
     usage: dict = field(default_factory=dict)
+    words: list[Segment] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

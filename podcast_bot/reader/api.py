@@ -8,6 +8,7 @@ from pathlib import Path
 from ..hanly.client import merge_glyphs
 from ..hanly.notes import build_hanly_note
 from ..models import UserError
+from .audio import document_audio
 from .auth import telegram_user_id
 from .bkrs import RussianDictionary
 from .dictionary import Dictionary
@@ -37,7 +38,7 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": (
         "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; "
-        "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+        "media-src https:; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
     ),
 }
 
@@ -155,6 +156,7 @@ class ReaderApi:
 
     def read(self, document: ReaderDocument):
         sentences = document.sentences()
+        audio, ranges = document_audio(document, sentences)
         tokens = document.tokens(sentences)
         lexemes = enrich(
             (token.text for items in tokens for token in items if token.word),
@@ -185,6 +187,7 @@ class ReaderApi:
                 "id": document.id,
                 "title": document.title,
                 "source_type": document.source_type,
+                "audio": audio,
                 "hanly_available": self.services.hanly is not None,
                 "hanly_error": self.services.hanly_error or "",
                 "mosaic_available": self.services.mosaic is not None,
@@ -196,6 +199,7 @@ class ReaderApi:
                     {
                         "id": sentence.id,
                         "text": sentence.text,
+                        "audio": ranges.get(sentence.id),
                         "tokens": [describe(t) for t in items],
                     }
                     for sentence, items in zip(sentences, tokens, strict=True)
