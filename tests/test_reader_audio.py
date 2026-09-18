@@ -58,18 +58,20 @@ def test_durable_timing_and_source_association(store, tmp_path):
     with_reload = Storage(store.root)
     try:
         reopened = with_reload.reader_document(document.id)
-        source, ranges = document_audio(reopened, reopened.sentences())
+        source, ranges, status = document_audio(reopened, reopened.sentences())
+        assert not status
         assert source["url"] == "https://podcast.example/episode.mp3"
         assert source["granularity"] == "word"
         assert len(ranges) == 2
         assert document_audio(replace(reopened, source_type="text"), reopened.sentences()) == (
             None,
             {},
+            "text",
         )
         changed = replace(reopened, raw_text="别的文章。")
-        assert document_audio(changed, changed.sentences()) == (None, {})
+        assert document_audio(changed, changed.sentences()) == (None, {}, "stale")
         (tmp_path / "audio-timing.json").unlink()
-        assert document_audio(reopened, reopened.sentences()) == (None, {})
+        assert document_audio(reopened, reopened.sentences()) == (None, {}, "missing")
     finally:
         with_reload.close()
 
@@ -88,7 +90,28 @@ def test_segment_fallback_and_corrupt_metadata(tmp_path):
         json.dumps({**data, "words": [None]}),
     ]:
         (tmp_path / "audio-timing.json").write_text(broken)
-        assert document_audio(document, document.sentences()) == (None, {})
+        assert document_audio(document, document.sentences()) == (None, {}, "stale")
+
+
+def test_status_separates_a_timestampless_model_from_unusable_timings(tmp_path):
+    document = replace(
+        from_text(42, "你好。再见。"), source_type="podcast", source_reference=str(tmp_path)
+    )
+    # gpt-transcribe returns neither words nor segments: a configuration fact.
+    atomic_json(tmp_path / "audio-timing.json", timing(document, words=[], segments=[]))
+    assert document_audio(document, document.sentences()) == (None, {}, "untimed")
+
+    # Timings exist but describe other audio: a data problem, not a configuration one.
+    atomic_json(
+        tmp_path / "audio-timing.json",
+        timing(document, words=[unit("完全不同的话", 1, 2)], segments=[]),
+    )
+    assert document_audio(document, document.sentences()) == (None, {}, "unaligned")
+
+    atomic_json(
+        tmp_path / "audio-timing.json", {**timing(document), "audio_url": "http://insecure/a.mp3"}
+    )
+    assert document_audio(document, document.sentences()) == (None, {}, "source")
 
 
 @pytest.mark.parametrize(

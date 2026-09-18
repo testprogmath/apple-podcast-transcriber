@@ -82,26 +82,34 @@ def align(sentences, units, duration):
 
 
 def document_audio(document, sentences):
+    """Returns (source, ranges, status); status names why original audio is absent."""
     if document.source_type != "podcast" or not document.source_reference:
-        return None, {}
+        return None, {}, "text"
     path = Path(document.source_reference) / "audio-timing.json"
     try:
+        if not path.is_file():
+            return None, {}, "missing"
         if path.stat().st_size > 20_000_000:
-            return None, {}
+            return None, {}, "stale"
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("version") != 1 or data.get("text") != document.raw_text:
-            return None, {}
+            return None, {}, "stale"
         url = safe_source(data.get("audio_url"))
         if not url:
-            return None, {}
+            return None, {}, "source"
         duration = float(data["duration"])
-        ranges = align(sentences, data.get("words", []), duration)
+        words, segments = data.get("words", []), data.get("segments", [])
+        # A model that returns no timestamps at all is a configuration fact, not a
+        # broken recording: report it apart from timings that refuse to line up.
+        if not words and not segments:
+            return None, {}, "untimed"
+        ranges = align(sentences, words, duration)
         granularity = "word"
         if not ranges:
-            ranges = align(sentences, data.get("segments", []), duration)
+            ranges = align(sentences, segments, duration)
             granularity = "segment"
         if not ranges:
-            return None, {}
-        return {"url": url, "duration": duration, "granularity": granularity}, ranges
+            return None, {}, "unaligned"
+        return {"url": url, "duration": duration, "granularity": granularity}, ranges, ""
     except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
-        return None, {}
+        return None, {}, "stale"
