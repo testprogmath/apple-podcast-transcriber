@@ -1291,6 +1291,56 @@ test("leaving the page through pagehide stops Reader speech", async () => {
   assert.strictEqual(speech.queue.length, 0);
 });
 
+test("a document without timings says why once, not on every tap", async () => {
+  const { body, nodes, speech } = speaking({
+    document: { ...SPEECH_DOCUMENT, audio_status: "untimed" },
+  });
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(
+    nodes.toast.textContent,
+    "No original audio: this episode was transcribed without timings."
+  );
+  assert.strictEqual(speech.spoken.length, 1, "speech still plays");
+  nodes.toast.textContent = "";
+  audioButton(body, 1).click(body);
+  assert.strictEqual(nodes.toast.textContent, "", "the reason is not repeated");
+  assert.strictEqual(speech.spoken.length, 2);
+});
+
+test("unaligned timings are reported apart from a missing model capability", async () => {
+  const { body, nodes } = speaking({
+    document: { ...SPEECH_DOCUMENT, audio_status: "unaligned" },
+  });
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(
+    nodes.toast.textContent,
+    "No original audio: the timings do not match the transcript."
+  );
+});
+
+test("a pasted-text document never mentions original audio", async () => {
+  const { body, nodes, speech } = speaking({
+    document: { ...SPEECH_DOCUMENT, audio_status: "text" },
+  });
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(nodes.toast.textContent, "", "nothing to explain for pasted text");
+  assert.strictEqual(speech.spoken.length, 1);
+});
+
+test("a source that will not play says so once before speaking", async () => {
+  const { body, players, speech, nodes } = podcastPlayer({ loading: true });
+  await settle();
+  audioButton(body, 0).click(body);
+  players[0].errorNow();
+  await settle();
+  assert.strictEqual(nodes.toast.textContent, "Original audio would not play; using speech.");
+  assert.strictEqual(speech.spoken.length, 1);
+  assert.strictEqual(speech.spoken[0].text, CANONICAL);
+});
+
 test("the audio control is a mobile-sized target with a subtle active state", () => {
   const sheet = css();
   assert.ok(/\.sentence-controls button \{[^}]*width: 40px; height: 40px/.test(sheet));
@@ -1363,7 +1413,7 @@ for (const options of [
   { constructorError: true }, { duration: 25 }, { duration: Infinity },
   { play: () => Promise.reject(new Error("blocked")) },
 ]) {
-  test(`early media failure falls back silently: ${JSON.stringify(options)}`, async () => {
+  test(`early media failure falls back to speech with one notice: ${JSON.stringify(options)}`, async () => {
     const { body, players, speech, nodes } = podcastPlayer(options);
     await settle();
     audioButton(body, 0).click(body);

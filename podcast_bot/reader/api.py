@@ -156,7 +156,7 @@ class ReaderApi:
 
     def read(self, document: ReaderDocument):
         sentences = document.sentences()
-        audio, ranges = document_audio(document, sentences)
+        audio, ranges, audio_status = document_audio(document, sentences)
         tokens = document.tokens(sentences)
         lexemes = enrich(
             (token.text for items in tokens for token in items if token.word),
@@ -188,6 +188,7 @@ class ReaderApi:
                 "title": document.title,
                 "source_type": document.source_type,
                 "audio": audio,
+                "audio_status": audio_status,
                 "hanly_available": self.services.hanly is not None,
                 "hanly_error": self.services.hanly_error or "",
                 "mosaic_available": self.services.mosaic is not None,

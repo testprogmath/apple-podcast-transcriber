@@ -156,3 +156,22 @@ reliable original playback across supported clients.
   `docker compose config --quiet` passed with a temporary empty `.env` removed
   immediately afterward; production secrets were not loaded. No image build,
   deployment, paid provider calls, or physical-device tests were performed.
+
+### Why original audio is absent
+
+`document_audio` returns a status alongside the source and ranges, and the Reader
+says it once per document rather than on every tap. The statuses separate causes
+that look identical from the outside:
+
+| Status | Meaning |
+| --- | --- |
+| `untimed` | The sidecar holds neither words nor segments. The transcription model returned no timestamps: `timestamp_granularities` is accepted for `whisper-1` only, so any other configured model produces this. |
+| `unaligned` | Timings exist but do not reconstruct the canonical sentences. A data problem, not a configuration one. |
+| `source` | The stored enclosure URL failed the source filter. |
+| `stale` | The sidecar is missing its version, describes other text, or is unreadable. |
+| `missing` | No sidecar was written for this episode, which is the case for everything transcribed before this feature. |
+| `text` | A pasted-text document. The Reader stays silent: there is nothing to explain. |
+
+A source that loads but will not play reports `Original audio would not play; using
+speech.` once, which is the case to watch on a real device given the enclosure probe
+recorded in the section above.

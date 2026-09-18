@@ -377,6 +377,7 @@ async def test_pipeline_persists_original_offsets_after_temp_audio_cleanup(
     assert timing["words"][1]["start"] == 1
     assert all(not path.exists() for path in fake_audio)
     document = from_transcript(42, output)
-    source, ranges = document_audio(document, document.sentences())
+    source, ranges, status = document_audio(document, document.sentences())
+    assert not status
     assert source["url"] == timing["audio_url"]
     assert ranges[1]["start_ms"] == 880
