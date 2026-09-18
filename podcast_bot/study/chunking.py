@@ -73,18 +73,24 @@ def validate_chunk(
     # source, retaining each passage's own translation and reading lines.
     remaining = defaultdict(deque)
     for passage in material.passages:
-        remaining[passage.source].append(passage)
+        remaining[normalized(passage.source)].append(passage)
     aligned = []
     for block in blocks:
-        if not remaining[block.text]:
+        key = normalized(block.text)
+        if not remaining[key]:
             break
-        aligned.append(remaining[block.text].popleft().model_copy(update={"block_id": block.id}))
+        # The canonical transcript owns spacing and NFC form; the model's copy does not.
+        passage = remaining[key].popleft()
+        aligned.append(passage.model_copy(update={"block_id": block.id, "source": block.text}))
     if len(aligned) != len(blocks) or any(remaining.values()):
         log.warning(
-            "study-coverage expected_blocks=%d received_passages=%d matched_blocks=%d",
+            "study-coverage expected_blocks=%d received_passages=%d matched_blocks=%d "
+            "unmatched_block=%r unmatched_passages=%r",
             len(blocks),
             len(material.passages),
             len(aligned),
+            blocks[len(aligned)].text[:80] if len(aligned) < len(blocks) else "",
+            [p.source[:80] for queue in remaining.values() for p in queue][:3],
         )
         raise UserError(
             "Study output did not preserve complete transcript paragraphs "
@@ -92,9 +98,7 @@ def validate_chunk(
         )
     material.passages = aligned
     for passage, block in zip(material.passages, blocks, strict=True):
-        if passage.source != block.text or normalized(
-            "".join(x.source for x in passage.lines)
-        ) != normalized(block.text):
+        if normalized("".join(x.source for x in passage.lines)) != normalized(block.text):
             raise UserError(
                 "Study output changed the source text. Canonical transcript preserved; use /retry."
             )
