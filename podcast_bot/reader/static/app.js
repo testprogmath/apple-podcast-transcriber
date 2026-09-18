@@ -18,6 +18,8 @@ const state = {
   language: "ru",
   glossary: {},
   audio: null,
+  audioStatus: "",
+  audioNotice: false,
   translationViews: [],
   vocabularyPending: new Set(),
   hanlyUploading: false,
@@ -242,6 +244,25 @@ function pronounce(event) {
   });
 }
 
+/** Why this document has no original audio; said once, not on every tap. */
+const AUDIO_NOTICES = {
+  untimed: "No original audio: this episode was transcribed without timings.",
+  unaligned: "No original audio: the timings do not match the transcript.",
+  source: "No original audio: the episode source is unusable.",
+  stale: "No original audio: the stored timings no longer match this transcript.",
+  missing: "No original audio stored for this episode.",
+};
+
+function noteFallback(reason) {
+  if (state.audioNotice) return;
+  const message = reason === "transport"
+    ? "Original audio would not play; using speech."
+    : AUDIO_NOTICES[reason];
+  if (!message) return;
+  state.audioNotice = true;
+  toast(message);
+}
+
 // One original player and the existing TTS engine share a Reader playback channel.
 const original = { player: null, request: null, generation: 0 };
 function stopOriginal() {
@@ -266,6 +287,7 @@ function playSentenceAudio(sentence, handlers = {}) {
   if (!source || !range || range.source !== "podcast" || !window.Audio
       || !Number.isFinite(range.start_ms) || !Number.isFinite(range.end_ms)
       || range.start_ms < 0 || range.end_ms <= range.start_ms) {
+    noteFallback(source && range ? "transport" : state.audioStatus);
     return speakMandarin(sentence.text, { ...handlers, owner: "sentence" });
   }
   const generation = original.generation;
@@ -279,6 +301,7 @@ function playSentenceAudio(sentence, handlers = {}) {
     const fallback = request.useful < Math.min(.35, (end - start) / 2);
     stopOriginal();
     if (fallback) {
+      noteFallback("transport");
       if (!speakMandarin(sentence.text, { ...handlers, owner: "sentence" })) {
         if (!canSpeak) toast("Pronunciation unavailable", true);
       }
@@ -669,6 +692,8 @@ function render(data) {
   stopSpeaking();
   state.title = data.title;
   state.audio = data.audio || null;
+  state.audioStatus = data.audio_status || "";
+  state.audioNotice = false;
   state.sentences = data.sentences;
   state.glossary = data.glossary || {};
   state.available = { hanly: data.hanly_available, mosaic: data.mosaic_available };
