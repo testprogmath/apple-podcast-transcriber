@@ -380,3 +380,24 @@ async def test_pipeline_persists_original_offsets_after_temp_audio_cleanup(
     source, ranges = document_audio(document, document.sentences())
     assert source["url"] == timing["audio_url"]
     assert ranges[1]["start_ms"] == 880
+
+
+async def test_subtitles_are_withheld_until_asked_for(store, config, tmp_path):
+    (tmp_path / "transcript.txt").write_text("你好。", encoding="utf-8")
+    (tmp_path / "metadata.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "transcript.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\n你好。\n", "utf-8")
+    bot = SimpleNamespace(send_document=AsyncMock(), send_media_group=AsyncMock())
+    await send_files(bot, 42, tmp_path)
+    assert [c.kwargs["filename"] for c in bot.send_document.await_args_list] == ["transcript.txt"]
+
+    handlers = BotHandlers(config, store)
+    handlers.storage.recent_source = lambda chat_id: tmp_path
+    handlers.storage.recent_pack = lambda chat_id: None
+    context = SimpleNamespace(bot=SimpleNamespace(send_document=AsyncMock()))
+    await handlers.handle(update("/srt"), context)
+    assert context.bot.send_document.await_args.kwargs["filename"] == "transcript.srt"
+
+    (tmp_path / "transcript.srt").unlink()
+    missing = update("/srt")
+    await handlers.handle(missing, context)
+    assert "No subtitles" in missing.effective_message.reply_text.await_args.args[0]
