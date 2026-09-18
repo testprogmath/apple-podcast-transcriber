@@ -10,6 +10,10 @@ from .translations import han_ratio, untranslated, wrong_language
 
 log = logging.getLogger(__name__)
 
+# A tone digit belongs to a lowercase pinyin syllable (ni3, lü4). Acronyms the
+# episode itself says — HSK1, MP3 — end in an uppercase letter and are not pinyin.
+NUMBERED_PINYIN = re.compile(r"[a-zü][1-5](?:\b|$)")
+
 
 @dataclass(frozen=True)
 class SourceBlock:
@@ -108,9 +112,11 @@ def validate_chunk(
             if re.search(r"[\u3400-\u9fff]", line.source)
         ):
             raise UserError("The study model omitted required pinyin. Use /retry.")
-        if target == "zh" and any(
-            re.search(r"[a-zA-ZüÜ][1-5](?:\b|$)", line.pinyin) for line in passage.lines
-        ):
+        numbered = next(
+            (line.pinyin for line in passage.lines if NUMBERED_PINYIN.search(line.pinyin)), ""
+        )
+        if target == "zh" and numbered:
+            log.warning("study-pinyin numbered excerpt=%r", numbered[:80])
             raise UserError(
                 "The study model returned numbered rather than tone-mark pinyin. Use /retry."
             )

@@ -736,6 +736,33 @@ def test_reading_lines_must_still_reconstruct_the_block():
         validate_chunk(result, blocks, "zh")
 
 
+@pytest.mark.parametrize(
+    ("reading", "rejected"),
+    [
+        ("ni3 hao3", True),
+        ("Ni3 hao3", True),
+        ("lü4 shi1", True),
+        ("nǐ hǎo", False),
+        # The episode says its own name; an acronym is not numbered pinyin.
+        ("HSK1", False),
+        ("HSK1-HSK2", False),
+        ("MP3", False),
+        ("dì 1 kè", False),
+    ],
+)
+def test_numbered_pinyin_guard_ignores_acronyms_the_episode_says(reading, rejected):
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(0, "你好。")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[0].lines[0].pinyin = reading
+    if rejected:
+        with pytest.raises(UserError, match="numbered rather than tone-mark"):
+            validate_chunk(result, blocks, "zh")
+    else:
+        validate_chunk(result, blocks, "zh")
+
+
 def test_extra_passage_rejected():
     blocks = split_blocks(SOURCE)
     result = material_for([{"id": b.id, "text": b.text} for b in blocks])
