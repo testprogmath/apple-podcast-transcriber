@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("assert");
-const { setup, loadApp, memoryStorage, failingStorage, css, markup } = require("./dom.js");
+const {
+  setup, loadApp, memoryStorage, failingStorage, speechStub, css, markup,
+} = require("./dom.js");
 
 const DOCUMENT = {
   title: "Mami Chinese｜菲尔兹奖",
@@ -950,6 +952,350 @@ test("speech failures clear active state without affecting the popup", async () 
   assert.ok(!nodes["lexeme-pronounce"].classes.has("speaking"));
   assert.strictEqual(nodes.toast.textContent, "Pronunciation unavailable");
   assert.ok(!nodes.lexeme.hidden);
+});
+
+const CANONICAL = "最近在中国，大家都在讨论两位数学家。";
+
+const SPEECH_DOCUMENT = {
+  title: "Mami Chinese｜菲尔兹奖",
+  hanly_available: true,
+  mosaic_available: true,
+  hanly_error: "",
+  mosaic_error: "",
+  paragraphs: [[0, 1]],
+  glossary: {
+    最近: { p: "zuì jìn", ru: ["недавно"], rs: "bkrs" },
+    中国: { p: "zhōng guó" },
+    大家: { p: "dà jiā" },
+    讨论: { p: "tǎo lùn" },
+    数学家: { p: "shù xué jiā" },
+    做研究: { p: "zuò yán jiū" },
+    很难: { p: "hěn nán" },
+  },
+  sentences: [
+    {
+      id: 0,
+      text: CANONICAL,
+      tokens: [
+        { t: "最近", w: true }, { t: "在", w: true }, { t: "中国", w: true }, { t: "，", w: false },
+        { t: "大家", w: true }, { t: "都", w: true }, { t: "在", w: true }, { t: "讨论", w: true },
+        { t: "两位", w: true }, { t: "数学家", w: true }, { t: "。", w: false },
+      ],
+    },
+    {
+      id: 1,
+      text: "做研究很难。",
+      tokens: [{ t: "做研究", w: true }, { t: "很难", w: true }, { t: "。", w: false }],
+    },
+  ],
+};
+
+const RUSSIAN = "Недавно в Китае все обсуждают двух математиков.";
+const audioButton = (body, id) => sentence(body, id).querySelector(".audio-action");
+
+/** A Reader whose window exposes the Web Speech API, on the canonical document. */
+function speaking(options = {}) {
+  const speech = speechStub(options.speech);
+  const env = start({
+    ...options,
+    speech: speech.window,
+    document: options.document || SPEECH_DOCUMENT,
+  });
+  return { ...env, speech };
+}
+
+test("every sentence carries the Mosaic, audio and translation actions in one row", async () => {
+  const { body, speech } = speaking();
+  await settle();
+  const controls = sentence(body, 0).querySelector(".sentence-controls");
+  assert.deepStrictEqual(
+    controls.children.map((node) => node.className),
+    ["mark", "audio-action", "translation-action"]
+  );
+  const audio = audioButton(body, 0);
+  assert.strictEqual(audio.tagName, "button");
+  assert.strictEqual(audio.type, "button");
+  assert.strictEqual(audio.getAttribute("aria-label"), "Pronounce sentence");
+  assert.strictEqual(audio.children[0].tagName, "svg");
+  assert.strictEqual(audio.children[0].getAttribute("aria-hidden"), "true");
+  assert.strictEqual(audio.textContent, "", "no wording of its own inside the transcript");
+  assert.ok(!speech.spoken.length, "opening the Reader speaks nothing");
+});
+
+test("audio speaks the canonical sentence in Mandarin with punctuation intact", async () => {
+  const { body, speech } = speaking();
+  await settle();
+  audioButton(body, 0).click(body);
+  const utterance = speech.last();
+  assert.strictEqual(utterance.text, CANONICAL);
+  assert.strictEqual(utterance.lang, "zh-CN");
+  assert.ok(utterance.text.includes("，") && utterance.text.endsWith("。"));
+  for (const stray of ["zuì jìn", "shù xué jiā", "недавно", "Show translation", "文", "<", "w:"]) {
+    assert.ok(!utterance.text.includes(stray), `the utterance carried ${stray}`);
+  }
+});
+
+test("pinyin on or off never changes the spoken sentence", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  audioButton(body, 0).click(body);
+  nodes["pinyin-toggle"].fire("click");
+  assert.ok(nodes.text.classes.has("pinyin"));
+  audioButton(body, 0).click(body);
+  assert.deepStrictEqual(speech.spoken.map((u) => u.text), [CANONICAL, CANONICAL]);
+});
+
+test("a visible translation is never spoken and stays open afterwards", async () => {
+  const { body, speech } = speaking({ responses: {
+    "/sentences/0/translation": () => ({ ok: true, json: async () => ({
+      sentence_id: 0, translation: RUSSIAN, source: "generated",
+    }) }),
+  }});
+  await settle();
+  translationButton(body, 0).click(body);
+  await settle();
+  assert.strictEqual(translationText(body, 0).textContent, RUSSIAN);
+  audioButton(body, 0).click(body);
+  assert.strictEqual(speech.last().text, CANONICAL);
+  assert.ok(!translationText(body, 0).hidden, "translation stays visible");
+  assert.strictEqual(translationButton(body, 0).getAttribute("aria-expanded"), "true");
+});
+
+test("a second sentence takes over the single Reader playback channel", async () => {
+  const { body, speech } = speaking();
+  await settle();
+  const first = audioButton(body, 0);
+  const second = audioButton(body, 1);
+  first.click(body);
+  assert.ok(first.classes.has("speaking"));
+  assert.strictEqual(first.getAttribute("aria-label"), "Restart sentence pronunciation");
+  second.click(body);
+  assert.ok(!first.classes.has("speaking"), "the first control returns to idle");
+  assert.strictEqual(first.getAttribute("aria-label"), "Pronounce sentence");
+  assert.ok(second.classes.has("speaking"));
+  assert.strictEqual(speech.queue.length, 1, "nothing waits behind the live utterance");
+  assert.deepStrictEqual(speech.spoken.map((u) => u.text), [CANONICAL, "做研究很难。"]);
+});
+
+test("repeated taps restart the sentence instead of queueing it", async () => {
+  const { body, speech } = speaking();
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  audio.click(body);
+  audio.click(body);
+  assert.strictEqual(speech.queue.length, 1);
+  assert.strictEqual(speech.spoken.length, 3, "each tap starts the sentence again");
+  assert.ok(audio.classes.has("speaking"));
+});
+
+test("the active state clears when speech ends", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  assert.ok(audio.classes.has("speaking"));
+  speech.end();
+  assert.ok(!audio.classes.has("speaking"));
+  assert.strictEqual(audio.getAttribute("aria-label"), "Pronounce sentence");
+  assert.strictEqual(nodes.toast.textContent, "", "a clean finish says nothing");
+});
+
+test("a failed utterance clears the active state and reports it", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  speech.fail();
+  assert.ok(!audio.classes.has("speaking"));
+  assert.strictEqual(nodes.toast.textContent, "Pronunciation unavailable");
+  assert.ok(nodes.toast.classes.has("bad"));
+});
+
+test("a synthesizer that refuses to speak leaves the Reader usable", async () => {
+  const { body, nodes } = speaking({ speech: { broken: true } });
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  assert.ok(!audio.classes.has("speaking"));
+  assert.strictEqual(nodes.toast.textContent, "Pronunciation unavailable");
+  sentence(body, 0).click(body);
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 1");
+});
+
+test("audio never reaches Mosaic, translation, Hanly or the word popup", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 0");
+  assert.strictEqual(nodes["hanly-counter"].textContent, "Hanly · 0");
+  assert.ok(!sentence(body, 0).classes.has("picked"));
+  assert.strictEqual(nodes["lexeme-glyph"].textContent, "", "no word popup opened");
+  assert.ok(translationText(body, 0).hidden, "no translation opened");
+  assert.strictEqual(speech.spoken.length, 1);
+});
+
+test("the neighbouring sentence actions never start playback", async () => {
+  const { body, speech } = speaking({ responses: {
+    "/sentences/0/translation": () => ({ ok: true, json: async () => ({
+      sentence_id: 0, translation: RUSSIAN, source: "generated",
+    }) }),
+  }});
+  await settle();
+  sentence(body, 0).click(body);
+  translationButton(body, 0).click(body);
+  await settle();
+  word(body, "讨论").click(body);
+  assert.ok(!speech.spoken.length, "only the speaker control speaks");
+});
+
+test("a sentence selected for Mosaic plays without changing the selection", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  sentence(body, 0).click(body);
+  assert.ok(sentence(body, 0).classes.has("picked"));
+  audioButton(body, 0).click(body);
+  assert.strictEqual(speech.last().text, CANONICAL);
+  assert.ok(sentence(body, 0).classes.has("picked"), "playback is not a selection");
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 1");
+  assert.strictEqual(sentence(body, 0).querySelector(".mark").getAttribute("aria-pressed"), "true");
+});
+
+for (const [expected, voices] of [
+  ["Mainland", [{ name: "Yue", lang: "zh-HK" }, { name: "Taiwan", lang: "zh-TW" },
+                { name: "Putonghua", lang: "cmn-Hans-CN" }, { name: "Mainland", lang: "zh_CN" }]],
+  ["Putonghua", [{ name: "Yue", lang: "zh-HK" }, { name: "Taiwan", lang: "zh-TW" },
+                 { name: "Putonghua", lang: "cmn-Hans-CN" }]],
+  ["Taiwan", [{ name: "Yue", lang: "zh-HK" }, { name: "Taiwan", lang: "zh-TW" }]],
+  ["Anna", [{ name: "Anna", lang: "zh-HK" }, { name: "Ivan", lang: "ru-RU" }]],
+]) {
+  test(`Mandarin voice selection picks ${expected} from its voice list`, async () => {
+    const { body, speech } = speaking({ speech: { voices } });
+    await settle();
+    audioButton(body, 0).click(body);
+    assert.strictEqual(speech.last().voice.name, expected);
+  });
+}
+
+test("no Chinese voice at all still speaks zh-CN, and later voices are picked up", async () => {
+  const voices = [{ name: "Ivan", lang: "ru-RU" }];
+  const { body, speech } = speaking({ speech: { voices } });
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(speech.last().lang, "zh-CN");
+  assert.strictEqual(speech.last().voice, null, "the system picks the voice");
+  voices.push({ name: "Mainland", lang: "zh-CN" });
+  speech.voicesArrived();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(speech.last().voice.name, "Mainland");
+});
+
+test("leaving the page stops Reader speech", async () => {
+  const { body, speech } = speaking();
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  global.document.hidden = true;
+  global.document.fire("visibilitychange");
+  assert.ok(!audio.classes.has("speaking"));
+  assert.strictEqual(speech.queue.length, 0);
+  global.document.hidden = false;
+});
+
+test("pasted-text documents speak arbitrary sentences whole", async () => {
+  const long =
+    "第一次听到这个消息的时候，我正在北京的一个小咖啡馆里看书，窗外下着雨，" +
+    "朋友突然打电话来，说王虹解决了一个困扰数学界一百多年的问题。";
+  const pasted = {
+    ...SPEECH_DOCUMENT,
+    title: "Вставленный текст",
+    paragraphs: [[0]],
+    sentences: [{ id: 0, text: long, tokens: [{ t: long, w: false }] }],
+  };
+  const { body, speech } = speaking({ document: pasted });
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(speech.last().text, long);
+  assert.strictEqual(speech.last().text.length, long.length, "nothing is truncated");
+});
+
+test("without the Web Speech API the audio action is absent and the Reader works", async () => {
+  const { body, nodes } = start();
+  await settle();
+  assert.strictEqual(audioButton(body, 0), null);
+  assert.ok(sentence(body, 0).querySelector(".mark"), "Mosaic survives");
+  assert.ok(sentence(body, 0).querySelector(".translation-action"), "translation survives");
+  word(body, "获得").click(body);
+  assert.ok(!nodes.lexeme.hidden, "Hanly popup survives");
+  sentence(body, 1).click(body);
+  assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 1");
+});
+
+test("a word takes the channel from a playing sentence", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  assert.ok(audio.classes.has("speaking"));
+  word(body, "讨论").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  assert.ok(!audio.classes.has("speaking"), "the sentence control returns to idle");
+  assert.ok(nodes["lexeme-pronounce"].classes.has("speaking"));
+  assert.strictEqual(speech.queue.length, 1, "one Reader utterance at a time");
+  assert.deepStrictEqual(speech.spoken.map((u) => u.text), [CANONICAL, "讨论"]);
+});
+
+test("a sentence takes the channel from a playing word", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  word(body, "讨论").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  assert.ok(nodes["lexeme-pronounce"].classes.has("speaking"));
+  audioButton(body, 1).click(body);
+  assert.ok(!nodes["lexeme-pronounce"].classes.has("speaking"));
+  assert.ok(audioButton(body, 1).classes.has("speaking"));
+  assert.strictEqual(speech.queue.length, 1);
+  assert.deepStrictEqual(speech.spoken.map((u) => u.text), ["讨论", "做研究很难。"]);
+});
+
+test("looking a word up leaves a playing sentence alone", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  word(body, "讨论").click(body);
+  assert.ok(audio.classes.has("speaking"), "opening the popup is not a playback command");
+  nodes["lexeme-close"].fire("click");
+  assert.ok(audio.classes.has("speaking"), "closing it is not either");
+  assert.strictEqual(speech.queue.length, 1);
+});
+
+test("closing a word popup still stops the word it was pronouncing", async () => {
+  const { body, nodes, speech } = speaking();
+  await settle();
+  word(body, "讨论").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  assert.ok(nodes["lexeme-pronounce"].classes.has("speaking"));
+  nodes["lexeme-close"].fire("click");
+  assert.ok(!nodes["lexeme-pronounce"].classes.has("speaking"));
+  assert.strictEqual(speech.queue.length, 0);
+});
+
+test("leaving the page through pagehide stops Reader speech", async () => {
+  const { body, speech } = speaking();
+  await settle();
+  const audio = audioButton(body, 0);
+  audio.click(body);
+  speech.leave();
+  assert.ok(!audio.classes.has("speaking"));
+  assert.strictEqual(speech.queue.length, 0);
+});
+
+test("the audio control is a mobile-sized target with a subtle active state", () => {
+  const sheet = css();
+  assert.ok(/\.sentence-controls button \{[^}]*width: 40px; height: 40px/.test(sheet));
+  assert.ok(/\.audio-icon \{[^}]*width: 20px; height: 20px/.test(sheet));
+  assert.ok(/\.audio-action\.speaking \{[^}]*var\(--blue\)/.test(sheet));
 });
 
 (async () => {
