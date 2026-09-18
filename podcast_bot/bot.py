@@ -60,6 +60,7 @@ Other languages: transcript and vocabulary/expressions only; no external uploads
 /add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
+/srt — download subtitles for the latest episode, when the model timed it
 /transcribe nl <URL> — override language (zh, nl, en, auto)
 /force <URL> — make a new paid transcription
 /retry — resume the latest failed job (may retry an already billed request)
@@ -79,6 +80,7 @@ async def setup_command_menu(bot, chat_id: int) -> None:
         ("native", "Язык объяснений: /native ru"),
         ("regenerate", "Обновить материалы из сохранённого текста"),
         ("zip", "Скачать последние материалы архивом"),
+        ("srt", "Скачать субтитры последнего эпизода"),
         ("reader", "Открыть интерактивную читалку"),
         ("hanly", "Слова в Hanly — только zh"),
         ("add_hanly", "Добавить своё слово или фразу в Hanly"),
@@ -330,6 +332,23 @@ class BotHandlers:
                 if self.worker:
                     self.worker.wake.set()
                 return
+            if command == "/srt":
+                source = self.storage.recent_pack(
+                    update.effective_chat.id
+                ) or self.storage.recent_source(update.effective_chat.id)
+                subtitles = (source / "transcript.srt") if source else None
+                if subtitles is None or not subtitles.is_file():
+                    raise UserError(
+                        "No subtitles for the latest episode. They are written only when the "
+                        "transcription model returns segment timestamps."
+                    )
+                with subtitles.open("rb") as document:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=document,
+                        filename="transcript.srt",
+                    )
+                return
             if command == "/reader":
                 self.require_reader()
                 source = self.storage.recent_pack(
@@ -427,10 +446,8 @@ async def send_files(bot, chat_id: int, path: Path) -> None:
             ]
         else:
             names.append("vocabulary.md")
-        if (path / "transcript.srt").is_file():
-            names.append("transcript.srt")
     else:
-        names = [name for name in ("transcript.txt", "transcript.srt") if (path / name).is_file()]
+        names = ["transcript.txt"]
     if metadata.get("study_complete"):
         with ExitStack() as stack:
             documents = [

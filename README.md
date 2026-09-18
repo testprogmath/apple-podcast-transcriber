@@ -17,13 +17,13 @@ For Mandarin with Russian as the learner's native language, the bot sends these 
 | `mandarin_mosaic.csv` | Selected verbatim Chinese sentences with English translations; exactly `Chinese,English` |
 | `metadata.json` | Source, models, settings, counts, transcript hash, and documented ASR suggestions |
 
-A ZIP containing these files plus validated `study.json` is created automatically. `/zip` sends the most recently completed archive. Whisper SRT, when available, is also preserved and delivered.
+A ZIP containing these files plus validated `study.json` is created automatically. `/zip` sends the most recently completed archive. SRT subtitles, written only when the transcription model returns segment timestamps, are preserved in the pack and sent by `/srt` rather than with every delivery.
 
 Meanings, translations and usage notes are written in the configured native language, and that is now enforced rather than merely requested. A model that answers in Chinese — repeating the source in place of a translation, or explaining a word in Chinese — fails validation and the chunk is retried. The Reader applies the same rule to already-generated packs: a "translation" that is just the source again is dropped rather than shown, so a Hanly note falls back to `原文：` alone instead of printing the Chinese twice.
 
 Chinese speech recognition does not translate. The text-processing stage derives all learning files from the saved transcript. It never rewrites that source, even when it suspects an ASR error. The current correction policy is deliberately **suggestions only**; confidence and reasons appear in study notes and metadata, with no silent replacement in quotations or Mosaic sentences.
 
-For every source language other than `zh`, the bot generates only `transcript.txt` and `vocabulary.md`: selected useful words/expressions with meanings, usage and translated examples. It does not generate a full translation, reading guide, pinyin, grammar/culture notes or importer CSVs, and never uploads those episodes to Hanly or Mandarin Mosaic. Available SRT is preserved. `/zip` contains the minimal files plus internal metadata/JSON. Old non-Chinese study packages require `/regenerate` to switch to this format, without repeating transcription.
+For every source language other than `zh`, the bot generates only `transcript.txt` and `vocabulary.md`: selected useful words/expressions with meanings, usage and translated examples. It does not generate a full translation, reading guide, pinyin, grammar/culture notes or importer CSVs, and never uploads those episodes to Hanly or Mandarin Mosaic. Available SRT is preserved and fetched with `/srt`. `/zip` contains the minimal files plus internal metadata/JSON. Old non-Chinese study packages require `/regenerate` to switch to this format, without repeating transcription.
 
 ## Telegram commands
 
@@ -42,6 +42,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 /regenerate
 /regenerate HSK4
 /zip
+/srt
 /reader
 /mosaic
 /hanly
@@ -59,6 +60,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 - Re-sending a URL reuses the transcript and matching study pack. After a level/native-language change it creates only new study materials.
 - `/force <URL>` intentionally makes a new paid audio transcription. `/retry` resumes a failed job, reusing completed stage checkpoints.
 - `/zip` retrieves the latest completed pack, even if a newer job is still processing.
+- `/srt` sends subtitles for the latest episode. Nothing is generated on demand: the file exists only when the transcription model timed the episode.
 - The finished-job message links the episode audio and its Apple Podcasts page, so the recording sits beside its transcript.
 - `/reader` opens the latest transcript or study pack in the Reader. It never retranscribes; it reuses the stored transcript.
 - `/add_hanly <text>` files any Chinese word, phrase or sentence as a single Hanly card, with pinyin, a Russian meaning and a translated example in its note, and no episode, transcript or study pack involved.
