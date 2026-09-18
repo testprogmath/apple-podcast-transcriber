@@ -70,6 +70,7 @@ async def test_sdk_model_fields_and_no_translation(tmp_path):
             json={
                 "text": "我们和咱们。",
                 "languages": [{"code": "zh"}],
+                "words": [{"start": 0, "end": 2, "word": "我们和咱们"}],
                 "segments": [{"start": 0, "end": 2, "text": "我们和咱们。"}],
             },
         )
@@ -85,11 +86,14 @@ async def test_sdk_model_fields_and_no_translation(tmp_path):
         for model in ("gpt-transcribe", "gpt-4o-transcribe", "whisper-1"):
             result = await transcriber.transcribe(Chunk(file, 0, 2), model, "zh", "大鹏")
             assert result.text == "我们和咱们。"
+            assert result.words[0].text == "我们和咱们"
     assert 'name="languages[]"' in observed[0]
     assert 'name="language"' not in observed[0]
     assert 'name="language"' in observed[1]
     assert "verbose_json" in observed[2]
     assert "timestamp_granularities[]" in observed[2]
+    assert "word" in observed[2] and "segment" in observed[2]
+    assert "timestamp_granularities" not in observed[0] + observed[1]
 
 
 async def test_sdk_error_is_safe(tmp_path):
@@ -170,6 +174,11 @@ async def test_cleanup_success_failure_cancel(config, store, fake_audio, failure
         output = await pipeline.process(current, AsyncMock())
         assert (output / "transcript.txt").read_text() == "你好。\n\n你好。\n"
         assert store.cached(current.cache_key) == output
+        import json
+
+        timing = json.loads((output / "audio-timing.json").read_text())
+        assert timing["text"] == (output / "transcript.txt").read_text()
+        assert timing["audio_url"] and timing["duration"] == 2
     assert fake_audio and all(not p.exists() for p in fake_audio)
     assert list((store.root / "tmp").iterdir()) == []
 
@@ -345,3 +354,29 @@ async def test_end_to_end_dry_run_with_real_audio_and_mock_services(config, stor
         await handlers.handle(update(URL), SimpleNamespace(bot=bot))
         assert len(requests) == 1
         assert bot.send_document.await_count == 2
+
+
+async def test_pipeline_persists_original_offsets_after_temp_audio_cleanup(
+    config, store, fake_audio
+):
+    import json
+
+    from podcast_bot.models import Segment
+    from podcast_bot.reader.audio import document_audio
+    from podcast_bot.reader.documents import from_transcript
+
+    transcriber = SimpleNamespace(
+        transcribe=AsyncMock(
+            return_value=Transcript(
+                "你好。", [Segment(0, 0.8, "你好。")], "zh", words=[Segment(0, 0.8, "你好")]
+            )
+        )
+    )
+    output = await Pipeline(config, store, None, transcriber).process(job(store), AsyncMock())
+    timing = json.loads((output / "audio-timing.json").read_text())
+    assert timing["words"][1]["start"] == 1
+    assert all(not path.exists() for path in fake_audio)
+    document = from_transcript(42, output)
+    source, ranges = document_audio(document, document.sentences())
+    assert source["url"] == timing["audio_url"]
+    assert ranges[1]["start_ms"] == 880

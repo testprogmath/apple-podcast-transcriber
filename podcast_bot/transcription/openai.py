@@ -27,7 +27,7 @@ class OpenAITranscriber:
                 options["language"] = language
             options["response_format"] = "verbose_json" if model == "whisper-1" else "json"
         if model == "whisper-1":
-            options["timestamp_granularities"] = ["segment"]
+            options["timestamp_granularities"] = ["word", "segment"]
             options["prompt"] = prompt[:80]  # Stay conservatively below 224 Whisper tokens.
         try:
             with chunk.path.open("rb") as audio:
@@ -56,7 +56,14 @@ class OpenAITranscriber:
             "japanese": "ja",
         }.get(str(data.get("language", "")).lower())
         return Transcript(
-            data["text"].strip(), segments, language or detected, data.get("usage") or {}
+            data["text"].strip(),
+            segments,
+            language or detected,
+            data.get("usage") or {},
+            [
+                Segment(float(w["start"]), float(w["end"]), w["word"])
+                for w in data.get("words") or []
+            ],
         )
 
 
@@ -66,7 +73,12 @@ def combine(parts: list[tuple[float, Transcript]]) -> Transcript:
     segments = [
         Segment(s.start + offset, s.end + offset, s.text) for offset, t in parts for s in t.segments
     ]
-    return Transcript(text, segments, next((t.language for _, t in parts if t.language), None))
+    words = [
+        Segment(w.start + offset, w.end + offset, w.text) for offset, t in parts for w in t.words
+    ]
+    return Transcript(
+        text, segments, next((t.language for _, t in parts if t.language), None), words=words
+    )
 
 
 def srt_timestamp(seconds: float) -> str:

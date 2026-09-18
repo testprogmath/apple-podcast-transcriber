@@ -17,6 +17,7 @@ const state = {
   pinyin: false,
   language: "ru",
   glossary: {},
+  audio: null,
   translationViews: [],
   vocabularyPending: new Set(),
   hanlyUploading: false,
@@ -185,6 +186,7 @@ function stopSpeaking(owner) {
 
 /** The Reader owns one utterance at a time, whichever control asked for it. */
 function speakMandarin(text, handlers = {}) {
+  stopOriginal();
   const words = String(text || "").trim();
   if (!canSpeak || !words) return false;
   stopSpeaking();
@@ -240,23 +242,114 @@ function pronounce(event) {
   });
 }
 
-/**
- * The Reader's sentence playback boundary. Sentences are spoken by system Mandarin
- * TTS today; one that later carries its own source timings can be played from the
- * podcast audio here, and the control that calls this never has to change.
- */
-function playSentenceAudio(sentence, handlers) {
-  return speakMandarin(sentence.text, { ...handlers, owner: "sentence" });
+// One original player and the existing TTS engine share a Reader playback channel.
+const original = { player: null, request: null, generation: 0 };
+function stopOriginal() {
+  original.generation += 1;
+  const request = original.request;
+  original.request = null;
+  if (!request) return;
+  clearTimeout(request.timeout);
+  if (request.interval) window.clearInterval(request.interval);
+  const audio = original.player;
+  if (audio) audio.onloadedmetadata = audio.onseeked = audio.ontimeupdate = audio.onended = audio.onerror = null;
+  try { audio.pause(); } catch (error) { /* Best effort on navigation. */ }
+  if (request.handlers.onEnd) request.handlers.onEnd();
 }
+
+/** Original range first; TTS only when unavailable or failed before useful playback. */
+function playSentenceAudio(sentence, handlers = {}) {
+  stopOriginal();
+  stopSpeaking();
+  const source = state.audio;
+  const range = sentence.audio;
+  if (!source || !range || range.source !== "podcast" || !window.Audio
+      || !Number.isFinite(range.start_ms) || !Number.isFinite(range.end_ms)
+      || range.start_ms < 0 || range.end_ms <= range.start_ms) {
+    return speakMandarin(sentence.text, { ...handlers, owner: "sentence" });
+  }
+  const generation = original.generation;
+  const request = { handlers, phase: "loading-original", useful: 0, last: null, timeout: null, interval: null };
+  original.request = request;
+  const current = () => original.request === request && original.generation === generation;
+  const start = range.start_ms / 1000;
+  const end = range.end_ms / 1000;
+  const fail = () => {
+    if (!current()) return;
+    const fallback = request.useful < Math.min(.35, (end - start) / 2);
+    stopOriginal();
+    if (fallback) {
+      if (!speakMandarin(sentence.text, { ...handlers, owner: "sentence" })) {
+        if (!canSpeak) toast("Pronunciation unavailable", true);
+      }
+    }
+  };
+  try {
+    const audio = original.player || (original.player = new window.Audio());
+    audio.preload = "metadata";
+    // No crossorigin: ordinary media playback requires neither fetch nor CORS.
+    const progress = () => {
+      if (!current() || request.phase !== "playing-original") return;
+      const time = audio.currentTime;
+      if (audio.seeking) return;
+      if (time < start - .15 || time > end + .5) { fail(); return; }
+      if (!audio.paused && request.last !== null) {
+        request.useful += Math.max(0, Math.min(.25, time - request.last));
+      }
+      if (request.last === null || time > request.last) {
+        clearTimeout(request.timeout);
+        request.timeout = setTimeout(fail, 8000);
+      }
+      request.last = time;
+      if (time >= end) stopOriginal();
+    };
+    const play = () => {
+      if (!current() || request.phase !== "seeking") return;
+      if (Math.abs(audio.currentTime - start) > .15) { fail(); return; }
+      request.phase = "playing-original";
+      request.last = audio.currentTime;
+      try {
+        Promise.resolve(audio.play()).catch(fail);
+        if (handlers.onStart) handlers.onStart();
+        if (window.setInterval) request.interval = window.setInterval(progress, 50);
+      } catch (error) { fail(); }
+    };
+    const seek = () => {
+      if (!current() || request.phase !== "loading-original") return;
+      // A changed enclosure (e.g. dynamic ads) must not silently shift known timings.
+      if (!Number.isFinite(audio.duration) || end > audio.duration + .05
+          || Math.abs(audio.duration - source.duration) > 1) { fail(); return; }
+      request.phase = "seeking";
+      try {
+        audio.currentTime = start;
+        if (!audio.seeking) play();
+      } catch (error) { fail(); }
+    };
+    audio.onloadedmetadata = seek;
+    audio.onseeked = play;
+    audio.ontimeupdate = progress;
+    audio.onerror = () => { if (audio.error) fail(); };
+    audio.onended = () => {
+      if (!current()) return;
+      if (audio.currentTime >= end - .1) stopOriginal(); else fail();
+    };
+    request.timeout = setTimeout(fail, 8000);
+    if (audio.src !== source.url || audio.error) { audio.src = source.url; audio.load(); }
+    if (audio.readyState >= 1) seek();
+  } catch (error) { fail(); }
+  return true;
+}
+
+window.addEventListener?.("pagehide", () => { stopOriginal(); stopSpeaking(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { stopOriginal(); stopSpeaking(); }
+});
 
 if (canSpeak) {
   refreshVoices();
   speech.synth.addEventListener?.("voiceschanged", refreshVoices);
   pronunciationButton.addEventListener("click", pronounce);
-  window.addEventListener?.("pagehide", stopSpeaking);
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) stopSpeaking();
-  });
+
 }
 
 function closeLexeme() {
@@ -560,7 +653,7 @@ function renderSentence(sentence) {
     toggleSentence(sentence.id);
   });
   controls.appendChild(mark);
-  if (canSpeak) controls.appendChild(audioControl(sentence));
+  if (canSpeak || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
   node.appendChild(controls);
   if (/[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
     const translation = translationControl(sentence);
@@ -572,8 +665,10 @@ function renderSentence(sentence) {
 }
 
 function render(data) {
+  stopOriginal();
   stopSpeaking();
   state.title = data.title;
+  state.audio = data.audio || null;
   state.sentences = data.sentences;
   state.glossary = data.glossary || {};
   state.available = { hanly: data.hanly_available, mosaic: data.mosaic_available };

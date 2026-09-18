@@ -161,6 +161,8 @@ class StudyService:
         with tempfile.TemporaryDirectory(prefix=".pack-", dir=root) as temp:
             output = Path(temp)
             (output / "transcript.txt").write_bytes(canonical)
+            if (source / "audio-timing.json").is_file():
+                shutil.copyfile(source / "audio-timing.json", output / "audio-timing.json")
             if (source / "transcript.srt").is_file():
                 shutil.copyfile(source / "transcript.srt", output / "transcript.srt")
             if settings.target_language == "zh":

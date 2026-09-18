@@ -366,6 +366,7 @@ class Storage:
             [Segment(**s) for s in value["segments"]],
             value["language"],
             value.get("usage", {}),
+            [Segment(**w) for w in value.get("words", [])],
         )
 
     def save_chunk(self, job_id: int, fingerprint: str, result: Transcript, usage_id: int) -> None:

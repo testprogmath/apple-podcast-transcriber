@@ -126,6 +126,17 @@ class Pipeline:
             output.mkdir(parents=True, exist_ok=True)
             (output / "transcript.txt.tmp").write_text(transcript.text, encoding="utf-8")
             (output / "transcript.txt.tmp").replace(output / "transcript.txt")
+            atomic_json(
+                output / "audio-timing.json",
+                {
+                    "version": 1,
+                    "text": transcript.text,
+                    "audio_url": episode.audio_url,
+                    "duration": duration,
+                    "words": [asdict(w) for w in transcript.words],
+                    "segments": [asdict(s) for s in transcript.segments],
+                },
+            )
             if transcript.segments:
                 (output / "transcript.srt").write_text(to_srt(transcript), encoding="utf-8")
             atomic_json(

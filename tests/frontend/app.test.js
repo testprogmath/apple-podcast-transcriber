@@ -1298,6 +1298,200 @@ test("the audio control is a mobile-sized target with a subtle active state", ()
   assert.ok(/\.audio-action\.speaking \{[^}]*var\(--blue\)/.test(sheet));
 });
 
+// Media is entirely simulated: no podcast requests or paid calls.
+function podcastPlayer(options = {}) {
+  const players = [];
+  const speech = fakeSpeech();
+  class Audio {
+    constructor() {
+      if (options.constructorError) throw new Error("unsupported");
+      players.push(this);
+      this.duration = options.duration ?? 20;
+      this.readyState = options.loading ? 0 : 1;
+      this.paused = true;
+      this.seeking = false;
+      this.time = 0;
+      this.plays = 0;
+    }
+    get currentTime() { return this.time; }
+    set currentTime(value) {
+      if (options.seekError) throw new Error("seek unavailable");
+      this.time = value;
+      this.seeking = !!options.seeking;
+    }
+    load() { this.loads = (this.loads || 0) + 1; }
+    pause() { this.paused = true; }
+    play() {
+      this.plays += 1;
+      if (options.playError) throw new Error("play failed");
+      this.paused = false;
+      return options.play ? options.play() : Promise.resolve();
+    }
+    tick(time) { this.time = time; this.ontimeupdate?.(); }
+    errorNow() { this.error = {}; this.onerror?.(); }
+  }
+  const payload = structuredClone(SPEECH_DOCUMENT);
+  payload.audio = { url: "https://podcast.example/audio.mp3", duration: 20 };
+  payload.sentences[0].audio = { source: "podcast", start_ms: 1000, end_ms: 3000 };
+  payload.sentences[1].audio = { source: "podcast", start_ms: 5000, end_ms: 7000 };
+  const env = start({ document: payload, speech: { ...(options.noTts ? {} : speech), Audio } });
+  const timers = new Map();
+  let serial = 0;
+  global.setTimeout = (fn, delay) => { const id = ++serial; timers.set(id, { fn, delay }); return id; };
+  global.clearTimeout = (id) => timers.delete(id);
+  return { ...env, players, speech, timers };
+}
+
+test("podcast range is preferred, lazy, bounded and never followed by TTS", async () => {
+  const { body, players, speech, nodes } = podcastPlayer();
+  await settle();
+  assert.strictEqual(players.length, 0);
+  audioButton(body, 0).click(body);
+  const media = players[0];
+  assert.strictEqual(media.preload, "metadata");
+  assert.strictEqual(media.currentTime, 1);
+  assert.ok(audioButton(body, 0).classes.has("speaking"));
+  nodes["pinyin-toggle"].fire("click");
+  media.tick(1.2); media.tick(1.4); media.tick(3);
+  assert.ok(media.paused);
+  assert.ok(!audioButton(body, 0).classes.has("speaking"));
+  assert.strictEqual(speech.spoken.length, 0);
+});
+
+for (const options of [
+  { loading: true }, { seekError: true }, { playError: true },
+  { constructorError: true }, { duration: 25 }, { duration: Infinity },
+  { play: () => Promise.reject(new Error("blocked")) },
+]) {
+  test(`early media failure falls back silently: ${JSON.stringify(options)}`, async () => {
+    const { body, players, speech, nodes } = podcastPlayer(options);
+    await settle();
+    audioButton(body, 0).click(body);
+    if (options.loading) players[0].errorNow();
+    await settle();
+    assert.strictEqual(speech.spoken.length, 1);
+    assert.strictEqual(speech.spoken[0].text, CANONICAL);
+    assert.ok(!nodes.toast.textContent.includes("failed"));
+    speech.spoken[0].onerror();
+    assert.strictEqual(nodes.toast.textContent, "Pronunciation unavailable");
+    assert.ok(!audioButton(body, 0).classes.has("speaking"));
+  });
+}
+
+test("watchdog falls back for stuck loading or seeking, not after meaningful audio", async () => {
+  for (const options of [{ loading: true }, { seeking: true }, {}]) {
+    const { body, players, speech, timers } = podcastPlayer(options);
+    await settle();
+    audioButton(body, 0).click(body);
+    if (!options.loading && !options.seeking) {
+      players[0].tick(1.2); players[0].tick(1.4);
+    }
+    [...timers.values()].find((timer) => timer.delay === 8000).fn();
+    assert.strictEqual(speech.spoken.length, options.loading || options.seeking ? 1 : 0);
+    assert.ok(players[0].paused);
+  }
+});
+
+test("late network error stops gracefully without replaying TTS", async () => {
+  const { body, players, speech } = podcastPlayer();
+  await settle();
+  audioButton(body, 0).click(body);
+  players[0].tick(1.2); players[0].tick(1.4);
+  players[0].errorNow();
+  assert.strictEqual(speech.spoken.length, 0);
+  assert.ok(players[0].paused);
+  assert.ok(!audioButton(body, 0).classes.has("speaking"));
+});
+
+test("A B A uses one player and rejects stale events and play promises", async () => {
+  const rejects = [];
+  const { body, players, speech } = podcastPlayer({ play: () => new Promise((resolve, reject) => rejects.push(reject)) });
+  await settle();
+  audioButton(body, 0).click(body);
+  const oldError = players[0].onerror;
+  const oldProgress = players[0].ontimeupdate;
+  audioButton(body, 1).click(body);
+  rejects[0](new Error("stale"));
+  players[0].error = {};
+  oldError(); oldProgress();
+  players[0].error = null;
+  await settle();
+  assert.strictEqual(speech.spoken.length, 0);
+  assert.strictEqual(players[0].currentTime, 5);
+  assert.ok(audioButton(body, 1).classes.has("speaking"));
+  audioButton(body, 0).click(body);
+  audioButton(body, 0).click(body);
+  assert.strictEqual(players.length, 1);
+  assert.strictEqual(players[0].plays, 4);
+  assert.strictEqual(players[0].loads, 1);
+  assert.strictEqual(players[0].currentTime, 1);
+  assert.ok(!audioButton(body, 1).classes.has("speaking"));
+});
+
+test("stale loading error cannot start TTS over B", async () => {
+  const { body, players, speech } = podcastPlayer({ loading: true });
+  await settle();
+  audioButton(body, 0).click(body);
+  const stale = players[0].onerror;
+  audioButton(body, 1).click(body);
+  players[0].readyState = 1;
+  players[0].onloadedmetadata();
+  players[0].error = {};
+  stale();
+  assert.strictEqual(speech.spoken.length, 0);
+  assert.strictEqual(players[0].currentTime, 5);
+});
+
+test("word speech and original audio interrupt each other and pagehide clears both", async () => {
+  const { body, nodes, players, speech } = podcastPlayer();
+  await settle();
+  audioButton(body, 0).click(body);
+  word(body, "最近").click(body);
+  nodes["lexeme-pronounce"].click(body);
+  assert.ok(players[0].paused);
+  assert.strictEqual(speech.spoken[0].text, "最近");
+  audioButton(body, 1).click(body);
+  assert.strictEqual(speech.cancelled, 1);
+  assert.ok(!players[0].paused);
+  speech.events.pagehide();
+  assert.ok(players[0].paused);
+});
+
+test("original playback works without speech support; total failure is graceful", async () => {
+  const { body, players, nodes } = podcastPlayer({ noTts: true });
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(players[0].plays, 1);
+  players[0].errorNow();
+  assert.strictEqual(nodes.toast.textContent, "Pronunciation unavailable");
+  assert.ok(!audioButton(body, 0).classes.has("speaking"));
+});
+
+test("async seek completes before play and a failed source is reloaded on retry", async () => {
+  const { body, players, speech } = podcastPlayer({ seeking: true });
+  await settle();
+  audioButton(body, 0).click(body);
+  const media = players[0];
+  assert.strictEqual(media.plays, 0);
+  media.seeking = false;
+  media.onseeked();
+  assert.strictEqual(media.plays, 1);
+  media.errorNow();
+  assert.strictEqual(speech.spoken.length, 1);
+  audioButton(body, 0).click(body);
+  assert.strictEqual(media.loads, 2);
+});
+
+test("podcast sentence without reliable timing uses existing system speech", async () => {
+  const payload = structuredClone(SPEECH_DOCUMENT);
+  payload.audio = { url: "https://podcast.example/audio.mp3", duration: 20 };
+  payload.sentences[0].audio = null;
+  const { body, speech } = speaking({ document: payload });
+  await settle();
+  audioButton(body, 0).click(body);
+  assert.strictEqual(speech.last().text, CANONICAL);
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of Object.entries(tests)) {

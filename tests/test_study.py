@@ -277,6 +277,7 @@ def test_asr_suggestions_never_rewrite_source():
 async def test_generate_pack_caches_preserves_canonical_and_records_usage(store, canonical):
     svc, client = service(store)
     job = enqueue_study(store, canonical)
+    (canonical / "audio-timing.json").write_text('{"version": 1}')
     before = (canonical / "transcript.txt").read_bytes()
     pack = await svc.generate(canonical, StudySettings(), job, AsyncMock())
     assert (
@@ -284,6 +285,9 @@ async def test_generate_pack_caches_preserves_canonical_and_records_usage(store,
         == before
         == (pack / "transcript.txt").read_bytes()
     )
+    assert (pack / "audio-timing.json").read_bytes() == (
+        canonical / "audio-timing.json"
+    ).read_bytes()
     assert pack_valid(pack)
     assert {
         "transcript.txt",
