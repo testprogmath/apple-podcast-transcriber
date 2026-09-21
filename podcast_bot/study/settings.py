@@ -4,6 +4,7 @@ import math
 import os
 import re
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from ..config import language_code
 from ..models import UserError
@@ -86,6 +87,14 @@ def study_key(transcript: bytes, settings: StudySettings) -> str:
     return hashlib.sha256(
         transcript + b"\0" + settings.to_json().encode() + suffix + b"\0source-quotes-v1"
     ).hexdigest()
+
+
+def source_study_key(source: Path, settings: StudySettings) -> str:
+    key = study_key((source / "transcript.txt").read_bytes(), settings)
+    metadata = json.loads((source / "metadata.json").read_text(encoding="utf-8"))
+    if metadata.get("source_type") == "subtitles":
+        return hashlib.sha256((key + ":subtitles:" + metadata["subtitle_id"]).encode()).hexdigest()
+    return key
 
 
 def pricing(model: str) -> tuple[float, float, float] | None:

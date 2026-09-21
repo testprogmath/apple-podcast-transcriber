@@ -24,6 +24,7 @@ from .models import Selection, StudyMaterial, chunk_schema
 from .mosaic import select_candidates
 from .prompts import CHUNK_PROMPT, RANK_PROMPT
 from .render import (
+    exercises_markdown,
     hanly_csv,
     mosaic_csv,
     pinyin_markdown,
@@ -31,7 +32,7 @@ from .render import (
     study_markdown,
     translation_markdown,
 )
-from .settings import StudySettings, study_key
+from .settings import StudySettings, source_study_key
 
 
 def deduplicate(items: list, field: str) -> list:
@@ -72,7 +73,7 @@ class StudyService:
         self.storage, self.requests = storage, requests
 
     def cached(self, source: Path, settings: StudySettings) -> Path | None:
-        key = study_key((source / "transcript.txt").read_bytes(), settings)
+        key = source_study_key(source, settings)
         row = self.storage.db.execute("SELECT path FROM study_cache WHERE key=?", (key,)).fetchone()
         path = Path(row[0]) if row else self.storage.root / "study" / key
         return path if pack_valid(path) else None
@@ -86,7 +87,7 @@ class StudyService:
         regenerate: bool = False,
     ) -> Path:
         canonical = (source / "transcript.txt").read_bytes()
-        base_key = study_key(canonical, settings)
+        base_key = source_study_key(source, settings)
         key = f"{base_key}-run-{job.id}" if regenerate else base_key
         with self.storage.db:
             self.storage.db.execute("INSERT OR REPLACE INTO study_runs VALUES (?,?)", (job.id, key))
@@ -184,6 +185,10 @@ class StudyService:
             else:
                 (output / "vocabulary.md").write_text(
                     vocabulary_markdown(material), encoding="utf-8"
+                )
+            if metadata.get("source_type") == "subtitles" and settings.target_language == "zh":
+                (output / "exercises.md").write_text(
+                    exercises_markdown(material, canonical.decode("utf-8")), encoding="utf-8"
                 )
             atomic_json(output / "study.json", material.model_dump())
             zip_name = safe_name(metadata.get("title", "episode"), 100) + "-study-pack.zip"

@@ -34,6 +34,7 @@ class Config:
     default_language: str | None = "zh"
     max_minutes: float = 180
     max_download_mb: int = 500
+    reader_audio_storage_mb: int = 2000
     chunk_seconds: int = 600
     data_dir: Path = Path("data")
     hints: str = ""
@@ -65,6 +66,7 @@ class Config:
                 ),
                 max_minutes=float(os.getenv("MAX_EPISODE_DURATION_MINUTES", "180")),
                 max_download_mb=int(os.getenv("MAX_DOWNLOAD_MB", "500")),
+                reader_audio_storage_mb=int(os.getenv("READER_AUDIO_STORAGE_MB", "2000")),
                 chunk_seconds=int(os.getenv("CHUNK_SECONDS", "600")),
                 data_dir=Path(os.getenv("DATA_DIR", "data")).expanduser().resolve(),
                 hints=os.getenv("TRANSCRIPTION_HINTS", ""),
@@ -87,6 +89,8 @@ class Config:
             raise UserError("User ID must be positive; maximum duration must be 0–1440 minutes.")
         if not 1 <= c.max_download_mb <= 2000 or not 30 <= c.chunk_seconds <= 600:
             raise UserError("MAX_DOWNLOAD_MB must be 1–2000; CHUNK_SECONDS must be 30–600.")
+        if not 1 <= c.reader_audio_storage_mb <= 50000:
+            raise UserError("READER_AUDIO_STORAGE_MB must be 1–50000.")
         if len(c.hints) > 500 or (c.cost_per_minute is not None and c.cost_per_minute < 0):
             raise UserError(
                 "Hints must be at most 500 characters; estimated price cannot be negative."

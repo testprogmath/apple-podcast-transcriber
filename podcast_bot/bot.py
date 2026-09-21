@@ -31,6 +31,7 @@ from .models import Job, UserError
 from .mosaic.client import MandarinMosaicClient
 from .mosaic.config import MosaicConfig
 from .mosaic.service import MosaicUploadService
+from .mp3 import prepare_mp3, source_url
 from .net import http_client
 from .pipeline import Pipeline, cleanup_abandoned
 from .queue import Worker
@@ -43,14 +44,20 @@ from .study.client import OpenAIStudyClient, StudyRequests
 from .study.pipeline import LearningPipeline
 from .study.service import StudyService, pack_valid
 from .study.settings import StudySettings, learner_level
+from .subtitle_import import import_srt
+from .subtitles import download_subtitles
+from .subtitles import request as subtitle_request
 from .transcription.audio import check_ffmpeg
 from .transcription.openai import OpenAITranscriber
 from .version import release
+from .youtube import prepare_youtube
 
 log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 2_000_000
 HELP = """Send an Apple Podcasts episode link. zh: full study pack and configured uploads.
 Other languages: transcript and vocabulary/expressions only; no external uploads.
+Upload a UTF-8 .srt file for Reader and study materials (no speech recognition).
+Use /language before uploading to choose the subtitle language.
 /level HSK3 — set learner level (also HSK4, A2, B1, etc.)
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
@@ -60,6 +67,9 @@ Other languages: transcript and vocabulary/expressions only; no external uploads
 /add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
+/youtube [language] <URL> — subtitles, saved audio, Reader and study materials
+/subs [language] <YouTube URL> — download existing subtitles as SRT and TXT
+/mp3 [URL] — audio only from Apple Podcasts or YouTube; no transcription
 /srt — download subtitles for the latest episode, when the model timed it
 /transcribe nl <URL> — override language (zh, nl, en, auto)
 /force <URL> — make a new paid transcription
@@ -80,6 +90,9 @@ async def setup_command_menu(bot, chat_id: int) -> None:
         ("native", "Язык объяснений: /native ru"),
         ("regenerate", "Обновить материалы из сохранённого текста"),
         ("zip", "Скачать последние материалы архивом"),
+        ("youtube", "YouTube: Reader, аудио и материалы"),
+        ("subs", "Субтитры YouTube без распознавания"),
+        ("mp3", "Скачать MP3: подкаст или YouTube"),
         ("srt", "Скачать субтитры последнего эпизода"),
         ("reader", "Открыть интерактивную читалку"),
         ("hanly", "Слова в Hanly — только zh"),
@@ -132,6 +145,9 @@ class BotHandlers:
         self.uploads = StudyUploads()
         self.reader: ReaderServer | None = None
         self.study_defaults = StudySettings.from_env()
+        self.mp3_task: asyncio.Task | None = None
+        self.subs_task: asyncio.Task | None = None
+        self.youtube_task: asyncio.Task | None = None
 
     def study_settings(self) -> StudySettings:
         base = self.study_defaults
@@ -163,13 +179,22 @@ class BotHandlers:
         message = update.effective_message
         attachment = message.document
         try:
-            self.require_reader()
-            if not attachment or not (attachment.file_name or "").lower().endswith((".txt", ".md")):
-                raise UserError("Reader accepts UTF-8 .txt or .md files.")
+            is_srt = attachment and (attachment.file_name or "").lower().endswith(".srt")
+            if not is_srt:
+                self.require_reader()
+            if not attachment or not (attachment.file_name or "").lower().endswith(
+                (".txt", ".md", ".srt")
+            ):
+                raise UserError("Reader accepts UTF-8 .txt, .md or .srt files.")
             if (attachment.file_size or 0) > MAX_UPLOAD_BYTES:
                 raise UserError("That file is too large for Reader.")
             handle = await attachment.get_file()
             raw = bytes(await handle.download_as_bytearray())
+            if len(raw) > MAX_UPLOAD_BYTES:
+                raise UserError("That file is too large for Reader.")
+            if is_srt:
+                await self.import_subtitles(update, context, raw, attachment.file_name)
+                return
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -180,6 +205,219 @@ class BotHandlers:
             await self.open_reader(message, document)
         except UserError as exc:
             await message.reply_text(str(exc))
+
+    def latest_material(self, chat_id: int) -> Path | None:
+        source = self.storage.recent_source(chat_id)
+        pack = self.storage.recent_pack(chat_id)
+        if source and pack:
+            try:
+                metadata = json.loads((pack / "metadata.json").read_text())
+                if metadata.get("canonical_source") != str(source):
+                    return source
+            except (OSError, ValueError):
+                return source
+        return pack or source
+
+    async def import_subtitles(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE, raw: bytes, filename: str
+    ) -> None:
+        settings = self.study_settings()
+        source = import_srt(
+            self.storage.root, raw, filename, update.effective_chat.id, settings.target_language
+        )
+        await self.process_subtitle_source(update, context, source, settings)
+
+    async def process_subtitle_source(
+        self, update, context, source: Path, settings: StudySettings
+    ) -> None:
+        self.storage.remember_source(update.effective_chat.id, source)
+        self.storage.forget_stale_pack(update.effective_chat.id, source)
+        cached = self.study_cache(source, settings) if self.config.study_enabled else None
+        if (
+            settings.target_language == "zh"
+            and self.config.reader_enabled
+            and self.config.reader_url
+        ):
+            await self.open_reader(
+                update.effective_message,
+                from_transcript(update.effective_chat.id, cached or source),
+            )
+        if not self.config.study_enabled:
+            await update.effective_message.reply_text(
+                "Subtitles saved. Study generation is disabled; no speech recognition was used."
+            )
+            return
+        if cached:
+            self.storage.remember_pack(update.effective_chat.id, source, cached)
+            await send_files(context.bot, update.effective_chat.id, cached)
+            return
+        status = await update.effective_message.reply_text(
+            "Preparing materials from your subtitles. Text generation may be billed; no audio or speech recognition."
+        )
+        identifier, position, duplicate = self.storage.enqueue_study(
+            source, settings.to_json(), update.effective_chat.id, status.message_id
+        )
+        await status.edit_text(
+            f"Study job #{identifier} queued. Position: {position}. No speech recognition."
+        )
+        if self.worker:
+            self.worker.wake.set()
+
+    def study_cache(self, source: Path, settings: StudySettings) -> Path | None:
+        return StudyService(self.storage, None).cached(source, settings)
+
+    async def request_youtube(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if self.youtube_task and not self.youtube_task.done():
+            await update.effective_message.reply_text(
+                "A YouTube source is already being prepared. Please wait."
+            )
+            return
+        try:
+            url, language = subtitle_request(
+                update.effective_message.text, self.study_settings().target_language
+            )
+        except UserError as exc:
+            raise UserError(str(exc).replace("/subs", "/youtube")) from None
+        settings = replace(self.study_settings(), target_language=language.split("-")[0])
+        status = await update.effective_message.reply_text(
+            "Preparing YouTube subtitles and original audio…"
+        )
+
+        async def progress(text: str) -> None:
+            with suppress(TelegramError):
+                await status.edit_text(text)
+
+        async def prepare() -> None:
+            try:
+                source, summary = await prepare_youtube(
+                    url, language, update.effective_chat.id, self.config, progress
+                )
+                await progress(summary)
+                await self.process_subtitle_source(update, context, source, settings)
+            except asyncio.CancelledError:
+                await progress("YouTube preparation interrupted. Send /youtube again to retry.")
+                raise
+            except Exception as exc:
+                log.warning("stage=youtube-source exception_type=%s", type(exc).__name__)
+                await progress(
+                    str(exc)
+                    if isinstance(exc, UserError)
+                    else "Could not prepare YouTube materials. Send /youtube again to retry."
+                )
+
+        self.youtube_task = asyncio.create_task(prepare(), name="youtube-source")
+
+    async def request_subtitles(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if self.subs_task and not self.subs_task.done():
+            await update.effective_message.reply_text(
+                "Subtitles are already being downloaded. Please wait."
+            )
+            return
+        url, language = subtitle_request(
+            update.effective_message.text,
+            self.storage.preference("target_language", self.config.default_language or "zh"),
+        )
+        status = await update.effective_message.reply_text(
+            f"Finding {language} subtitles… No speech recognition."
+        )
+
+        async def progress(text: str) -> None:
+            with suppress(TelegramError):
+                await status.edit_text(text)
+
+        async def deliver() -> None:
+            try:
+                async with asyncio.timeout(240):
+                    async with download_subtitles(url, language, self.config.data_dir) as result:
+                        for path in (result.srt, result.text):
+                            with path.open("rb") as document:
+                                await context.bot.send_document(
+                                    chat_id=update.effective_chat.id,
+                                    document=document,
+                                    filename=path.name,
+                                    read_timeout=60,
+                                    write_timeout=60,
+                                )
+                        origin = (
+                            "YouTube automatic captions"
+                            if result.automatic
+                            else "Published YouTube subtitles"
+                        )
+                        await progress(
+                            f"{origin} ({result.language}) sent as SRT and TXT. No speech recognition was started."
+                        )
+            except asyncio.CancelledError:
+                await progress("Subtitle download interrupted. Send /subs again to retry.")
+                raise
+            except Exception as exc:
+                log.warning("stage=subtitles exception_type=%s", type(exc).__name__)
+                await progress(
+                    str(exc)
+                    if isinstance(exc, UserError)
+                    else "Could not download or send subtitles. Send /subs again to retry."
+                )
+
+        self.subs_task = asyncio.create_task(deliver(), name="youtube-subtitles")
+
+    async def request_mp3(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if self.mp3_task and not self.mp3_task.done():
+            await update.effective_message.reply_text(
+                "An MP3 is already being prepared. Please wait."
+            )
+            return
+        fields = update.effective_message.text.split()
+        if len(fields) == 1:
+            source = self.storage.recent_pack(
+                update.effective_chat.id
+            ) or self.storage.recent_source(update.effective_chat.id)
+            try:
+                url = (
+                    json.loads((source / "metadata.json").read_text())["apple_url"]
+                    if source
+                    else ""
+                )
+            except (OSError, ValueError, KeyError, TypeError):
+                url = ""
+        elif len(fields) == 2:
+            url = fields[1]
+        else:
+            raise UserError("Send /mp3 followed by one episode or video URL.")
+        _, url = source_url(url)
+        status = await update.effective_message.reply_text(
+            "Preparing MP3… No transcription or paid API calls."
+        )
+
+        async def progress(text: str) -> None:
+            with suppress(TelegramError):
+                await status.edit_text(text)
+
+        async def deliver() -> None:
+            try:
+                async with prepare_mp3(url, self.config, progress) as result:
+                    with result.path.open("rb") as audio:
+                        await context.bot.send_audio(
+                            chat_id=update.effective_chat.id,
+                            audio=audio,
+                            filename=result.path.name,
+                            title=result.title,
+                            performer=result.performer,
+                            duration=result.duration,
+                            read_timeout=120,
+                            write_timeout=300,
+                        )
+                await progress("MP3 sent.")
+            except asyncio.CancelledError:
+                await progress("MP3 preparation interrupted. Send /mp3 again to retry.")
+                raise
+            except Exception as exc:
+                log.warning("stage=mp3 exception_type=%s", type(exc).__name__)
+                await progress(
+                    str(exc)
+                    if isinstance(exc, UserError)
+                    else "Could not prepare or send MP3. Send /mp3 again to retry."
+                )
+
+        self.mp3_task = asyncio.create_task(deliver(), name="mp3-download")
 
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not authorized(update, self.config.allowed_user_id) or not update.effective_message:
@@ -210,6 +448,15 @@ class BotHandlers:
                 self.worker.wake.set()
             return
         try:
+            if command == "/youtube":
+                await self.request_youtube(update, context)
+                return
+            if command == "/subs":
+                await self.request_subtitles(update, context)
+                return
+            if command == "/mp3":
+                await self.request_mp3(update, context)
+                return
             settings = self.study_settings()
             if command in {"/level", "/language", "/native"}:
                 fields = text.split(maxsplit=1)
@@ -333,9 +580,7 @@ class BotHandlers:
                     self.worker.wake.set()
                 return
             if command == "/srt":
-                source = self.storage.recent_pack(
-                    update.effective_chat.id
-                ) or self.storage.recent_source(update.effective_chat.id)
+                source = self.latest_material(update.effective_chat.id)
                 subtitles = (source / "transcript.srt") if source else None
                 if subtitles is None or not subtitles.is_file():
                     raise UserError(
@@ -351,9 +596,7 @@ class BotHandlers:
                 return
             if command == "/reader":
                 self.require_reader()
-                source = self.storage.recent_pack(
-                    update.effective_chat.id
-                ) or self.storage.recent_source(update.effective_chat.id)
+                source = self.latest_material(update.effective_chat.id)
                 if source is None:
                     raise UserError(
                         "No saved transcript yet. Send an episode link, Chinese text, or a .txt file."
@@ -444,6 +687,8 @@ async def send_files(bot, chat_id: int, path: Path) -> None:
                 "hanly.csv",
                 "metadata.json",
             ]
+            if (path / "exercises.md").is_file():
+                names.append("exercises.md")
         else:
             names.append("vocabulary.md")
     else:
@@ -574,6 +819,21 @@ def build_application(config: Config, storage: Storage) -> Application:
         )
 
     async def stop(app: Application) -> None:
+        if handlers.youtube_task:
+            handlers.youtube_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await handlers.youtube_task
+            handlers.youtube_task = None
+        if handlers.subs_task:
+            handlers.subs_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await handlers.subs_task
+            handlers.subs_task = None
+        if handlers.mp3_task:
+            handlers.mp3_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await handlers.mp3_task
+            handlers.mp3_task = None
         if task := app.bot_data.pop("health_task", None):
             task.cancel()
             with suppress(asyncio.CancelledError):
@@ -607,6 +867,9 @@ def build_application(config: Config, storage: Storage) -> Application:
         "retry",
         "force",
         "transcribe",
+        "mp3",
+        "subs",
+        "youtube",
         "level",
         "language",
         "native",
