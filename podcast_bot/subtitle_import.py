@@ -12,7 +12,9 @@ from .storage import atomic_json
 from .subtitles import parse_srt
 
 
-def import_srt(root: Path, raw: bytes, filename: str, chat_id: int, language: str) -> Path:
+def import_srt(
+    root: Path, raw: bytes, filename: str, chat_id: int, language: str, source_url: str = ""
+) -> Path:
     if not raw or len(raw) > 2_000_000:
         raise UserError("Upload a non-empty SRT file smaller than 2 MB.")
     try:
@@ -23,9 +25,10 @@ def import_srt(root: Path, raw: bytes, filename: str, chat_id: int, language: st
     text = "\n".join(cue.text for cue in cues) + "\n"
     if len(text) > MAX_CHARACTERS:
         raise UserError(f"Subtitles exceed the {MAX_CHARACTERS:,}-character Reader limit.")
-    identifier = hashlib.sha256(
-        json.dumps([chat_id, language, srt], ensure_ascii=False).encode()
-    ).hexdigest()
+    identity = [chat_id, language, srt]
+    if source_url:
+        identity.append(source_url)
+    identifier = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
     directory = root / "transcripts" / "subtitles"
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / identifier
@@ -48,7 +51,7 @@ def import_srt(root: Path, raw: bytes, filename: str, chat_id: int, language: st
                 "duration": max(cue.end for cue in cues),
                 "transcription_seconds": 0,
                 "filename": "subtitles",
-                "source_url": "",
+                "source_url": source_url,
             },
         )
         # Timing stays available for later explicit association with matching audio.

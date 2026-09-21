@@ -41,6 +41,7 @@ async def test_command_menu_scoped_to_owner():
         "srt",
         "mp3",
         "subs",
+        "youtube",
         "reader",
         "hanly",
         "add_hanly",

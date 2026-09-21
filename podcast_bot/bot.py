@@ -50,6 +50,7 @@ from .subtitles import request as subtitle_request
 from .transcription.audio import check_ffmpeg
 from .transcription.openai import OpenAITranscriber
 from .version import release
+from .youtube import prepare_youtube
 
 log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 2_000_000
@@ -66,6 +67,7 @@ Use /language before uploading to choose the subtitle language.
 /add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
+/youtube [language] <URL> — subtitles, saved audio, Reader and study materials
 /subs [language] <YouTube URL> — download existing subtitles as SRT and TXT
 /mp3 [URL] — audio only from Apple Podcasts or YouTube; no transcription
 /srt — download subtitles for the latest episode, when the model timed it
@@ -88,6 +90,7 @@ async def setup_command_menu(bot, chat_id: int) -> None:
         ("native", "Язык объяснений: /native ru"),
         ("regenerate", "Обновить материалы из сохранённого текста"),
         ("zip", "Скачать последние материалы архивом"),
+        ("youtube", "YouTube: Reader, аудио и материалы"),
         ("subs", "Субтитры YouTube без распознавания"),
         ("mp3", "Скачать MP3: подкаст или YouTube"),
         ("srt", "Скачать субтитры последнего эпизода"),
@@ -144,6 +147,7 @@ class BotHandlers:
         self.study_defaults = StudySettings.from_env()
         self.mp3_task: asyncio.Task | None = None
         self.subs_task: asyncio.Task | None = None
+        self.youtube_task: asyncio.Task | None = None
 
     def study_settings(self) -> StudySettings:
         base = self.study_defaults
@@ -221,6 +225,11 @@ class BotHandlers:
         source = import_srt(
             self.storage.root, raw, filename, update.effective_chat.id, settings.target_language
         )
+        await self.process_subtitle_source(update, context, source, settings)
+
+    async def process_subtitle_source(
+        self, update, context, source: Path, settings: StudySettings
+    ) -> None:
         self.storage.remember_source(update.effective_chat.id, source)
         self.storage.forget_stale_pack(update.effective_chat.id, source)
         cached = self.study_cache(source, settings) if self.config.study_enabled else None
@@ -256,6 +265,47 @@ class BotHandlers:
 
     def study_cache(self, source: Path, settings: StudySettings) -> Path | None:
         return StudyService(self.storage, None).cached(source, settings)
+
+    async def request_youtube(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if self.youtube_task and not self.youtube_task.done():
+            await update.effective_message.reply_text(
+                "A YouTube source is already being prepared. Please wait."
+            )
+            return
+        try:
+            url, language = subtitle_request(
+                update.effective_message.text, self.study_settings().target_language
+            )
+        except UserError as exc:
+            raise UserError(str(exc).replace("/subs", "/youtube")) from None
+        settings = replace(self.study_settings(), target_language=language.split("-")[0])
+        status = await update.effective_message.reply_text(
+            "Preparing YouTube subtitles and original audio…"
+        )
+
+        async def progress(text: str) -> None:
+            with suppress(TelegramError):
+                await status.edit_text(text)
+
+        async def prepare() -> None:
+            try:
+                source, summary = await prepare_youtube(
+                    url, language, update.effective_chat.id, self.config, progress
+                )
+                await progress(summary)
+                await self.process_subtitle_source(update, context, source, settings)
+            except asyncio.CancelledError:
+                await progress("YouTube preparation interrupted. Send /youtube again to retry.")
+                raise
+            except Exception as exc:
+                log.warning("stage=youtube-source exception_type=%s", type(exc).__name__)
+                await progress(
+                    str(exc)
+                    if isinstance(exc, UserError)
+                    else "Could not prepare YouTube materials. Send /youtube again to retry."
+                )
+
+        self.youtube_task = asyncio.create_task(prepare(), name="youtube-source")
 
     async def request_subtitles(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if self.subs_task and not self.subs_task.done():
@@ -398,6 +448,9 @@ class BotHandlers:
                 self.worker.wake.set()
             return
         try:
+            if command == "/youtube":
+                await self.request_youtube(update, context)
+                return
             if command == "/subs":
                 await self.request_subtitles(update, context)
                 return
@@ -766,6 +819,11 @@ def build_application(config: Config, storage: Storage) -> Application:
         )
 
     async def stop(app: Application) -> None:
+        if handlers.youtube_task:
+            handlers.youtube_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await handlers.youtube_task
+            handlers.youtube_task = None
         if handlers.subs_task:
             handlers.subs_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -811,6 +869,7 @@ def build_application(config: Config, storage: Storage) -> Application:
         "transcribe",
         "mp3",
         "subs",
+        "youtube",
         "level",
         "language",
         "native",

@@ -90,7 +90,7 @@ Both baskets are local until you press upload. Open a basket from its counter to
 | Chinese text | Send the text to the bot; it replies with the button |
 | `.txt` / `.md` file | Send the file as a document; UTF-8, up to 2 MB |
 
-Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB, OCR and subtitle formats are out of scope.
+Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB and OCR are out of scope. SRT imports are described below.
 
 ### What upload does
 
@@ -742,7 +742,39 @@ different cue timing or languages have distinct source/cache identities.
 `/regenerate` uses the saved subtitle source without audio transcription, `/srt`
 returns the imported file, and `/reader` opens the latest relevant document.
 
-This is the **SRT import stage**. An uploaded SRT has no audio association: Reader
-uses system TTS. Downloaded MP3 files still have the existing temporary lifecycle.
-Persistent source audio and an authenticated seekable Reader audio endpoint are
-separate follow-up work; importing subtitles does not enable original audio yet.
+An uploaded SRT alone has no audio association: Reader uses system TTS. Files are
+never paired with audio by filename. `/mp3` downloads remain temporary.
+
+### YouTube subtitles with original Reader audio
+
+Send `/youtube zh <YouTube URL>` (or omit `zh` to use the configured language).
+The bot imports existing captions, downloads audio only, saves one MP3, and starts
+the same Reader/study workflow. There is no speech recognition; normal study text
+generation costs still apply. `/subs` continues to download captions only.
+
+Reader 🔊 prefers the saved recording when a sentence maps exactly to complete
+subtitle cues. Ambiguous boundaries use system TTS; no estimated intra-cue timing
+or separate sentence clips are generated. Audio download, duration validation or
+storage failures preserve the subtitles and allow study generation with TTS.
+Labelled audio tracks must match the requested language; when YouTube supplies no
+track language labels, its default audio is used. Missing captions stop the request.
+
+Audio lives in persistent `DATA_DIR/media/`, addressed by content hash and reused
+across requests. `READER_AUDIO_STORAGE_MB=2000` limits retained MP3 storage; each
+file is capped at 49 MB. Files are not automatically evicted. Restart removes only
+unfinished temporary copies. Back up media together with the existing data volume.
+Cached study packs can use newly attached audio without regenerating materials.
+
+Authenticated Reader document access issues a document/owner-scoped, 12-hour
+HttpOnly, Secure, SameSite=Strict cookie. The same-origin audio endpoint checks it
+on every request and supports GET byte ranges and HEAD, streaming in 64 KB chunks.
+It accepts neither browser-supplied paths nor remote URLs. Use the configured HTTPS
+Reader origin; reopen Reader to refresh expired access. Missing audio falls back
+to TTS, and direct podcast enclosure playback remains supported.
+
+Validation includes mocked workflow, access/range/streaming tests and frontend
+playback tests. A live metadata/range probe for `rHyuQctiDZM` succeeded; its Chinese
+captions mapped 252 of 301 sentences exactly. This does not verify playback on a
+phone. Before deployment acceptance, check Telegram WebView cookies, original
+voice and sentence boundaries, rapid sentence switching, app backgrounding, and
+reopening Reader after restart.

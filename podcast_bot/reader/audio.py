@@ -7,6 +7,8 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .media import asset_path
+
 
 def normalized(text):
     return "".join(c for c in unicodedata.normalize("NFC", text) if c.isalnum())
@@ -81,12 +83,27 @@ def align(sentences, units, duration):
     return result
 
 
-def document_audio(document, sentences):
+def document_audio(document, sentences, storage_root=None):
     """Returns (source, ranges, status); status names why original audio is absent."""
-    if document.source_type != "podcast" or not document.source_reference:
+    if document.source_type not in {"podcast", "subtitles"} or not document.source_reference:
         return None, {}, "text"
     path = Path(document.source_reference) / "audio-timing.json"
     try:
+        if document.source_type == "subtitles" and storage_root is not None:
+            metadata = json.loads(
+                (Path(document.source_reference) / "metadata.json").read_text(encoding="utf-8")
+            )
+            identifier = metadata.get("subtitle_id", "")
+            if (
+                isinstance(identifier, str)
+                and len(identifier) == 64
+                and all(c in "0123456789abcdef" for c in identifier)
+            ):
+                canonical = (
+                    storage_root / "transcripts" / "subtitles" / identifier / "audio-timing.json"
+                )
+                if canonical.is_file():
+                    path = canonical
         if not path.is_file():
             return None, {}, "missing"
         if path.stat().st_size > 20_000_000:
@@ -94,7 +111,9 @@ def document_audio(document, sentences):
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("version") != 1 or data.get("text") != document.raw_text:
             return None, {}, "stale"
-        url = safe_source(data.get("audio_url"))
+        asset = data.get("audio_asset")
+        local = asset_path(storage_root, asset) if asset and storage_root is not None else None
+        url = f"/api/reader/{document.id}/audio" if local else safe_source(data.get("audio_url"))
         if not url:
             return None, {}, "source"
         duration = float(data["duration"])
@@ -110,6 +129,9 @@ def document_audio(document, sentences):
             granularity = "segment"
         if not ranges:
             return None, {}, "unaligned"
-        return {"url": url, "duration": duration, "granularity": granularity}, ranges, ""
+        source = {"url": url, "duration": duration, "granularity": granularity}
+        if local:
+            source["asset_id"] = asset
+        return source, ranges, ""
     except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
         return None, {}, "stale"

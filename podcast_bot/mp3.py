@@ -51,7 +51,11 @@ def source_url(value: str) -> tuple[str, str]:
         ) from None
 
 
-async def youtube_source(url: str, max_minutes: float) -> tuple[str, str, str]:
+async def youtube_source(
+    url: str, max_minutes: float, language: str | None = None
+) -> tuple[str, str, str]:
+    if language and not re.fullmatch(r"[a-z]{2,3}", language):
+        raise UserError("Unsupported audio language.")
     try:
         output, _ = await run(
             sys.executable,
@@ -88,6 +92,29 @@ async def youtube_source(url: str, max_minutes: float) -> tuple[str, str, str]:
         }:
             raise UserError("Live streams and playlists are not supported. Send a finished video.")
         check_duration(float(info.get("duration") or 0), max_minutes)
+        if language:
+            labelled = [
+                f
+                for f in info.get("formats", [])
+                if f.get("vcodec") == "none" and f.get("language")
+            ]
+            if labelled:
+                aliases = {language, "cmn"} if language == "zh" else {language}
+                matches = [
+                    f
+                    for f in labelled
+                    if f.get("protocol") == "https"
+                    and f["language"].lower().split("-")[0] in aliases
+                ]
+                if not matches:
+                    raise UserError(
+                        "No matching-language audio track is available. Reader will use system TTS."
+                    )
+                # yt-dlp supplies formats in preference order, lowest to highest.
+                for key in ("url", "protocol", "vcodec"):
+                    info[key] = matches[-1][key]
+            # Some videos expose only an unlabelled default track. Keep that original
+            # track; never substitute an explicitly labelled different-language dub.
         if info.get("vcodec") != "none" or info.get("protocol") != "https":
             raise UserError("No downloadable audio-only stream is available for this video.")
         return (
@@ -120,6 +147,7 @@ async def prepare_mp3(
     url: str,
     config: Config,
     progress: Callable[[str], Awaitable[None]],
+    language: str | None = None,
 ) -> AsyncIterator[MP3]:
     kind, url = source_url(url)
     root = config.data_dir / "tmp"
@@ -129,7 +157,9 @@ async def prepare_mp3(
         async with asyncio.timeout(2400), http_client() as client:
             await progress("Finding audio…")
             if kind == "youtube":
-                audio_url, title, performer = await youtube_source(url, config.max_minutes)
+                audio_url, title, performer = await youtube_source(
+                    url, config.max_minutes, language
+                )
             else:
                 episode = await resolve(url, client)
                 audio_url, title, performer = episode.audio_url, episode.title, episode.podcast
