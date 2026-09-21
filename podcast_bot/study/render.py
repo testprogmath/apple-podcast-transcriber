@@ -130,3 +130,35 @@ def mosaic_csv(material: StudyMaterial) -> str:
     for sentence in material.mosaic_sentences:
         writer.writerow([sentence.chinese, sentence.english])
     return output.getvalue()
+
+
+def exercises_markdown(material: StudyMaterial, canonical: str) -> str:
+    """Cloze practice from verified source quotes, without another model request."""
+    items = [
+        item
+        for item in material.vocabulary
+        if item.term in item.example and item.example in canonical
+    ][:15]
+    lines = [
+        "# Practice from your subtitles",
+        "",
+        "Read the text, then fill each gap using the word bank.",
+        "",
+    ]
+    if not items:
+        return "# Practice from your subtitles\n\nRead the text, choose five new expressions, and write your own example for each.\n"
+    lines += [
+        "Word bank: "
+        + "; ".join(md(item.term) for item in sorted(items, key=lambda item: item.term)),
+        "",
+    ]
+    for index, item in enumerate(items, 1):
+        lines += [
+            f"{index}. {md(item.example.replace(item.term, '____'))}",
+            f"   Hint: {md(item.meaning)}",
+            "",
+        ]
+    lines += ["## Answers", ""]
+    for index, item in enumerate(items, 1):
+        lines += [f"{index}. **{md(item.term)}** — {md(item.example)}", ""]
+    return "\n".join(lines)

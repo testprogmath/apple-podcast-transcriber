@@ -66,24 +66,45 @@ def choose_track(info: dict, language: str) -> tuple[str, str, bool]:
     )
 
 
-def plain_text(srt: str) -> str:
+@dataclass(frozen=True)
+class Cue:
+    start: float
+    end: float
+    text: str
+
+
+def parse_srt(srt: str) -> list[Cue]:
     srt = srt.lstrip("\ufeff").replace("\r\n", "\n").strip()
-    lines = []
-    timestamp = r"\d{2,}:\d{2}:\d{2},\d{3}"
+    cues = []
+    timestamp = r"(\d{2,4}):([0-5]\d):([0-5]\d),(\d{3})"
+    previous = -1.0
     for block in re.split(r"\n\s*\n", srt):
         parts = block.splitlines()
-        if (
-            len(parts) < 3
-            or not parts[0].isdigit()
-            or not re.fullmatch(timestamp + r" --> " + timestamp + r".*", parts[1])
-        ):
-            raise UserError("YouTube returned invalid subtitles. Please try again later.")
+        match = (
+            re.fullmatch(timestamp + r" --> " + timestamp + r"(?:[ \t]+.*)?", parts[1])
+            if len(parts) >= 3
+            else None
+        )
+        if not match or not parts[0].isdigit():
+            raise UserError(
+                "Invalid SRT subtitles. Expected numbered cues with start/end timestamps."
+            )
+        values = [int(v) for v in match.groups()]
+        start = values[0] * 3600 + values[1] * 60 + values[2] + values[3] / 1000
+        end = values[4] * 3600 + values[5] * 60 + values[6] + values[7] / 1000
+        if end <= start or start < previous:
+            raise UserError("Invalid SRT timing: cues must be ordered and end after they start.")
+        previous = start
         text = html.unescape(re.sub(r"<[^>]*>", "", " ".join(parts[2:]))).strip()
         if text:
-            lines.append(text)
-    if not lines:
+            cues.append(Cue(start, end, text))
+    if not cues:
         raise UserError("The subtitle track is empty.")
-    return "\n".join(lines) + "\n"
+    return cues
+
+
+def plain_text(srt: str) -> str:
+    return "\n".join(cue.text for cue in parse_srt(srt)) + "\n"
 
 
 @dataclass(frozen=True)

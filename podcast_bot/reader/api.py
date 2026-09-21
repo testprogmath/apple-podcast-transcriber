@@ -26,6 +26,7 @@ TYPES = {
 }
 IDENTIFIER = re.compile(r"[0-9a-f]{32}")
 DESCRIPTION = {
+    "subtitles": "Sentences from the uploaded subtitles.",
     "podcast": "Authentic sentences from the podcast transcript.",
     "text": "Sentences selected in the Reader.",
     "file": "Sentences selected in the Reader.",

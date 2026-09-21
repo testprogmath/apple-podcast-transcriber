@@ -174,7 +174,7 @@ def from_transcript(chat_id: int, path: Path):
         id=identifier,
         chat_id=chat_id,
         title=collection_name(metadata),
-        source_type="podcast",
+        source_type="subtitles" if metadata.get("source_type") == "subtitles" else "podcast",
         source_reference=str(path),
         raw_text=check_text(text),
         hanly_key=hanly_key,

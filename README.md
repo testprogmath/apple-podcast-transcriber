@@ -717,3 +717,32 @@ This runs separately in the background, one subtitle request at a time. Caption
 files are limited to 2 MB, validated as SRT, and removed after delivery or failure.
 Text output removes timing/indexes and subtitle markup, preserving cue order and
 repeated text. `/srt` retains its existing meaning: the latest podcast's subtitles.
+
+### Study materials from an uploaded SRT
+
+Send a UTF-8 `.srt` document to the bot. Use `/language zh` (or `en`, `de`, `nl`,
+etc.) beforehand to identify its language; uploads do not guess language from
+filenames or run speech recognition.
+
+For Chinese, the canonical subtitle text opens in Reader immediately when Reader
+is configured. With study generation enabled, a study-only job produces the
+existing translation, vocabulary, Hanly CSV, grammar notes and Mosaic sentences,
+plus `exercises.md`: gap-fill exercises and answers using exact source quotes.
+Existing configured Hanly/Mosaic uploads apply only to Chinese. Other languages
+receive the transcript and vocabulary/expressions, without external uploads;
+the current Reader remains Chinese-only. Text generation is billed normally;
+importing and parsing SRT itself makes no model requests.
+
+The original SRT, cleaned text and cue timing survive restart. Markup/indexes and
+timecodes are excluded from Reader text; repeated cues are preserved. Files must
+be non-empty UTF-8, at most 2 MB and 200,000 text characters, with valid ordered
+start/end times. Overlapping cues can be imported, but are not asserted to be
+precisely playable sentence ranges. Identical uploads reuse jobs/materials;
+different cue timing or languages have distinct source/cache identities.
+`/regenerate` uses the saved subtitle source without audio transcription, `/srt`
+returns the imported file, and `/reader` opens the latest relevant document.
+
+This is the **SRT import stage**. An uploaded SRT has no audio association: Reader
+uses system TTS. Downloaded MP3 files still have the existing temporary lifecycle.
+Persistent source audio and an authenticated seekable Reader audio endpoint are
+separate follow-up work; importing subtitles does not enable original audio yet.

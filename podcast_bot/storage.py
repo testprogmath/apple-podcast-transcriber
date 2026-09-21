@@ -429,6 +429,13 @@ class Storage:
                 (chat_id, str(source)),
             )
 
+    def forget_stale_pack(self, chat_id: int, source: Path) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE recent_material SET pack_path=NULL, pack_source=NULL WHERE chat_id=? AND (pack_source IS NULL OR pack_source != ?)",
+                (chat_id, str(source)),
+            )
+
     def recent_source(self, chat_id: int) -> Path | None:
         row = self.db.execute(
             "SELECT source_path FROM recent_material WHERE chat_id=?", (chat_id,)
@@ -458,12 +465,10 @@ class Storage:
     def enqueue_study(
         self, source: Path, settings: str, chat_id: int, message_id: int, regenerate: bool = False
     ) -> tuple[int, int, bool]:
-        from .study.settings import StudySettings, study_key
+        from .study.settings import StudySettings, source_study_key
 
         metadata = json.loads((source / "metadata.json").read_text(encoding="utf-8"))
-        key = "study:" + study_key(
-            (source / "transcript.txt").read_bytes(), StudySettings.from_json(settings)
-        )
+        key = "study:" + source_study_key(source, StudySettings.from_json(settings))
         with self.db:
             row = self.db.execute(
                 "SELECT id FROM jobs WHERE cache_key=? AND state IN ('queued','running')", (key,)
@@ -476,7 +481,7 @@ class Storage:
                   (url,language,model,hints,force,chat_id,message_id,state,cache_key,created,updated,kind,source_path,study_settings)
                   VALUES (?,?,?,'',0,?,?,'queued',?,?,?,'study',?,?)""",
                     (
-                        metadata["apple_url"],
+                        metadata.get("apple_url") or metadata.get("source_url", ""),
                         metadata.get("language"),
                         metadata["model"],
                         chat_id,

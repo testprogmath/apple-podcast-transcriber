@@ -44,6 +44,7 @@ from .study.client import OpenAIStudyClient, StudyRequests
 from .study.pipeline import LearningPipeline
 from .study.service import StudyService, pack_valid
 from .study.settings import StudySettings, learner_level
+from .subtitle_import import import_srt
 from .subtitles import download_subtitles
 from .subtitles import request as subtitle_request
 from .transcription.audio import check_ffmpeg
@@ -54,6 +55,8 @@ log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 2_000_000
 HELP = """Send an Apple Podcasts episode link. zh: full study pack and configured uploads.
 Other languages: transcript and vocabulary/expressions only; no external uploads.
+Upload a UTF-8 .srt file for Reader and study materials (no speech recognition).
+Use /language before uploading to choose the subtitle language.
 /level HSK3 — set learner level (also HSK4, A2, B1, etc.)
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
@@ -172,13 +175,22 @@ class BotHandlers:
         message = update.effective_message
         attachment = message.document
         try:
-            self.require_reader()
-            if not attachment or not (attachment.file_name or "").lower().endswith((".txt", ".md")):
-                raise UserError("Reader accepts UTF-8 .txt or .md files.")
+            is_srt = attachment and (attachment.file_name or "").lower().endswith(".srt")
+            if not is_srt:
+                self.require_reader()
+            if not attachment or not (attachment.file_name or "").lower().endswith(
+                (".txt", ".md", ".srt")
+            ):
+                raise UserError("Reader accepts UTF-8 .txt, .md or .srt files.")
             if (attachment.file_size or 0) > MAX_UPLOAD_BYTES:
                 raise UserError("That file is too large for Reader.")
             handle = await attachment.get_file()
             raw = bytes(await handle.download_as_bytearray())
+            if len(raw) > MAX_UPLOAD_BYTES:
+                raise UserError("That file is too large for Reader.")
+            if is_srt:
+                await self.import_subtitles(update, context, raw, attachment.file_name)
+                return
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -189,6 +201,61 @@ class BotHandlers:
             await self.open_reader(message, document)
         except UserError as exc:
             await message.reply_text(str(exc))
+
+    def latest_material(self, chat_id: int) -> Path | None:
+        source = self.storage.recent_source(chat_id)
+        pack = self.storage.recent_pack(chat_id)
+        if source and pack:
+            try:
+                metadata = json.loads((pack / "metadata.json").read_text())
+                if metadata.get("canonical_source") != str(source):
+                    return source
+            except (OSError, ValueError):
+                return source
+        return pack or source
+
+    async def import_subtitles(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE, raw: bytes, filename: str
+    ) -> None:
+        settings = self.study_settings()
+        source = import_srt(
+            self.storage.root, raw, filename, update.effective_chat.id, settings.target_language
+        )
+        self.storage.remember_source(update.effective_chat.id, source)
+        self.storage.forget_stale_pack(update.effective_chat.id, source)
+        cached = self.study_cache(source, settings) if self.config.study_enabled else None
+        if (
+            settings.target_language == "zh"
+            and self.config.reader_enabled
+            and self.config.reader_url
+        ):
+            await self.open_reader(
+                update.effective_message,
+                from_transcript(update.effective_chat.id, cached or source),
+            )
+        if not self.config.study_enabled:
+            await update.effective_message.reply_text(
+                "Subtitles saved. Study generation is disabled; no speech recognition was used."
+            )
+            return
+        if cached:
+            self.storage.remember_pack(update.effective_chat.id, source, cached)
+            await send_files(context.bot, update.effective_chat.id, cached)
+            return
+        status = await update.effective_message.reply_text(
+            "Preparing materials from your subtitles. Text generation may be billed; no audio or speech recognition."
+        )
+        identifier, position, duplicate = self.storage.enqueue_study(
+            source, settings.to_json(), update.effective_chat.id, status.message_id
+        )
+        await status.edit_text(
+            f"Study job #{identifier} queued. Position: {position}. No speech recognition."
+        )
+        if self.worker:
+            self.worker.wake.set()
+
+    def study_cache(self, source: Path, settings: StudySettings) -> Path | None:
+        return StudyService(self.storage, None).cached(source, settings)
 
     async def request_subtitles(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if self.subs_task and not self.subs_task.done():
@@ -460,9 +527,7 @@ class BotHandlers:
                     self.worker.wake.set()
                 return
             if command == "/srt":
-                source = self.storage.recent_pack(
-                    update.effective_chat.id
-                ) or self.storage.recent_source(update.effective_chat.id)
+                source = self.latest_material(update.effective_chat.id)
                 subtitles = (source / "transcript.srt") if source else None
                 if subtitles is None or not subtitles.is_file():
                     raise UserError(
@@ -478,9 +543,7 @@ class BotHandlers:
                 return
             if command == "/reader":
                 self.require_reader()
-                source = self.storage.recent_pack(
-                    update.effective_chat.id
-                ) or self.storage.recent_source(update.effective_chat.id)
+                source = self.latest_material(update.effective_chat.id)
                 if source is None:
                     raise UserError(
                         "No saved transcript yet. Send an episode link, Chinese text, or a .txt file."
@@ -571,6 +634,8 @@ async def send_files(bot, chat_id: int, path: Path) -> None:
                 "hanly.csv",
                 "metadata.json",
             ]
+            if (path / "exercises.md").is_file():
+                names.append("exercises.md")
         else:
             names.append("vocabulary.md")
     else:
