@@ -670,3 +670,36 @@ WebView, Android Telegram WebView, Telegram Desktop, Safari, Chrome):
 - Toggle Pinyin on and play again: the spoken text is identical.
 
 Frontend regression tests: `node tests/frontend/app.test.js`.
+
+### MP3 downloads (Apple Podcasts and YouTube)
+
+- `/mp3 https://podcasts.apple.com/…?i=…` downloads an episode as an MP3.
+- `/mp3 https://www.youtube.com/watch?v=…` downloads **audio only** from one public,
+  finished video. Short `youtu.be` and Shorts links also work. A video link with
+  a playlist parameter processes only that video; playlist/channel links and live
+  streams are rejected.
+- `/mp3` without a URL uses the latest saved podcast's Apple link.
+
+The bot sends a Telegram audio player/file with title, author and duration. This
+command does not transcribe, generate study materials, or call paid AI APIs.
+Ordinary YouTube messages do not start transcription; use `/mp3` explicitly.
+
+Only one MP3 request runs at a time, in a background task; other commands remain
+responsive. Existing duration/download limits apply. MP3 uses 128 kbps where it
+fits, falling back to 96/64/48/32 kbps for longer recordings, with a checked 49 MB
+ceiling. Recordings too long to fit are refused, not silently cut. Temporary
+source and output files are removed after delivery, failure or cancellation;
+leftovers from a crash are removed on startup. Interrupted requests are not
+persistently queued: send the command again. Requests download the source again;
+existing transcript/Reader caches and temporary transcription audio are unchanged.
+
+YouTube extraction uses pinned `yt-dlp` and matching `yt-dlp-ejs`; Docker includes
+Node 22, and local installations need Node 22+ plus the existing ffmpeg/ffprobe.
+The downloader selects HTTPS **audio-only** streams with no video fallback.
+Downloaded media uses the existing size-limited HTTP streaming and public-address
+checks on redirects. No browser cookies, account login, thumbnails or arbitrary
+site extractors are used. Host blocks/private videos can still fail with a safe
+message; keep yt-dlp and its matching EJS version updated together.
+
+References: [yt-dlp runtime requirements](https://github.com/yt-dlp/yt-dlp/wiki/EJS)
+and [Telegram sendAudio](https://core.telegram.org/bots/api#sendaudio).

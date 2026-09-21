@@ -39,6 +39,7 @@ async def test_command_menu_scoped_to_owner():
         "regenerate",
         "zip",
         "srt",
+        "mp3",
         "reader",
         "hanly",
         "add_hanly",

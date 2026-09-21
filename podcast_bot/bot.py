@@ -31,6 +31,7 @@ from .models import Job, UserError
 from .mosaic.client import MandarinMosaicClient
 from .mosaic.config import MosaicConfig
 from .mosaic.service import MosaicUploadService
+from .mp3 import prepare_mp3, source_url
 from .net import http_client
 from .pipeline import Pipeline, cleanup_abandoned
 from .queue import Worker
@@ -60,6 +61,7 @@ Other languages: transcript and vocabulary/expressions only; no external uploads
 /add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
+/mp3 [URL] — audio only from Apple Podcasts or YouTube; no transcription
 /srt — download subtitles for the latest episode, when the model timed it
 /transcribe nl <URL> — override language (zh, nl, en, auto)
 /force <URL> — make a new paid transcription
@@ -80,6 +82,7 @@ async def setup_command_menu(bot, chat_id: int) -> None:
         ("native", "Язык объяснений: /native ru"),
         ("regenerate", "Обновить материалы из сохранённого текста"),
         ("zip", "Скачать последние материалы архивом"),
+        ("mp3", "Скачать MP3: подкаст или YouTube"),
         ("srt", "Скачать субтитры последнего эпизода"),
         ("reader", "Открыть интерактивную читалку"),
         ("hanly", "Слова в Hanly — только zh"),
@@ -132,6 +135,7 @@ class BotHandlers:
         self.uploads = StudyUploads()
         self.reader: ReaderServer | None = None
         self.study_defaults = StudySettings.from_env()
+        self.mp3_task: asyncio.Task | None = None
 
     def study_settings(self) -> StudySettings:
         base = self.study_defaults
@@ -181,6 +185,66 @@ class BotHandlers:
         except UserError as exc:
             await message.reply_text(str(exc))
 
+    async def request_mp3(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if self.mp3_task and not self.mp3_task.done():
+            await update.effective_message.reply_text(
+                "An MP3 is already being prepared. Please wait."
+            )
+            return
+        fields = update.effective_message.text.split()
+        if len(fields) == 1:
+            source = self.storage.recent_pack(
+                update.effective_chat.id
+            ) or self.storage.recent_source(update.effective_chat.id)
+            try:
+                url = (
+                    json.loads((source / "metadata.json").read_text())["apple_url"]
+                    if source
+                    else ""
+                )
+            except (OSError, ValueError, KeyError, TypeError):
+                url = ""
+        elif len(fields) == 2:
+            url = fields[1]
+        else:
+            raise UserError("Send /mp3 followed by one episode or video URL.")
+        _, url = source_url(url)
+        status = await update.effective_message.reply_text(
+            "Preparing MP3… No transcription or paid API calls."
+        )
+
+        async def progress(text: str) -> None:
+            with suppress(TelegramError):
+                await status.edit_text(text)
+
+        async def deliver() -> None:
+            try:
+                async with prepare_mp3(url, self.config, progress) as result:
+                    with result.path.open("rb") as audio:
+                        await context.bot.send_audio(
+                            chat_id=update.effective_chat.id,
+                            audio=audio,
+                            filename=result.path.name,
+                            title=result.title,
+                            performer=result.performer,
+                            duration=result.duration,
+                            read_timeout=120,
+                            write_timeout=300,
+                        )
+                await progress("MP3 sent.")
+            except asyncio.CancelledError:
+                await progress("MP3 preparation interrupted. Send /mp3 again to retry.")
+                raise
+            except Exception as exc:
+                log.warning("stage=mp3 exception_type=%s", type(exc).__name__)
+                await progress(
+                    str(exc)
+                    if isinstance(exc, UserError)
+                    else "Could not prepare or send MP3. Send /mp3 again to retry."
+                )
+
+        self.mp3_task = asyncio.create_task(deliver(), name="mp3-download")
+
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not authorized(update, self.config.allowed_user_id) or not update.effective_message:
             return
@@ -210,6 +274,9 @@ class BotHandlers:
                 self.worker.wake.set()
             return
         try:
+            if command == "/mp3":
+                await self.request_mp3(update, context)
+                return
             settings = self.study_settings()
             if command in {"/level", "/language", "/native"}:
                 fields = text.split(maxsplit=1)
@@ -574,6 +641,11 @@ def build_application(config: Config, storage: Storage) -> Application:
         )
 
     async def stop(app: Application) -> None:
+        if handlers.mp3_task:
+            handlers.mp3_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await handlers.mp3_task
+            handlers.mp3_task = None
         if task := app.bot_data.pop("health_task", None):
             task.cancel()
             with suppress(asyncio.CancelledError):
@@ -607,6 +679,7 @@ def build_application(config: Config, storage: Storage) -> Application:
         "retry",
         "force",
         "transcribe",
+        "mp3",
         "level",
         "language",
         "native",
