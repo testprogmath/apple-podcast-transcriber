@@ -72,7 +72,7 @@ def test_absent_unsupported_or_wrong_language(info):
 def test_plain_text_keeps_cue_content_and_repetition():
     assert plain_text(SRT) == "你好，世界。\nA & B\n"
     assert plain_text("\ufeff" + SRT.replace("\n", "\r\n")) == plain_text(SRT)
-    assert plain_text(SRT + "\n" + SRT) == plain_text(SRT) * 2
+    assert plain_text(SRT + "\n" + SRT.replace("00:00:", "00:01:")) == plain_text(SRT) * 2
 
 
 @pytest.mark.parametrize(
