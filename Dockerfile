@@ -1,4 +1,6 @@
+FROM node:22-bookworm-slim AS node-runtime
 FROM python:3.12-slim
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
