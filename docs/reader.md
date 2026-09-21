@@ -24,7 +24,7 @@ Both baskets are local until you press upload. Open a basket from its counter to
 | Chinese text | Send the text to the bot; it replies with the button |
 | `.txt` / `.md` file | Send the file as a document; UTF-8, up to 2 MB |
 
-Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB, OCR and subtitle formats are out of scope.
+Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB and OCR are out of scope. SRT imports are described in [Telegram commands](commands.md#study-materials-from-an-uploaded-srt).
 
 ## What upload does
 

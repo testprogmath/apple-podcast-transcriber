@@ -90,7 +90,7 @@ Both baskets are local until you press upload. Open a basket from its counter to
 | Pasted Chinese text | **+ New text** in the library, or send text to the bot |
 | TXT / Markdown | **Upload file** in the library, or send a Telegram document: `.txt`, `.md`, `.markdown`; UTF-8 (BOM supported), up to 512 KiB |
 
-Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB, OCR and subtitle formats are out of scope.
+Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB and OCR are out of scope. SRT imports are described in [Telegram commands](docs/commands.md#study-materials-from-an-uploaded-srt).
 
 Reader works without processing a podcast. `/reader/` opens the library;
 `/reader/?doc=<id>` remains a direct link. The ← Reader link returns to the library.
