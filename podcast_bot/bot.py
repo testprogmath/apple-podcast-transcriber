@@ -44,6 +44,8 @@ from .study.client import OpenAIStudyClient, StudyRequests
 from .study.pipeline import LearningPipeline
 from .study.service import StudyService, pack_valid
 from .study.settings import StudySettings, learner_level
+from .subtitles import download_subtitles
+from .subtitles import request as subtitle_request
 from .transcription.audio import check_ffmpeg
 from .transcription.openai import OpenAITranscriber
 from .version import release
@@ -61,6 +63,7 @@ Other languages: transcript and vocabulary/expressions only; no external uploads
 /add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
 /zip — download the latest study pack archive
+/subs [language] <YouTube URL> — download existing subtitles as SRT and TXT
 /mp3 [URL] — audio only from Apple Podcasts or YouTube; no transcription
 /srt — download subtitles for the latest episode, when the model timed it
 /transcribe nl <URL> — override language (zh, nl, en, auto)
@@ -82,6 +85,7 @@ async def setup_command_menu(bot, chat_id: int) -> None:
         ("native", "Язык объяснений: /native ru"),
         ("regenerate", "Обновить материалы из сохранённого текста"),
         ("zip", "Скачать последние материалы архивом"),
+        ("subs", "Субтитры YouTube без распознавания"),
         ("mp3", "Скачать MP3: подкаст или YouTube"),
         ("srt", "Скачать субтитры последнего эпизода"),
         ("reader", "Открыть интерактивную читалку"),
@@ -136,6 +140,7 @@ class BotHandlers:
         self.reader: ReaderServer | None = None
         self.study_defaults = StudySettings.from_env()
         self.mp3_task: asyncio.Task | None = None
+        self.subs_task: asyncio.Task | None = None
 
     def study_settings(self) -> StudySettings:
         base = self.study_defaults
@@ -184,6 +189,58 @@ class BotHandlers:
             await self.open_reader(message, document)
         except UserError as exc:
             await message.reply_text(str(exc))
+
+    async def request_subtitles(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if self.subs_task and not self.subs_task.done():
+            await update.effective_message.reply_text(
+                "Subtitles are already being downloaded. Please wait."
+            )
+            return
+        url, language = subtitle_request(
+            update.effective_message.text,
+            self.storage.preference("target_language", self.config.default_language or "zh"),
+        )
+        status = await update.effective_message.reply_text(
+            f"Finding {language} subtitles… No speech recognition."
+        )
+
+        async def progress(text: str) -> None:
+            with suppress(TelegramError):
+                await status.edit_text(text)
+
+        async def deliver() -> None:
+            try:
+                async with asyncio.timeout(240):
+                    async with download_subtitles(url, language, self.config.data_dir) as result:
+                        for path in (result.srt, result.text):
+                            with path.open("rb") as document:
+                                await context.bot.send_document(
+                                    chat_id=update.effective_chat.id,
+                                    document=document,
+                                    filename=path.name,
+                                    read_timeout=60,
+                                    write_timeout=60,
+                                )
+                        origin = (
+                            "YouTube automatic captions"
+                            if result.automatic
+                            else "Published YouTube subtitles"
+                        )
+                        await progress(
+                            f"{origin} ({result.language}) sent as SRT and TXT. No speech recognition was started."
+                        )
+            except asyncio.CancelledError:
+                await progress("Subtitle download interrupted. Send /subs again to retry.")
+                raise
+            except Exception as exc:
+                log.warning("stage=subtitles exception_type=%s", type(exc).__name__)
+                await progress(
+                    str(exc)
+                    if isinstance(exc, UserError)
+                    else "Could not download or send subtitles. Send /subs again to retry."
+                )
+
+        self.subs_task = asyncio.create_task(deliver(), name="youtube-subtitles")
 
     async def request_mp3(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if self.mp3_task and not self.mp3_task.done():
@@ -274,6 +331,9 @@ class BotHandlers:
                 self.worker.wake.set()
             return
         try:
+            if command == "/subs":
+                await self.request_subtitles(update, context)
+                return
             if command == "/mp3":
                 await self.request_mp3(update, context)
                 return
@@ -641,6 +701,11 @@ def build_application(config: Config, storage: Storage) -> Application:
         )
 
     async def stop(app: Application) -> None:
+        if handlers.subs_task:
+            handlers.subs_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await handlers.subs_task
+            handlers.subs_task = None
         if handlers.mp3_task:
             handlers.mp3_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -680,6 +745,7 @@ def build_application(config: Config, storage: Storage) -> Application:
         "force",
         "transcribe",
         "mp3",
+        "subs",
         "level",
         "language",
         "native",

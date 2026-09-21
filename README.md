@@ -703,3 +703,17 @@ message; keep yt-dlp and its matching EJS version updated together.
 
 References: [yt-dlp runtime requirements](https://github.com/yt-dlp/yt-dlp/wiki/EJS)
 and [Telegram sendAudio](https://core.telegram.org/bots/api#sendaudio).
+
+### Existing YouTube subtitles
+
+`/subs <YouTube URL>` sends the video's existing subtitles as **SRT + TXT**.
+It uses the configured default language (`auto` defaults to `zh`); specify another
+with `/subs en <URL>` or `/subs zh-Hant <URL>`. Published tracks are preferred;
+existing YouTube automatic captions are a fallback and are labelled as such.
+Auto-translations are not selected. Missing tracks produce a clear message;
+there is no audio/video download, paid API call or new speech recognition.
+
+This runs separately in the background, one subtitle request at a time. Caption
+files are limited to 2 MB, validated as SRT, and removed after delivery or failure.
+Text output removes timing/indexes and subtitle markup, preserving cue order and
+repeated text. `/srt` retains its existing meaning: the latest podcast's subtitles.

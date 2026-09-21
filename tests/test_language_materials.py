@@ -40,6 +40,7 @@ async def test_command_menu_scoped_to_owner():
         "zip",
         "srt",
         "mp3",
+        "subs",
         "reader",
         "hanly",
         "add_hanly",

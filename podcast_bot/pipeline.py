@@ -164,7 +164,7 @@ def cleanup_abandoned(storage: Storage) -> None:
     """Call only while holding the single-process lock."""
     root = storage.root / "tmp"
     if root.exists():
-        for path in (*root.glob("job-*"), *root.glob("mp3-*")):
+        for path in (*root.glob("job-*"), *root.glob("mp3-*"), *root.glob("subs-*")):
             if path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
 
