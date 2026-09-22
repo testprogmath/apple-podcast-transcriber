@@ -120,7 +120,7 @@ async def download_subtitles(url: str, language: str, data_dir: Path) -> AsyncIt
     # Revalidate at the service boundary; the extractor never receives an arbitrary URL.
     url, language = request(f"/subs {language} {url}", "zh")
     try:
-        output, _ = await run(
+        output, diagnostics = await run(
             sys.executable,
             "-m",
             "yt_dlp",
@@ -129,7 +129,6 @@ async def download_subtitles(url: str, language: str, data_dir: Path) -> AsyncIt
             "--skip-download",
             "--no-playlist",
             "--dump-single-json",
-            "--no-warnings",
             "--ignore-no-formats-error",
             "--socket-timeout",
             "20",
@@ -153,6 +152,17 @@ async def download_subtitles(url: str, language: str, data_dir: Path) -> AsyncIt
         raise UserError(
             "Could not read YouTube subtitles. The video may be unavailable; try again later."
         ) from None
+    # --ignore-no-formats-error may return partial metadata with exit code zero
+    # when YouTube blocks the host. Do not misreport that as missing captions.
+    if (
+        "sign in to confirm" in diagnostics.lower()
+        or "confirm you’re not a bot" in diagnostics.lower()
+    ):
+        raise UserError(
+            "YouTube blocked subtitle access from this server (bot verification). "
+            "Changing the language will not help. Upload an existing SRT file to the bot instead. "
+            "No speech recognition was started."
+        )
     track_url, selected, automatic = choose_track(info, language)
     try:
         async with http_client() as client:

@@ -165,3 +165,21 @@ async def test_subtitle_command_authorized_background_and_no_paid_job(
         in u.effective_message.reply_text.return_value.edit_text.call_args.args[0]
     )
     assert store.claim() is None
+
+
+async def test_server_bot_challenge_is_not_reported_as_missing_language(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "podcast_bot.subtitles.run",
+        AsyncMock(
+            return_value=(
+                json.dumps({"id": "rHyuQctiDZM"}),
+                "WARNING: Sign in to confirm you’re not a bot.",
+            )
+        ),
+    )
+    fetch = AsyncMock()
+    monkeypatch.setattr("podcast_bot.subtitles.fetch", fetch)
+    with pytest.raises(UserError, match="YouTube blocked subtitle access from this server"):
+        async with download_subtitles(URL, "zh", tmp_path):
+            pytest.fail("must not yield")
+    fetch.assert_not_called()
