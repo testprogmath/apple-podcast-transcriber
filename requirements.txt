@@ -16,7 +16,7 @@ feedparser==6.0.14
     # via personal-podcast-telegram-bot (pyproject.toml)
 feedparser-sgmllib==2.1.0
     # via feedparser
-filelock==3.32.6
+filelock==4.0.1
     # via personal-podcast-telegram-bot (pyproject.toml)
 h11==0.16.0
     # via httpcore
