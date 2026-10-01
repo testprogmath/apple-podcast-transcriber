@@ -35,7 +35,7 @@ from .net import http_client
 from .pipeline import Pipeline, cleanup_abandoned
 from .queue import Worker
 from .reader.api import ReaderApi
-from .reader.documents import from_text, from_transcript
+from .reader.documents import MAX_FILE_BYTES, file_name, from_file, from_text, from_transcript
 from .reader.server import ReaderServer
 from .resolver.apple import parse_url
 from .storage import Storage, request_key
@@ -48,14 +48,13 @@ from .transcription.openai import OpenAITranscriber
 from .version import release
 
 log = logging.getLogger(__name__)
-MAX_UPLOAD_BYTES = 2_000_000
 HELP = """Send an Apple Podcasts episode link. zh: full study pack and configured uploads.
 Other languages: transcript and vocabulary/expressions only; no external uploads.
 /level HSK3 — set learner level (also HSK4, A2, B1, etc.)
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
 /regenerate [HSK4] — rebuild the latest study pack without speech-to-text
-/reader — open the latest transcript in the interactive Reader
+/reader — open the Reader library; paste text or upload TXT/Markdown
 /hanly — merge selected vocabulary into the latest episode collection
 /add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
@@ -112,10 +111,12 @@ def extract_url(text: str) -> str:
     return parse_url(url).url
 
 
-def reader_markup(config: Config, identifier: str) -> InlineKeyboardMarkup | None:
+def reader_markup(config: Config, identifier: str = "") -> InlineKeyboardMarkup | None:
     if not config.reader_enabled or not config.reader_url:
         return None
-    url = f"{config.reader_url.rstrip('/')}/reader/?doc={identifier}"
+    url = f"{config.reader_url.rstrip('/')}/reader/"
+    if identifier:
+        url += f"?doc={identifier}"
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton("📖 Open Reader", web_app=WebAppInfo(url=url))]]
     )
@@ -164,19 +165,16 @@ class BotHandlers:
         attachment = message.document
         try:
             self.require_reader()
-            if not attachment or not (attachment.file_name or "").lower().endswith((".txt", ".md")):
-                raise UserError("Reader accepts UTF-8 .txt or .md files.")
-            if (attachment.file_size or 0) > MAX_UPLOAD_BYTES:
-                raise UserError("That file is too large for Reader.")
+            if not attachment:
+                raise UserError("Reader accepts UTF-8 .txt, .md or .markdown files.")
+            filename = file_name(attachment.file_name or "")
+            if attachment.file_size is None or attachment.file_size > MAX_FILE_BYTES:
+                raise UserError("Reader files must have a known size of at most 512 KiB.")
             handle = await attachment.get_file()
+            if handle.file_size is not None and handle.file_size > MAX_FILE_BYTES:
+                raise UserError("Reader files must be at most 512 KiB.")
             raw = bytes(await handle.download_as_bytearray())
-            try:
-                text = raw.decode("utf-8")
-            except UnicodeDecodeError:
-                raise UserError("Reader needs a UTF-8 encoded file.") from None
-            document = from_text(
-                update.effective_chat.id, text, title=attachment.file_name, source_type="file"
-            )
+            document = from_file(update.effective_chat.id, raw, filename)
             await self.open_reader(message, document)
         except UserError as exc:
             await message.reply_text(str(exc))
@@ -351,14 +349,10 @@ class BotHandlers:
                 return
             if command == "/reader":
                 self.require_reader()
-                source = self.storage.recent_pack(
-                    update.effective_chat.id
-                ) or self.storage.recent_source(update.effective_chat.id)
-                if source is None:
-                    raise UserError(
-                        "No saved transcript yet. Send an episode link, Chinese text, or a .txt file."
-                    )
-                await self.open_reader(message, from_transcript(update.effective_chat.id, source))
+                await message.reply_text(
+                    "📖 Reader — paste Chinese text or upload a .txt/.md file.",
+                    reply_markup=reader_markup(self.config),
+                )
                 return
             if not command and not re.search(r"https://podcasts\.apple\.com/", text):
                 await self.open_reader(message, from_text(update.effective_chat.id, text.strip()))

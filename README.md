@@ -62,7 +62,7 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 - `/zip` retrieves the latest completed pack, even if a newer job is still processing.
 - `/srt` sends subtitles for the latest episode. Nothing is generated on demand: the file exists only when the transcription model timed the episode.
 - The finished-job message links the episode audio and its Apple Podcasts page, so the recording sits beside its transcript.
-- `/reader` opens the latest transcript or study pack in the Reader. It never retranscribes; it reuses the stored transcript.
+- `/reader` opens the standalone Reader library, including when it is empty. No podcast is required. Episode completion buttons still open that episode directly.
 - `/add_hanly <text>` files any Chinese word, phrase or sentence as a single Hanly card, with pinyin, a Russian meaning and a translated example in its note, and no episode, transcript or study pack involved.
 - Long jobs update one status message. Study failures leave the transcript usable and deliver it on its own, with an explanation and `/retry` guidance.
 
@@ -86,11 +86,68 @@ Both baskets are local until you press upload. Open a basket from its counter to
 
 | Input | How |
 | --- | --- |
-| Processed episode | The **📖 Open Reader** button on the finished job, or `/reader` |
-| Chinese text | Send the text to the bot; it replies with the button |
-| `.txt` / `.md` file | Send the file as a document; UTF-8, up to 2 MB |
+| Processed episode | The **📖 Open Reader** button on the finished job, or its card in the library |
+| Pasted Chinese text | **+ New text** in the library, or send text to the bot |
+| TXT / Markdown | **Upload file** in the library, or send a Telegram document: `.txt`, `.md`, `.markdown`; UTF-8 (BOM supported), up to 512 KiB |
 
 Text documents accept up to 200,000 characters and must contain Chinese. PDF, EPUB, OCR and subtitle formats are out of scope.
+
+Reader works without processing a podcast. `/reader/` opens the library;
+`/reader/?doc=<id>` remains a direct link. The ← Reader link returns to the library.
+The shelf lists at most 100 documents by last opened (creation time for unopened
+items), with ID as a deterministic tie-breaker. Its API returns metadata only.
+Reloading a document preserves its URL and saved data.
+
+Normal paste into the textarea is always available. **Paste from clipboard** is
+optional: it reads only after a click and, if denied or unavailable, asks you to
+paste manually without erasing your text. Create failures keep the title and text.
+Titles are optional, deterministic, single-line Unicode text; automatic titles
+use the first non-empty line, up to 60 characters. Supplied/renamed titles have
+markup removed, whitespace folded, and a 120-character limit. Only outer
+whitespace is trimmed from pasted text; internal line breaks remain unchanged.
+
+File import shares one adapter between Telegram and the Mini App. It validates
+UTF-8 strictly, removes a BOM, rejects binary control bytes and keeps only a
+sanitized basename as source metadata. Markdown headings, lists, quotes, inline
+emphasis/link syntax and fence markers are removed conservatively; code contents
+and literal HTML remain plain inert text. It is not a Markdown renderer. No
+uploaded file blob is stored: only document text and safe filename metadata.
+The browser transports bounded bytes as base64 JSON (512 KiB becomes about
+683 KiB), below the existing 1 MiB HTTP body limit. The 200,000-character text
+limit also applies. There is no web/PDF/DOCX/EPUB import.
+
+**Rename** edits only the stored title and updated timestamp. Document ID,
+translation cache, Hanly/Mosaic keys and study selections remain unchanged.
+Existing podcast documents stay in the same table. Legacy `text` sources migrate
+to `pasted_text`; supported producers are `podcast`, `pasted_text`, and `file`.
+Future source adapters can produce the same entity; no web adapter is added.
+SQLite adds nullable `updated` and `last_opened` columns, backfills updated from
+created, and preserves IDs and integration data.
+
+Both standalone integration keys remain `reader:<document-id>`. Identical text
+created twice intentionally gets two documents and two keys. Rename itself makes
+no remote request: the existing Hanly merge updates its collection name on the
+next explicit upload, retaining the UUID; an existing Mosaic pack keeps its
+original name/snapshot. The podcast Hanly episode key and separate Reader Mosaic
+pack are unchanged. Existing Hanly Notes ownership/context rules are unchanged.
+
+All sources use the same segmentation, CC-CEDICT/pinyin, popup, baskets and
+translation endpoint. Translation remains lazy: exact study translation, then
+cached generated translation, then on-demand generation. Word pronunciation uses
+system Mandarin speech. The same sentence speaker button uses original podcast
+audio when aligned/available, otherwise system Mandarin speech; pasted/files go
+directly to speech without an absent-audio warning. Device speech availability
+still applies equally to all sources.
+
+Library/create/rename use validated Telegram initData and the existing single-user
+allowlist (the existing explicit local dev mode remains). Browser owner/chat IDs
+are rejected, never trusted. Titles/text/filenames are rendered with textContent;
+the existing CSP remains. Requests are bounded by the existing HTTP server.
+There is no create-request idempotency mechanism in the existing architecture:
+buttons prevent double-submit, but an explicit retry after a lost response can
+create another document; check the library first. No global text deduplication,
+delete, search, folders, or reading-position tracking is added.
+
 
 ### What upload does
 
@@ -109,7 +166,7 @@ Nothing in that note is generated. Its first line uses the same meaning the Read
 
 Mandarin Mosaic: the document owns one stable pack. Sentence payloads and their UUIDs are committed to SQLite before the first request, so a retry re-sends the same identifiers instead of creating duplicates, and a sentence already staged for that pack is never staged twice. `SuccessfulUpdates` / `UnsuccessfulUpdates` are reconciled as before, and the Mini App reports exactly which sentences failed and keeps them selected.
 
-The two destinations bind differently, because the services themselves differ. A document opened from a podcast episode uses that episode's own Hanly identity, so tapped words merge into the same collection the automatic study upload writes to. Its Mandarin Mosaic pack is separate: a study pack's sentence snapshot is frozen at its first upload, and hand-picked Reader sentences must not rewrite it. Names come from the episode title; direct text derives a short title from its first line, falling back to a timestamp. Names are display only: the UUID and the PackId are the identifiers.
+The two destinations bind differently, because the services themselves differ. A document opened from a podcast episode uses that episode's own Hanly identity, so tapped words merge into the same collection the automatic study upload writes to. Its Mandarin Mosaic pack is separate: a study pack's sentence snapshot is frozen at its first upload, and hand-picked Reader sentences must not rewrite it. Names come from the episode title; direct text derives a short title from its first line, falling back to “Untitled text”. Names are display only: the UUID and the PackId are the identifiers.
 
 ### Notes never overwrite your own writing
 

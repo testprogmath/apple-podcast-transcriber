@@ -109,3 +109,75 @@ Scenarios were exercised through the shim with pinyin off, pinyin on, the popup 
 Ruff lint and formatting, `python -m compileall podcast_bot`, `node --check`, and `docker compose config` pass. `pypinyin` was added as the only new dependency; `requirements.txt` was edited to add that single pin rather than recompiled, because a full recompile also swapped the production HTTP stack from `httpx`/`distro`/`tqdm` to `httpx2`/`httpcore2`/`truststore`, which is unrelated to this change.
 
 No external service is contacted by any test. Rendering inside the real Telegram WebView remains unverified.
+
+
+## Standalone Reader — manual validation (2026-10-01)
+
+These are **pending real-device checks**, not claims of device validation.
+Use a test account/document and explicitly authorize paid/external uploads.
+
+### A — pasted text
+1. Send `/reader` with an empty library: it opens without a podcast.
+2. Tap + New text, enter Chinese with paragraphs using normal Cmd/Ctrl+V or mobile paste.
+3. Create Reader (title optional); verify original Simplified/Traditional text and line breaks.
+4. Toggle pinyin, tap a word, inspect dictionary meanings and use word 🔊.
+5. Select words, review the Hanly basket and explicitly upload; verify Notes context.
+6. Show Translation (lazy), then use sentence 🔊 and select/upload a Mosaic sentence.
+7. Rename; verify current baskets/translation stay intact.
+8. ← Reader, reopen and refresh: same document, saved title and translation.
+9. Repeat uploads after rename: same integration collection/pack identities.
+10. Close/reopen Telegram Reader: document remains in the library.
+
+### B — file
+1. `/reader` → Upload file → select a UTF-8 Chinese `.txt`.
+2. Verify filename-derived title and full text; repeat pinyin/popup/word and sentence
+   speech/translation/Hanly/Mosaic checks from A.
+3. Return to library; verify source label and ordering; reopen and rename.
+4. Repeat with `.md`, `.markdown`, BOM, mixed Chinese/English/emoji and literal HTML.
+5. Verify friendly errors for empty, invalid UTF-8, PDF and >512 KiB files.
+6. Send the same files through Telegram: equivalent import and study behavior.
+
+### C — podcast regression
+1. Process an Apple Podcasts episode normally.
+2. Completion's Open Reader button opens its document directly.
+3. Verify study features, original sentence audio when available and TTS fallback.
+4. Return to library: podcast appears next to pasted/file documents.
+5. Existing direct links still work; opening `/reader/` does not recreate documents.
+
+### Devices / browsers (each pending)
+- Telegram iOS: library, textarea/manual paste, explicit Clipboard button success
+  or graceful denial, native file picker, rename, back navigation and refresh.
+- Telegram Android: same checks; verify system Mandarin voice availability.
+- Telegram Desktop: same checks including Cmd/Ctrl+V.
+- Safari and Chrome: same checks using the existing authorized/dev test setup.
+
+Clipboard must never be read on load. Denial/missing API must keep the existing
+textarea content and normal paste usable. A failed create request must preserve
+both text and title. Check narrow screens, keyboard focus and dark/light appearance.
+
+### Automated commands
+Run from the standalone worktree with dependencies installed:
+```
+ruff check .
+ruff format --check .
+pytest -q
+python -m compileall podcast_bot
+node --check podcast_bot/reader/static/app.js
+node tests/frontend/app.test.js
+node tests/frontend/library.test.js
+docker compose config
+```
+Compose requires `.env`; validation may use a temporary copy of `.env.example`
+with empty credentials. Do not start the service or use production credentials.
+
+### Recorded local result (2026-10-01)
+
+Final automated run: **680 Python tests**, **118 existing DOM tests**, and
+**17 library DOM tests** passed. Ruff lint/format, compileall, both JS syntax
+checks and Compose configuration passed. The new frontend suite runs in CI.
+No real OpenAI, Hanly or Mosaic requests were made.
+
+Local in-app browser smoke verified library, text creation, literal script-looking
+content, the shared Reader, rename, refresh and return to library. Native Telegram
+and real-device checks above remain pending. See `STANDALONE_READER_REPORT.md`
+for the pre-commit architecture/security/validation report and limitations.

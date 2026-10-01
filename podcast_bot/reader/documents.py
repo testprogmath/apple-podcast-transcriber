@@ -8,8 +8,7 @@ import hashlib
 import json
 import re
 import secrets
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..identity import collection_name, hanly_identity
@@ -20,6 +19,8 @@ from .sentences import Sentence, paragraphs, parse_sentences
 from .tokens import HAN, Token, tokenize
 
 MAX_CHARACTERS = 200_000
+MAX_FILE_BYTES = 512 * 1024
+FILE_EXTENSIONS = {".txt", ".md", ".markdown"}
 
 
 @dataclass(frozen=True)
@@ -42,7 +43,7 @@ class ReaderDocument:
 
     def material(self) -> dict:
         """The study pack this document came from, or an empty mapping for direct text."""
-        if not self.source_reference:
+        if self.source_type == "file" or not self.source_reference:
             return {}
         try:
             material = json.loads(
@@ -54,7 +55,7 @@ class ReaderDocument:
 
     def native_language(self) -> str:
         """The native language the study pack was generated for; empty for direct text."""
-        if not self.source_reference:
+        if self.source_type == "file" or not self.source_reference:
             return ""
         try:
             metadata = json.loads(
@@ -131,8 +132,8 @@ class ReaderDocument:
 
 def short_title(text: str) -> str:
     first = next((line.strip() for line in text.splitlines() if line.strip()), "")
-    first = re.sub(r"\s+", " ", first)[:60].strip()
-    return first or "Text " + datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+    first = clean_title(first)[:60]
+    return first or "Untitled text"
 
 
 def check_text(text: str) -> str:
@@ -145,13 +146,13 @@ def check_text(text: str) -> str:
     return text
 
 
-def from_text(chat_id: int, text: str, title: str | None = None, source_type: str = "text"):
-    text = check_text(text)
+def from_text(chat_id: int, text: str, title: str | None = None, source_type: str = "pasted_text"):
+    text = check_text(text.strip())
     identifier = secrets.token_hex(16)
     return ReaderDocument(
         id=identifier,
         chat_id=chat_id,
-        title=title or short_title(text),
+        title=clean_title(title or "") or short_title(text),
         source_type=source_type,
         source_reference="",
         raw_text=text,
@@ -181,3 +182,45 @@ def from_transcript(chat_id: int, path: Path):
         mosaic_key="reader:" + identifier,
         created=now(),
     )
+
+
+def clean_title(value: str) -> str:
+    """Plain single-line Unicode title; never HTML or a filesystem path."""
+    return " ".join(re.sub(r"<[^>]*>", "", value).split())[:120]
+
+
+def file_name(value: str) -> str:
+    name = value.replace("\\", "/").rsplit("/", 1)[-1]
+    if Path(name).suffix.lower() not in FILE_EXTENSIONS:
+        raise UserError("Reader accepts UTF-8 .txt, .md or .markdown files.")
+    suffix = Path(name).suffix.lower()
+    return (clean_title(Path(name).stem) or "Text") + suffix
+
+
+def markdown_text(text: str) -> str:
+    # Reading, not publishing: remove common structure, preserve literal HTML as text.
+    text = re.sub(r"(?m)^ {0,3}(?:`{3,}|~{3,}).*$", "", text)
+    text = re.sub(r"(?m)^ {0,3}(?:#{1,6} +|> ?|[-+*] +|[0-9]+[.)] +)", "", text)
+    text = re.sub(r"!?\[([^]\n]*)\]\([^\n)]*\)", r"\1", text)
+    text = re.sub(r"(?m)^ {0,3}(?:[-*_] *){3,}$", "", text)
+    text = re.sub(r"(?m)^ {0,3}={3,} *$", "", text)
+    for marker in ("**", "__", "~~", "`", "*", "_"):
+        escaped = re.escape(marker)
+        text = re.sub(escaped + r"([^\n]+?)" + escaped, r"\1", text)
+    return text
+
+
+def from_file(chat_id: int, raw: bytes, filename: str) -> ReaderDocument:
+    name = file_name(filename)
+    if len(raw) > MAX_FILE_BYTES:
+        raise UserError("Reader files must be at most 512 KiB.")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise UserError("Reader needs a UTF-8 encoded file.") from None
+    if any(ord(c) < 32 and c not in "\n\r\t" for c in text):
+        raise UserError("Reader needs a UTF-8 text file, not binary content.")
+    if Path(name).suffix.lower() in {".md", ".markdown"}:
+        text = markdown_text(text)
+    document = from_text(chat_id, text, Path(name).stem, "file")
+    return replace(document, source_reference=name)

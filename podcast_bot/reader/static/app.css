@@ -464,3 +464,35 @@ ruby { ruby-align: center; }
 #lexeme-pronounce[hidden] { display: none; }
 #lexeme-pronounce.speaking { color: var(--blue); background: var(--blue-soft); }
 #lexeme-pronounce:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Library navigation wraps the same Reader, without changing its study controls. */
+[hidden] { display: none !important; }
+.shelf { max-width: 680px; margin: 0 auto; padding: 24px 18px; }
+.shelf h1 { font-size: 26px; margin-bottom: 4px; }
+.shelf h2 { font-size: 16px; margin-top: 30px; }
+.muted, #library-status, #create-status { color: var(--muted); }
+.shelf-actions, .document-nav { display: flex; gap: 12px; align-items: center; }
+.shelf-actions .primary, .shelf-actions .secondary { width: auto; flex: 1; }
+.document-nav { justify-content: space-between; margin-bottom: 12px; }
+.document-nav a { color: var(--muted); text-decoration: none; }
+.document-card { display: block; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 18px; margin-bottom: 12px; color: var(--fg); text-decoration: none;
+  overflow-wrap: anywhere; }
+.document-card strong { display: block; font-size: 18px; font-weight: 600; }
+.document-card small { display: block; margin-top: 6px; color: var(--muted); }
+.shelf label, #rename-panel label { display: block; margin: 18px 0 6px; }
+.shelf input, .shelf textarea, #rename-title { display: block; width: 100%; padding: 12px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  color: var(--fg); font: inherit; font-size: 16px; }
+.shelf textarea { resize: vertical; min-height: 240px; margin-bottom: 14px; }
+#rename-panel { padding-bottom: 14px; }
+#rename-title { margin-bottom: 10px; }
+
+.shelf .secondary, #rename-panel .secondary {
+  border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px;
+  min-height: 44px; background: var(--surface); color: var(--fg);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.shelf-actions { align-items: stretch; }
+.shelf-actions button { margin: 0; min-height: 48px; }
+.shelf button:disabled, #rename-panel button:disabled { opacity: .6; cursor: wait; }
