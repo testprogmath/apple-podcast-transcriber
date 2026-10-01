@@ -1,6 +1,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -183,3 +184,47 @@ async def test_server_bot_challenge_is_not_reported_as_missing_language(tmp_path
         async with download_subtitles(URL, "zh", tmp_path):
             pytest.fail("must not yield")
     fetch.assert_not_called()
+
+
+async def test_cookies_passed_as_private_copy(tmp_path, monkeypatch):
+    original = tmp_path / "youtube-cookies.txt"
+    original.write_text("# Netscape HTTP Cookie File\n")
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(original))
+    seen = {}
+
+    async def execute(*args, **kwargs):
+        copy = Path(args[args.index("--cookies") + 1])
+        seen["copy"] = copy
+        assert copy != original
+        assert copy.read_text() == "# Netscape HTTP Cookie File\n"
+        copy.write_text("rotated by yt-dlp\n")
+        return json.dumps({"subtitles": {"zh": track()}}), ""
+
+    monkeypatch.setattr("podcast_bot.subtitles.run", execute)
+    monkeypatch.setattr("podcast_bot.subtitles.fetch", AsyncMock(return_value=SRT.encode()))
+    async with download_subtitles(URL, "zh", tmp_path) as result:
+        assert result.srt.read_text() == SRT
+    assert original.read_text() == "# Netscape HTTP Cookie File\n"
+    assert not seen["copy"].exists()
+    assert list((tmp_path / "tmp").iterdir()) == []
+
+
+async def test_no_cookies_argument_without_configuration(tmp_path, monkeypatch):
+    monkeypatch.delenv("YOUTUBE_COOKIES_FILE", raising=False)
+    execute = AsyncMock(return_value=(json.dumps({"subtitles": {"zh": track()}}), ""))
+    monkeypatch.setattr("podcast_bot.subtitles.run", execute)
+    monkeypatch.setattr("podcast_bot.subtitles.fetch", AsyncMock(return_value=SRT.encode()))
+    async with download_subtitles(URL, "zh", tmp_path):
+        pass
+    assert "--cookies" not in execute.call_args.args
+
+
+async def test_unreadable_cookies_file_is_reported_before_yt_dlp(tmp_path, monkeypatch):
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(tmp_path / "missing.txt"))
+    execute = AsyncMock()
+    monkeypatch.setattr("podcast_bot.subtitles.run", execute)
+    with pytest.raises(UserError, match="YOUTUBE_COOKIES_FILE is set but cannot be read"):
+        async with download_subtitles(URL, "zh", tmp_path):
+            pytest.fail("must not yield")
+    execute.assert_not_called()
+    assert list((tmp_path / "tmp").iterdir()) == []

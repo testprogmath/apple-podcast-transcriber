@@ -1,0 +1,8 @@
+# Optional override. YouTube cookies are account credentials kept outside this repository and
+# outside the image; the bot hands yt-dlp a private copy, so the mount stays read-only.
+services:
+  bot:
+    environment:
+      YOUTUBE_COOKIES_FILE: /app/youtube/cookies.txt
+    volumes:
+      - ${YOUTUBE_COOKIES:?Set YOUTUBE_COOKIES to the exported cookies.txt path}:/app/youtube/cookies.txt:ro

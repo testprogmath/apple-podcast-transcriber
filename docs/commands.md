@@ -67,9 +67,11 @@ YouTube extraction uses pinned `yt-dlp` and matching `yt-dlp-ejs`; Docker includ
 Node 22, and local installations need Node 22+ plus the existing ffmpeg/ffprobe.
 The downloader selects HTTPS **audio-only** streams with no video fallback.
 Downloaded media uses the existing size-limited HTTP streaming and public-address
-checks on redirects. No browser cookies, account login, thumbnails or arbitrary
-site extractors are used. Host blocks/private videos can still fail with a safe
-message; keep yt-dlp and its matching EJS version updated together.
+checks on redirects. No account login, thumbnails or arbitrary site extractors
+are used. Cookies are sent only when `YOUTUBE_COOKIES_FILE` is set, as described
+under [Existing YouTube subtitles](#existing-youtube-subtitles). Host blocks/private
+videos can still fail with a safe message; keep yt-dlp and its matching EJS
+version updated together.
 
 References: [yt-dlp runtime requirements](https://github.com/yt-dlp/yt-dlp/wiki/EJS)
 and [Telegram sendAudio](https://core.telegram.org/bots/api#sendaudio).
@@ -87,6 +89,18 @@ This runs separately in the background, one subtitle request at a time. Caption
 files are limited to 2 MB, validated as SRT, and removed after delivery or failure.
 Text output removes timing/indexes and subtitle markup, preserving cue order and
 repeated text. `/srt` retains its existing meaning: the latest podcast's subtitles.
+
+YouTube asks servers in data centres to "confirm you're not a bot", and then
+returns no subtitle tracks or audio. Cookies from a signed-in session get past
+that check, for `/subs`, `/youtube` and YouTube `/mp3`.
+Use a separate Google account: yt-dlp warns that an account used this way can be
+banned. Export its cookies as described in the yt-dlp guide to
+[exporting YouTube cookies](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies),
+keep the file outside the repository with mode `600`, and add
+`docker-compose.youtube.yml` with `YOUTUBE_COOKIES` set to its path. yt-dlp
+rewrites its cookie file on exit, so the bot gives it a temporary copy on every
+run and the mounted file stays unchanged. When the cookies expire, the bot check
+message returns; export and upload a new file over the old one.
 
 ## Study materials from an uploaded SRT
 

@@ -2,6 +2,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -267,3 +268,33 @@ async def test_missing_link_is_helpful_and_does_not_start_job(config, store):
     assert handlers.mp3_task is None
     assert "/mp3" in u.effective_message.reply_text.call_args.args[0]
     assert store.claim() is None
+
+
+async def test_youtube_cookies_passed_as_private_copy(monkeypatch, tmp_path):
+    original = tmp_path / "youtube-cookies.txt"
+    original.write_text("# Netscape HTTP Cookie File\n")
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(original))
+    seen = {}
+
+    async def execute(*args, **kwargs):
+        copy = Path(args[args.index("--cookies") + 1])
+        seen["copy"] = copy
+        assert copy != original
+        assert copy.read_text() == "# Netscape HTTP Cookie File\n"
+        copy.write_text("rotated by yt-dlp\n")
+        audio = {"url": "https://audio.example/a", "duration": 60}
+        return json.dumps({**audio, "vcodec": "none", "protocol": "https"}), ""
+
+    monkeypatch.setattr("podcast_bot.mp3.run", execute)
+    assert (await youtube_source(YT, 180))[0] == "https://audio.example/a"
+    assert original.read_text() == "# Netscape HTTP Cookie File\n"
+    assert not seen["copy"].exists()
+
+
+async def test_youtube_unreadable_cookies_file_is_reported_before_yt_dlp(monkeypatch, tmp_path):
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(tmp_path / "missing.txt"))
+    execute = AsyncMock()
+    monkeypatch.setattr("podcast_bot.mp3.run", execute)
+    with pytest.raises(UserError, match="YOUTUBE_COOKIES_FILE is set but cannot be read"):
+        await youtube_source(YT, 180)
+    execute.assert_not_called()

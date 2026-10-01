@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import os
 import re
+import shutil
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -51,37 +53,53 @@ def source_url(value: str) -> tuple[str, str]:
         ) from None
 
 
+def cookie_arguments(directory: Path) -> list[str]:
+    """Pass yt-dlp a private copy: it rewrites its --cookies file on exit."""
+    configured = os.getenv("YOUTUBE_COOKIES_FILE", "").strip()
+    if not configured:
+        return []
+    copy = directory / "cookies.txt"
+    try:
+        shutil.copyfile(Path(configured).expanduser(), copy)
+    except OSError:
+        raise UserError("YOUTUBE_COOKIES_FILE is set but cannot be read.") from None
+    return ["--cookies", str(copy)]
+
+
 async def youtube_source(
     url: str, max_minutes: float, language: str | None = None
 ) -> tuple[str, str, str]:
     if language and not re.fullmatch(r"[a-z]{2,3}", language):
         raise UserError("Unsupported audio language.")
     try:
-        output, _ = await run(
-            sys.executable,
-            "-m",
-            "yt_dlp",
-            "--ignore-config",
-            "--no-cache-dir",
-            "--no-playlist",
-            "--skip-download",
-            "--dump-single-json",
-            "--no-warnings",
-            "--socket-timeout",
-            "20",
-            "--retries",
-            "2",
-            "--js-runtimes",
-            "node",
-            "--no-remote-components",
-            "--use-extractors",
-            "youtube",
-            "-f",
-            "bestaudio[protocol=https]",
-            "--",
-            url,
-            timeout=120,
-        )
+        with TemporaryDirectory(prefix="ytdlp-") as scratch:
+            cookies = cookie_arguments(Path(scratch))
+            output, _ = await run(
+                sys.executable,
+                "-m",
+                "yt_dlp",
+                "--ignore-config",
+                "--no-cache-dir",
+                "--no-playlist",
+                "--skip-download",
+                "--dump-single-json",
+                "--no-warnings",
+                "--socket-timeout",
+                "20",
+                "--retries",
+                "2",
+                "--js-runtimes",
+                "node",
+                "--no-remote-components",
+                "--use-extractors",
+                "youtube",
+                *cookies,
+                "-f",
+                "bestaudio[protocol=https]",
+                "--",
+                url,
+                timeout=120,
+            )
         info = json.loads(output)
         if not isinstance(info, dict):
             raise ValueError("Invalid video metadata")

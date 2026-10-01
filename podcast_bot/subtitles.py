@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import parse_qs, urlsplit
 
 from .models import UserError
-from .mp3 import source_url
+from .mp3 import cookie_arguments, source_url
 from .net import fetch, http_client
 from .transcription.audio import run
 
@@ -119,39 +119,44 @@ class Subtitles:
 async def download_subtitles(url: str, language: str, data_dir: Path) -> AsyncIterator[Subtitles]:
     # Revalidate at the service boundary; the extractor never receives an arbitrary URL.
     url, language = request(f"/subs {language} {url}", "zh")
-    try:
-        output, diagnostics = await run(
-            sys.executable,
-            "-m",
-            "yt_dlp",
-            "--ignore-config",
-            "--no-cache-dir",
-            "--skip-download",
-            "--no-playlist",
-            "--dump-single-json",
-            "--ignore-no-formats-error",
-            "--socket-timeout",
-            "20",
-            "--retries",
-            "1",
-            "--extractor-retries",
-            "1",
-            "--js-runtimes",
-            "node",
-            "--no-remote-components",
-            "--use-extractors",
-            "youtube",
-            "--",
-            url,
-            timeout=120,
-        )
-        info = json.loads(output)
-        if not isinstance(info, dict) or info.get("_type", "video") != "video":
-            raise ValueError
-    except (UserError, OSError, TimeoutError, ValueError):
-        raise UserError(
-            "Could not read YouTube subtitles. The video may be unavailable; try again later."
-        ) from None
+    root = data_dir / "tmp"
+    root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="ytdlp-", dir=root) as scratch:
+        cookies = cookie_arguments(Path(scratch))
+        try:
+            output, diagnostics = await run(
+                sys.executable,
+                "-m",
+                "yt_dlp",
+                "--ignore-config",
+                "--no-cache-dir",
+                "--skip-download",
+                "--no-playlist",
+                "--dump-single-json",
+                "--ignore-no-formats-error",
+                "--socket-timeout",
+                "20",
+                "--retries",
+                "1",
+                "--extractor-retries",
+                "1",
+                "--js-runtimes",
+                "node",
+                "--no-remote-components",
+                "--use-extractors",
+                "youtube",
+                *cookies,
+                "--",
+                url,
+                timeout=120,
+            )
+            info = json.loads(output)
+            if not isinstance(info, dict) or info.get("_type", "video") != "video":
+                raise ValueError
+        except (UserError, OSError, TimeoutError, ValueError):
+            raise UserError(
+                "Could not read YouTube subtitles. The video may be unavailable; try again later."
+            ) from None
     # --ignore-no-formats-error may return partial metadata with exit code zero
     # when YouTube blocks the host. Do not misreport that as missing captions.
     if (
@@ -172,8 +177,6 @@ async def download_subtitles(url: str, language: str, data_dir: Path) -> AsyncIt
         # Never leak signed caption URLs, provider output or credentials.
         raise UserError("Could not download YouTube subtitles. Please try again later.") from exc
     text = plain_text(srt)
-    root = data_dir / "tmp"
-    root.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix="subs-", dir=root) as temporary:
         # The ID is taken from the validated canonical URL, not remote filenames.
         identifier = parse_qs(urlsplit(url).query)["v"][0]
