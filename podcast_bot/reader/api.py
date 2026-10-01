@@ -215,7 +215,7 @@ class ReaderApi:
         self.storage.touch_reader_document(document.id, document.chat_id)
         sentences = document.sentences()
         audio, ranges, audio_status = document_audio(document, sentences)
-        tokens = document.tokens(sentences)
+        tokens = document.tokens(sentences, self.dictionary)
         lexemes = enrich(
             (token.text for items in tokens for token in items if token.word),
             document.glyph_meanings(),
@@ -228,16 +228,21 @@ class ReaderApi:
         states = self.storage.vocabulary_states(lexemes)
         glossary = {}
         for glyph, lexeme in lexemes.items():
-            entry = {"p": lexeme.pinyin, "vocabulary_state": states.get(glyph, "unknown")}
+            entry = {
+                "meaning_source": lexeme.meaning_source,
+                "p": lexeme.pinyin,
+                "vocabulary_state": states.get(glyph, "unknown"),
+            }
             if lexeme.native():
                 entry["ru"] = list(lexeme.native())
                 entry["rs"] = lexeme.native_source
             if lexeme.english:
                 entry["en"] = list(lexeme.english)
+                entry["es"] = lexeme.english_source
             glossary[glyph] = entry
 
         def describe(token):
-            return {"t": token.text, "w": True} if token.word else {"t": token.text, "w": False}
+            return {"t": token.text, "w": token.word, "start": token.start, "end": token.end}
 
         return json_response(
             200,
@@ -280,7 +285,7 @@ class ReaderApi:
         ):
             raise ApiError(400, "Invalid vocabulary item.")
         # Use the same source-owned tokenization as the popup, never browser-supplied text.
-        tokens = document.tokens(document.sentences())
+        tokens = document.tokens(document.sentences(), self.dictionary)
         if not any(token.word and token.text == glyph for group in tokens for token in group):
             raise ApiError(400, "That item is not a Reader word in this document.")
         if state == "unknown":
@@ -313,7 +318,9 @@ class ReaderApi:
             sentence = sentences[identifier]
             if identifier not in words:
                 words[identifier] = {
-                    token.text for token in tokenize(sentence.text, known) if token.word
+                    token.text
+                    for token in tokenize(sentence.text, known, self.dictionary)
+                    if token.word
                 }
             # Only lexical items the Reader itself offered in that sentence are uploadable.
             if glyph not in words[identifier]:

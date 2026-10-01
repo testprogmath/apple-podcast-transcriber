@@ -922,7 +922,7 @@ async def test_punctuation_tokens_carry_no_pinyin_field(notes):
     _, data = await call(notes, "GET", f"/api/reader/{document.id}")
     punctuation = [t for t in data["sentences"][0]["tokens"] if not t["w"]]
     assert punctuation
-    assert all(set(t) == {"t", "w"} for t in punctuation)
+    assert all(set(t) == {"t", "w", "start", "end"} for t in punctuation)
     assert all(t["t"] not in data["glossary"] for t in punctuation), "no pinyin for punctuation"
 
 

@@ -133,7 +133,7 @@ function applyLanguage(language) {
 function sensesFor(glyph) {
   const entry = state.glossary[glyph] || {};
   const native = { senses: entry.ru || [], source: entry.rs || "" };
-  const english = { senses: entry.en || [], source: entry.en ? "cc-cedict" : "" };
+  const english = { senses: entry.en || [], source: entry.en ? (entry.es || "cc-cedict") : "" };
   const first = state.language === "ru" ? native : english;
   return first.senses.length ? first : state.language === "ru" ? english : native;
 }
@@ -440,27 +440,32 @@ function renderLexemeAction() {
     : value === "learning" ? "✓ Mark as known" : "✓ I know this";
 }
 
-/** The sentence the word was tapped in, with every occurrence of it marked. */
+/** Highlight the tapped occurrence; Python offsets count Unicode code points. */
 function renderContext(glyph, sentenceId) {
   const node = el("lexeme-context");
   node.textContent = "";
   const sentence = state.sentences.find((s) => s.id === sentenceId);
   const text = sentence ? sentence.text : "";
   el("lexeme-context-label").hidden = !text;
-  if (!text) return;
-  let rest = text;
-  while (rest) {
-    const at = glyph ? rest.indexOf(glyph) : -1;
-    if (at === -1) {
-      node.appendChild(document.createTextNode(rest));
-      break;
-    }
-    if (at > 0) node.appendChild(document.createTextNode(rest.slice(0, at)));
+  const chars = Array.from(text);
+  const { start, end } = state.lexeme || {};
+  if (Number.isInteger(start) && Number.isInteger(end) && chars.slice(start, end).join("") === glyph) {
+    node.appendChild(document.createTextNode(chars.slice(0, start).join("")));
     const hit = document.createElement("span");
     hit.className = "hit";
     hit.textContent = glyph;
     node.appendChild(hit);
-    rest = rest.slice(at + glyph.length);
+    node.appendChild(document.createTextNode(chars.slice(end).join("")));
+  } else {
+    // Older payloads have no occurrence spans; preserve their existing highlighting.
+    let rest = text;
+    while (rest) {
+      const at = glyph ? rest.indexOf(glyph) : -1;
+      if (at === -1) { node.appendChild(document.createTextNode(rest)); break; }
+      if (at > 0) node.appendChild(document.createTextNode(rest.slice(0, at)));
+      const hit = document.createElement("span"); hit.className = "hit"; hit.textContent = glyph;
+      node.appendChild(hit); rest = rest.slice(at + glyph.length);
+    }
   }
 }
 
@@ -476,9 +481,15 @@ function renderLexemeBody(glyph) {
     item.textContent = sense;
     list.appendChild(item);
   }
-  el("lexeme-senses-label").hidden = !senses.length;
+  if (!senses.length) {
+    const missing = document.createElement("li");
+    missing.textContent = "Нет словарного определения.";
+    list.appendChild(missing);
+  }
+  el("lexeme-senses-label").hidden = false;
   el("lexeme-senses-label").textContent =
-    source === "contextual" ? "Значение (в этом эпизоде)" : "Значение (из словаря)";
+    !senses.length ? "Значение" : source === "compositional" ? "Составное значение"
+      : source === "contextual" ? "Значение (в контексте)" : "Значение (из словаря)";
   el("lexeme-source").textContent = senses.length ? SOURCE_LABELS[source] || "" : "";
   if (state.lexeme) renderContext(glyph, state.lexeme.sentenceId);
 }
@@ -486,7 +497,7 @@ function renderLexemeBody(glyph) {
 function openLexeme(token, sentenceId, node) {
   stopSpeaking("word");
   pronunciationButton.setAttribute("aria-label", `Pronounce ${token.t.trim()}`);
-  state.lexeme = { glyph: token.t, sentenceId };
+  state.lexeme = { glyph: token.t, sentenceId, start: token.start, end: token.end };
   closeLexeme.origin = node;
   renderLexemeBody(token.t);
   renderLexemeAction();

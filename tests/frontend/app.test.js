@@ -121,12 +121,12 @@ test("popup always shows pinyin, and shows a known meaning", async () => {
   assert.ok(!nodes.text.classes.has("pinyin"), "inline pinyin still off");
 });
 
-test("a token with no meaning shows an empty meaning rather than a label", async () => {
+test("a token with no meaning shows a neutral explanation", async () => {
   const { body, nodes } = start();
   await settle();
   word(body, "做研究").click(body);
   assert.strictEqual(nodes["lexeme-pinyin"].textContent, "zuò yán jiū");
-  assert.deepStrictEqual(senses(nodes), []);
+  assert.deepStrictEqual(senses(nodes), ["Нет словарного определения."]);
   assert.strictEqual(nodes["lexeme-source"].textContent, "", "no source label either");
 });
 
@@ -486,17 +486,18 @@ test("the meaning label names where the meaning came from", async () => {
   const { body, nodes } = start();
   await settle();
   word(body, "获得").click(body);
-  assert.match(nodes["lexeme-senses-label"].textContent, /в этом эпизоде/);
+  assert.match(nodes["lexeme-senses-label"].textContent, /в контексте/);
   nodes["lexeme-close"].fire("click");
   word(body, "很难").click(body);
   assert.match(nodes["lexeme-senses-label"].textContent, /из словаря/);
 });
 
-test("a word with no meaning hides the label rather than leaving it bare", async () => {
+test("a word with no meaning shows an explicit neutral state", async () => {
   const { body, nodes } = start();
   await settle();
   word(body, "做研究").click(body);
-  assert.strictEqual(nodes["lexeme-senses-label"].hidden, true);
+  assert.strictEqual(nodes["lexeme-senses-label"].hidden, false);
+  assert.deepStrictEqual(senses(nodes), ["Нет словарного определения."]);
   assert.strictEqual(nodes["lexeme-source"].textContent, "");
 });
 
@@ -1541,6 +1542,43 @@ test("podcast sentence without reliable timing uses existing system speech", asy
   audioButton(body, 0).click(body);
   assert.strictEqual(speech.last().text, CANONICAL);
 });
+
+for (const source of ["compositional", "cc-cedict", "missing"]) {
+  test(`whole chunk popup, occurrence, speech and Hanly: ${source}`, async () => {
+    const speech = fakeSpeech([{ lang: "zh-CN", name: "Mandarin" }]);
+    const glyph = "牡丹花";
+    const payload = { ...DOCUMENT, paragraphs: [[0]],
+      glossary: { [glyph]: { p: "mǔ dān huā", en: source === "missing" ? [] : ["peony + flower"], es: source } },
+      sentences: [{ id: 0, text: "😊牡丹花和牡丹花。", tokens: [
+        { t: "😊", w: false }, { t: glyph, w: true, start: 1, end: 4 },
+        { t: "和", w: true, start: 4, end: 5 }, { t: glyph, w: true, start: 5, end: 8 },
+        { t: "。", w: false },
+      ] }],
+    };
+    const { body, nodes, calls } = start({ speech, document: payload, responses: {
+      "/hanly": () => ({ ok: true, json: async () => ({ uploaded: 1, name: "D", total: 1, notes: [] }) }),
+    } });
+    await settle();
+    words(body).filter(w => w.dataset.glyph === glyph)[1].click(body);
+    assert.strictEqual(nodes["lexeme-glyph"].textContent, glyph);
+    assert.strictEqual(nodes["lexeme-pinyin"].textContent, "mǔ dān huā");
+    assert.strictEqual(nodes["lexeme-context"].textContent, payload.sentences[0].text);
+    const context = nodes["lexeme-context"].children;
+    assert.strictEqual(context.filter(n => n.classes.has("hit")).length, 1);
+    assert.strictEqual(context[0].textContent, "😊牡丹花和");
+    assert.strictEqual(context[1].textContent, glyph);
+    assert.strictEqual(nodes["lexeme-senses-label"].textContent,
+      source === "compositional" ? "Составное значение" : source === "missing" ? "Значение" : "Значение (из словаря)");
+    if (source === "missing") assert.deepStrictEqual(senses(nodes), ["Нет словарного определения."]);
+    nodes["lexeme-pronounce"].click(body);
+    assert.strictEqual(speech.spoken[0].text, glyph);
+    nodes["lexeme-action"].fire("click");
+    nodes["hanly-counter"].fire("click");
+    await nodes["basket-upload"].listeners.click[0]();
+    await settle();
+    assert.deepStrictEqual(JSON.parse(calls.at(-1).body).items, [{ glyph, sentence_id: 0 }]);
+  });
+}
 
 (async () => {
   let failed = 0;

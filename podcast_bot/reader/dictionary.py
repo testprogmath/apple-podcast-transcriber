@@ -1,6 +1,6 @@
-"""Read-only CC-CEDICT lookup for Reader enrichment.
+"""Read-only CC-CEDICT evidence for Reader segmentation and enrichment.
 
-Enrichment only: a glyph absent from the dictionary stays selectable and uploadable.
+A glyph absent from the dictionary stays selectable and uploadable.
 Never performs network access. Missing database means every lookup cleanly returns None.
 """
 
@@ -35,6 +35,7 @@ class Dictionary:
 
     def __init__(self, path: Path | None = None):
         self.path = Path(path) if path is not None else dictionary_path()
+        self._lexical: dict[str, tuple[str, ...]] | None = None
         self._connection: sqlite3.Connection | None = None
         if self.path.is_file():
             try:
@@ -58,6 +59,24 @@ class Dictionary:
         if self._connection is not None:
             self._connection.close()
             self._connection = None
+
+    def lexical_entries(self) -> dict[str, tuple[str, ...]]:
+        """Load bounded Han headwords once; candidate lookup is then O(1), never SQL per span."""
+        if self._lexical is None:
+            self._lexical = {}
+            if self._connection is not None:
+                for row in self._connection.execute(
+                    "SELECT traditional,simplified,definitions FROM entries ORDER BY id"
+                ):
+                    for word in set((row[0], row[1])):
+                        if 1 <= len(word) <= 12 and all(
+                            "㐀" <= c <= "䶿" or "一" <= c <= "鿿" or "豈" <= c <= "﫿"
+                            for c in word
+                        ):
+                            self._lexical[word] = self._lexical.get(word, ()) + tuple(
+                                row[2].split("\x1f")
+                            )
+        return self._lexical
 
     def lookup(self, glyph: str) -> DictionaryEntry | None:
         return self.lookup_many([glyph]).get(glyph)
