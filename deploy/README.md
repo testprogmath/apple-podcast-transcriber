@@ -45,7 +45,7 @@ Add the matching private key as the `PODCAST_DEPLOY_SSH_KEY` Actions secret in t
 an independent trusted connection before updating it; never disable host-key checking.
 
 The helper preserves the Compose file set recorded on the running container, including
-optional Hanly and БКРС dictionary overrides, `.env`, `data/`, and external auth directories. It creates `docker-compose.release.yml` containing
+optional Hanly, БКРС dictionary and YouTube cookies overrides, `.env`, `data/`, and external auth directories. It creates `docker-compose.release.yml` containing
 only an image override. Compose/service configuration changes require a reviewed server update;
 automatic releases replace the application image only. Include the release override in manual
 Compose commands or use the deployment helper, otherwise Compose can select the older local image.

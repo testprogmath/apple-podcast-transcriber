@@ -9,12 +9,16 @@ import logging
 from contextlib import suppress
 from urllib.parse import unquote, urlsplit
 
+from .media import FileSlice
+
 log = logging.getLogger(__name__)
 MAX_HEAD = 16 * 1024
 MAX_BODY = 1024 * 1024
 READ_TIMEOUT = 20
 REASONS = {
     200: "OK",
+    206: "Partial Content",
+    416: "Range Not Satisfiable",
     400: "Bad Request",
     401: "Unauthorized",
     404: "Not Found",
@@ -26,11 +30,15 @@ REASONS = {
 }
 
 
-def response(status: int, headers: dict, body: bytes) -> bytes:
+def response_head(status: int, headers: dict, length: int) -> bytes:
     lines = [f"HTTP/1.1 {status} {REASONS.get(status, 'Error')}"]
     lines += [f"{key}: {value}" for key, value in headers.items()]
-    lines += [f"Content-Length: {len(body)}", "Connection: close", "", ""]
-    return "\r\n".join(lines).encode("latin-1", "replace") + body
+    lines += [f"Content-Length: {length}", "Connection: close", "", ""]
+    return "\r\n".join(lines).encode("latin-1", "replace")
+
+
+def response(status: int, headers: dict, body: bytes) -> bytes:
+    return response_head(status, headers, len(body)) + body
 
 
 def parse_head(head: bytes) -> tuple[str, str, dict]:
@@ -62,8 +70,23 @@ class ReaderServer:
     async def connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             status, headers, body = await self.exchange(reader)
-            writer.write(response(status, headers, body))
-            await writer.drain()
+            if isinstance(body, FileSlice):
+                async with asyncio.timeout(300):
+                    with body.path.open("rb") as audio:
+                        audio.seek(body.offset)
+                        writer.write(response_head(status, headers, body.length))
+                        await writer.drain()
+                        remaining = 0 if body.head_only else body.length
+                        while remaining:
+                            block = await asyncio.to_thread(audio.read, min(64 * 1024, remaining))
+                            if not block:
+                                break
+                            writer.write(block)
+                            await writer.drain()
+                            remaining -= len(block)
+            else:
+                writer.write(response(status, headers, body))
+                await writer.drain()
         except (TimeoutError, ConnectionError, asyncio.IncompleteReadError):
             pass
         except Exception as exc:

@@ -87,6 +87,8 @@ Both item counts are preferences, not quotas. Short or low-value episodes may yi
 | `READER_DICTIONARY` | Path to the generated CC-CEDICT database; defaults to one beside `reader/` |
 | `READER_DICTIONARY_RU` | Optional path to a 大БКРС database; blank disables Russian glosses |
 | `BKRS_DICTIONARY` | Host path mounted by `docker-compose.bkrs.yml` |
+| `YOUTUBE_COOKIES_FILE` | Optional Netscape `cookies.txt` passed to yt-dlp for `/subs`, `/youtube` and YouTube `/mp3`; blank sends no cookies |
+| `YOUTUBE_COOKIES` | Host path mounted by `docker-compose.youtube.yml` |
 
 Set all three study price overrides together. Invalid/incomplete or unknown pricing simply disables the estimate; it does not block generation. Environment variables override `.env`. Persisted Telegram preferences override level/language defaults until changed again through commands. Queued jobs retain their study settings snapshot.
 

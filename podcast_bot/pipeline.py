@@ -162,9 +162,12 @@ class Pipeline:
 
 def cleanup_abandoned(storage: Storage) -> None:
     """Call only while holding the single-process lock."""
+    for pending in (storage.root / "media").glob(".pending-*"):
+        if pending.is_file() and not pending.is_symlink():
+            pending.unlink()
     root = storage.root / "tmp"
     if root.exists():
-        for path in root.glob("job-*"):
+        for path in (*root.glob("job-*"), *root.glob("mp3-*"), *root.glob("subs-*")):
             if path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
 
