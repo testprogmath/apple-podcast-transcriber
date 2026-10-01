@@ -468,7 +468,7 @@ async def test_chinese_text_creates_a_reader_document_with_a_web_app_button(hand
     await handlers.handle(update("他们获得了菲尔兹奖。很多人都在讨论。"), SimpleNamespace())
     document = store.recent_reader_document(42)
     assert document is not None
-    assert document.source_type == "text"
+    assert document.source_type == "pasted_text"
     markup = reader_markup(handlers.config, document.id)
     assert markup.inline_keyboard[0][0].web_app.url.endswith(f"/reader/?doc={document.id}")
 
@@ -480,10 +480,15 @@ async def test_non_chinese_text_is_not_turned_into_a_reader_document(handlers, s
     assert "Chinese" in message.effective_message.reply_text.call_args.args[0]
 
 
-async def test_reader_command_without_a_transcript_explains_itself(handlers, store):
+async def test_reader_command_without_a_transcript_opens_library(handlers, store):
     message = update("/reader")
     await handlers.handle(message, SimpleNamespace())
-    assert "No saved transcript yet" in message.effective_message.reply_text.call_args.args[0]
+    assert (
+        message.effective_message.reply_text.call_args.kwargs["reply_markup"]
+        .inline_keyboard[0][0]
+        .web_app.url.endswith("/reader/")
+    )
+    assert store.recent_reader_document(42) is None
 
 
 async def test_reader_requires_a_public_url(config, store):
@@ -569,16 +574,17 @@ def test_percent_encoded_paths_are_decoded_once():
     assert parse_head(b"GET /reader/app%2Ejs HTTP/1.1\r\n")[1] == "/reader/app.js"
 
 
-async def test_reader_command_reuses_the_stored_transcript(handlers, store):
+async def test_reader_command_opens_library_without_recreating_transcript(handlers, store):
     source = episode_source(store)
     store.remember_source(42, source)
     message = update("/reader")
     await handlers.handle(message, SimpleNamespace())
-    document = store.recent_reader_document(42)
-    assert document.source_type == "podcast"
-    assert document.raw_text == TEXT
-    assert document.hanly_key == "apple:1490732024:1000789324203"
-    assert message.effective_message.reply_text.call_args.kwargs["reply_markup"]
+    assert store.recent_reader_document(42) is None
+    assert (
+        message.effective_message.reply_text.call_args.kwargs["reply_markup"]
+        .inline_keyboard[0][0]
+        .web_app.url.endswith("/reader/")
+    )
 
 
 async def test_text_file_uploads_open_the_reader(handlers, store):
@@ -588,15 +594,16 @@ async def test_text_file_uploads_open_the_reader(handlers, store):
         file_size=64,
         get_file=AsyncMock(
             return_value=SimpleNamespace(
-                download_as_bytearray=AsyncMock(return_value=bytearray(TEXT.encode("utf-8")))
+                file_size=64,
+                download_as_bytearray=AsyncMock(return_value=bytearray(TEXT.encode("utf-8"))),
             )
         ),
     )
     await handlers.handle_document(message, SimpleNamespace())
     document = store.recent_reader_document(42)
     assert document.source_type == "file"
-    assert document.title == "lesson.md"
-    assert document.raw_text == TEXT
+    assert document.title == "lesson"
+    assert document.raw_text == TEXT.strip()
 
 
 async def test_unsupported_file_types_are_refused(handlers, store):

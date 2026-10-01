@@ -45,6 +45,8 @@ jobs:
         run: |
           node --check podcast_bot/reader/static/app.js
           node tests/frontend/app.test.js
+          node --check tests/frontend/library.test.js
+          node tests/frontend/library.test.js
 
   deploy:
     name: Deploy production

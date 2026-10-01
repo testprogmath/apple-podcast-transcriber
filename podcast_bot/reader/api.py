@@ -1,5 +1,7 @@
 """Reader HTTP API. Pure request dispatch: no sockets, no credentials in any response."""
 
+import base64
+import binascii
 import json
 import logging
 import re
@@ -12,7 +14,7 @@ from .audio import document_audio
 from .auth import telegram_user_id
 from .bkrs import RussianDictionary
 from .dictionary import Dictionary
-from .documents import ReaderDocument
+from .documents import MAX_FILE_BYTES, ReaderDocument, clean_title, from_file, from_text
 from .enrich import enrich
 from .tokens import HAN, tokenize
 from .translations import SentenceTranslations
@@ -28,6 +30,7 @@ IDENTIFIER = re.compile(r"[0-9a-f]{32}")
 DESCRIPTION = {
     "podcast": "Authentic sentences from the podcast transcript.",
     "text": "Sentences selected in the Reader.",
+    "pasted_text": "Sentences selected in the Reader.",
     "file": "Sentences selected in the Reader.",
 }
 MAX_GLYPHS = 200
@@ -88,6 +91,56 @@ class ReaderApi:
         if method == "GET" and path.startswith("/reader/"):
             return self.static(path[len("/reader/") :])
         parts = path.strip("/").split("/")
+        if parts == ["api", "reader", "documents"]:
+            owner = self.authenticate(headers)
+            if method == "GET":
+                return json_response(
+                    200, {"documents": self.storage.reader_library(owner), "limit": 100}
+                )
+            if method == "POST":
+                data = self.payload(body)
+                source = data.get("source_type")
+                if source == "pasted_text":
+                    if (
+                        set(data) - {"source_type", "text", "title"}
+                        or not isinstance(data.get("text"), str)
+                        or not isinstance(data.get("title", ""), str)
+                    ):
+                        raise ApiError(400, "Send text and an optional title.")
+                    document = from_text(owner, data["text"], data.get("title"))
+                elif source == "file":
+                    if (
+                        set(data) != {"source_type", "filename", "content"}
+                        or not isinstance(data["filename"], str)
+                        or not isinstance(data["content"], str)
+                    ):
+                        raise ApiError(400, "Send a filename and base64 UTF-8 file content.")
+                    if len(data["content"]) > ((MAX_FILE_BYTES + 2) // 3) * 4:
+                        raise ApiError(413, "Reader files must be at most 512 KiB.")
+                    try:
+                        raw = base64.b64decode(data["content"], validate=True)
+                    except (ValueError, binascii.Error):
+                        raise ApiError(400, "Invalid file content.") from None
+                    if len(raw) > MAX_FILE_BYTES:
+                        raise ApiError(413, "Reader files must be at most 512 KiB.")
+                    document = from_file(owner, raw, data["filename"])
+                else:
+                    raise ApiError(400, "Choose pasted_text or file.")
+                self.storage.save_reader_document(document)
+                return json_response(200, {"id": document.id})
+            raise ApiError(405, "Use GET or POST for the library.")
+        if len(parts) == 4 and parts[:3] == ["api", "reader", "documents"]:
+            document = self.authorize(headers, parts[3])
+            if method != "PATCH":
+                raise ApiError(405, "Use PATCH to rename a document.")
+            data = self.payload(body)
+            if set(data) != {"title"} or not isinstance(data["title"], str):
+                raise ApiError(400, "Send only a title.")
+            title = clean_title(data["title"])
+            if not title:
+                raise ApiError(400, "Enter a non-empty title.")
+            self.storage.rename_reader_document(document.id, document.chat_id, title)
+            return json_response(200, {"id": document.id, "title": title})
         if (
             parts[:2] == ["api", "reader"]
             and len(parts) == 6
@@ -130,17 +183,21 @@ class ReaderApi:
             raise ApiError(404, "Not found.")
         return 200, {"Content-Type": TYPES[target.suffix], **SECURITY_HEADERS}, target.read_bytes()
 
-    def authorize(self, headers: dict, identifier: str) -> ReaderDocument:
+    def authenticate(self, headers: dict) -> int:
         init_data = headers.get("x-telegram-init-data", "")
         user = telegram_user_id(init_data, self.config.token)
         if user is None and self.dev_mode and not init_data:
             user = self.config.allowed_user_id
         if user != self.config.allowed_user_id:
             raise ApiError(401, "Open this Reader from your Telegram bot.")
+        return user
+
+    def authorize(self, headers: dict, identifier: str) -> ReaderDocument:
+        user = self.authenticate(headers)
         if not IDENTIFIER.fullmatch(identifier):
             raise ApiError(404, "Unknown Reader document.")
         document = self.storage.reader_document(identifier)
-        if document is None or document.chat_id != self.config.allowed_user_id:
+        if document is None or document.chat_id != user:
             raise ApiError(404, "Unknown Reader document.")
         return document
 
@@ -155,6 +212,7 @@ class ReaderApi:
         return data
 
     def read(self, document: ReaderDocument):
+        self.storage.touch_reader_document(document.id, document.chat_id)
         sentences = document.sentences()
         audio, ranges, audio_status = document_audio(document, sentences)
         tokens = document.tokens(sentences)

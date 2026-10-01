@@ -132,6 +132,14 @@ class Storage:
           input_tokens INTEGER, cached_input_tokens INTEGER, output_tokens INTEGER,
           timestamp TEXT NOT NULL, status TEXT NOT NULL, estimated_cost REAL);
         """)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(reader_documents)")}
+        for column in ("updated", "last_opened"):
+            if column not in columns:
+                self.db.execute(f"ALTER TABLE reader_documents ADD COLUMN {column} TEXT")
+        self.db.execute(
+            "UPDATE reader_documents SET source_type='pasted_text' WHERE source_type='text'"
+        )
+        self.db.execute("UPDATE reader_documents SET updated=created WHERE updated IS NULL")
         self.db.commit()
 
     def vocabulary_state(self, glyph: str) -> str | None:
@@ -499,9 +507,9 @@ class Storage:
         with self.db:
             self.db.execute(
                 """INSERT INTO reader_documents
-                (id,chat_id,title,source_type,source_reference,raw_text,hanly_key,mosaic_key,created)
-                VALUES (?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(id) DO UPDATE SET title=excluded.title,
+                (id,chat_id,title,source_type,source_reference,raw_text,hanly_key,mosaic_key,created,updated)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
                   source_reference=excluded.source_reference, raw_text=excluded.raw_text""",
                 (
                     document.id,
@@ -512,6 +520,7 @@ class Storage:
                     document.raw_text,
                     document.hanly_key,
                     document.mosaic_key,
+                    document.created,
                     document.created,
                 ),
             )
@@ -525,6 +534,48 @@ class Storage:
             if row
             else None
         )
+
+    def reader_library(self, chat_id: int) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id,title,source_type,created,COALESCE(updated,created) AS updated,last_opened, "
+            "CASE WHEN source_type='file' THEN source_reference ELSE '' END AS filename "
+            "FROM reader_documents WHERE chat_id=? "
+            "ORDER BY COALESCE(last_opened,created) DESC, id DESC LIMIT 100",
+            (chat_id,),
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            filename = item.pop("filename")
+            item["source_label"] = (
+                (
+                    "Markdown"
+                    if Path(filename or item["title"]).suffix.lower() in {".md", ".markdown"}
+                    else "TXT"
+                )
+                if item["source_type"] == "file"
+                else {
+                    "podcast": "Podcast",
+                    "pasted_text": "Pasted text",
+                    "text": "Pasted text",
+                }.get(item["source_type"], "Text")
+            )
+            result.append(item)
+        return result
+
+    def rename_reader_document(self, identifier: str, chat_id: int, title: str) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE reader_documents SET title=?,updated=? WHERE id=? AND chat_id=?",
+                (title, now(), identifier, chat_id),
+            )
+
+    def touch_reader_document(self, identifier: str, chat_id: int) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE reader_documents SET last_opened=? WHERE id=? AND chat_id=?",
+                (now(), identifier, chat_id),
+            )
 
     def recent_reader_document(self, chat_id: int):
         row = self.db.execute(

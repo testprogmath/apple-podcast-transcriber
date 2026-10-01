@@ -8,7 +8,42 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
+<section id="library" class="shelf" hidden>
+  <h1>Reader</h1>
+  <p class="muted">Read Chinese from anywhere.</p>
+  <div class="shelf-actions">
+    <button id="new-text" type="button" class="primary">+ New text</button>
+    <button id="upload-file" type="button" class="secondary">Upload file</button>
+    <input id="file-input" type="file" accept=".txt,.md,.markdown" hidden>
+  </div>
+  <p id="library-status" role="status">Loading…</p>
+  <button id="library-retry" type="button" class="secondary" hidden>Retry</button>
+  <h2>Recent</h2>
+  <div id="document-list"></div>
+</section>
+<section id="new-document" class="shelf" hidden>
+  <button id="create-back" type="button" class="secondary">← Reader</button>
+  <h1>New document</h1>
+  <label for="new-title">Title (optional)</label>
+  <input id="new-title" type="text" maxlength="120" autocomplete="off">
+  <label for="new-text-input">Text</label>
+  <textarea id="new-text-input" rows="12" maxlength="200000" placeholder="Paste Chinese text here…"></textarea>
+  <button id="clipboard-paste" type="button" class="secondary">Paste from clipboard</button>
+  <p id="create-status" role="status"></p>
+  <button id="create-reader" type="button" class="primary">Create Reader</button>
+</section>
 <header id="bar">
+  <nav class="document-nav">
+    <a href="/reader/" id="library-back">← Reader</a>
+    <button id="rename-document" type="button" class="toggle">Rename</button>
+  </nav>
+  <div id="rename-panel" hidden>
+    <label for="rename-title">Document title</label>
+    <input id="rename-title" type="text" maxlength="120">
+    <button id="rename-save" type="button" class="secondary">Save</button>
+    <button id="rename-cancel" type="button" class="secondary">Cancel</button>
+    <p id="rename-status" role="status"></p>
+  </div>
   <div id="titlerow">
     <div id="titleblock">
       <p id="source-line"></p>

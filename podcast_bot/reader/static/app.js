@@ -924,9 +924,154 @@ if (telegram) {
   telegram.expand();
 }
 
-api(`/api/reader/${documentId}`)
-  .then(render)
-  .catch((error) => {
-    el("text").textContent = error.message;
-    el("text").setAttribute("aria-busy", "false");
-  });
+if (documentId) {
+  showView("document");
+  api(`/api/reader/${documentId}`)
+    .then(render)
+    .catch((error) => {
+      el("text").textContent = error.message;
+      el("text").setAttribute("aria-busy", "false");
+    });
+} else {
+  loadLibrary();
+}
+
+
+function showView(view) {
+  for (const id of ["bar", "text", "attribution"]) el(id).hidden = view !== "document";
+  el("library").hidden = view !== "library";
+  el("new-document").hidden = view !== "create";
+}
+
+function openDocument(id) {
+  // Real URLs preserve direct linking, reload and the browser back stack.
+  location.assign(`/reader/?doc=${encodeURIComponent(id)}`);
+}
+
+async function loadLibrary() {
+  showView("library");
+  el("library-status").textContent = "Loading…";
+  el("library-retry").hidden = true;
+  try {
+    const data = await api("/api/reader/documents");
+    const list = el("document-list");
+    list.textContent = "";
+    for (const item of data.documents) {
+      const card = document.createElement("a");
+      card.className = "document-card";
+      card.href = `/reader/?doc=${encodeURIComponent(item.id)}`;
+      const title = document.createElement("strong");
+      title.textContent = item.title;
+      const detail = document.createElement("small");
+      const date = new Date(item.last_opened || item.created);
+      detail.textContent = `${item.source_label} · ${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+      card.append(title, detail);
+      list.appendChild(card);
+    }
+    el("library-status").textContent = data.documents.length
+      ? "Your 100 most recent documents appear here."
+      : "Paste Chinese text or upload a .txt/.md file.";
+  } catch (error) {
+    el("library-status").textContent = error.message;
+    el("library-retry").hidden = false;
+  }
+}
+
+el("new-text").addEventListener("click", () => {
+  showView("create");
+  el("new-text-input").focus();
+});
+el("create-back").addEventListener("click", () => showView("library"));
+el("library-retry").addEventListener("click", loadLibrary);
+el("clipboard-paste").addEventListener("click", async () => {
+  const button = el("clipboard-paste");
+  button.disabled = true;
+  try {
+    if (!window.navigator || !window.navigator.clipboard || !window.navigator.clipboard.readText) {
+      throw new Error("Clipboard unavailable");
+    }
+    const text = await window.navigator.clipboard.readText();
+    el("new-text-input").value = text;
+    el("create-status").textContent = "";
+  } catch (error) {
+    el("create-status").textContent = "Clipboard access isn't available here. Paste into the text box instead.";
+  } finally {
+    button.disabled = false;
+    el("new-text-input").focus();
+  }
+});
+
+el("create-reader").addEventListener("click", async () => {
+  const button = el("create-reader");
+  if (button.disabled) return;
+  if (!el("new-text-input").value.trim()) {
+    el("create-status").textContent = "Paste some Chinese text first.";
+    return;
+  }
+  button.disabled = true;
+  el("create-status").textContent = "Creating…";
+  try {
+    const result = await api("/api/reader/documents", {
+      method: "POST", body: JSON.stringify({ source_type: "pasted_text",
+        text: el("new-text-input").value, title: el("new-title").value || "" }),
+    });
+    openDocument(result.id);
+  } catch (error) {
+    el("create-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+el("upload-file").addEventListener("click", () => el("file-input").click());
+el("file-input").addEventListener("change", async () => {
+  const file = el("file-input").files[0];
+  if (!file) return;
+  const button = el("upload-file");
+  button.disabled = true;
+  el("library-status").textContent = "Opening file…";
+  try {
+    if (!/\.(txt|md|markdown)$/i.test(file.name)) throw new Error("Choose a .txt, .md or .markdown file.");
+    if (file.size > 512 * 1024) throw new Error("Reader files must be at most 512 KiB.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Bounded bytes; no file blob is persisted. Server strictly decodes UTF-8.
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    const result = await api("/api/reader/documents", { method: "POST",
+      body: JSON.stringify({ source_type: "file", filename: file.name, content: btoa(binary) }),
+    });
+    openDocument(result.id);
+  } catch (error) {
+    el("library-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+    el("file-input").value = "";
+  }
+});
+
+el("rename-document").addEventListener("click", () => {
+  el("rename-title").value = state.title;
+  el("rename-status").textContent = "";
+  el("rename-panel").hidden = false;
+  el("rename-title").focus();
+});
+el("rename-cancel").addEventListener("click", () => { el("rename-panel").hidden = true; });
+el("rename-save").addEventListener("click", async () => {
+  const button = el("rename-save");
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const result = await api(`/api/reader/documents/${documentId}`, {
+      method: "PATCH", body: JSON.stringify({ title: el("rename-title").value }),
+    });
+    state.title = result.title;
+    el("title").textContent = result.title;
+    el("source-line").textContent = "";
+    document.title = result.title;
+    el("rename-panel").hidden = true;
+  } catch (error) {
+    el("rename-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
