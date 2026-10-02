@@ -125,9 +125,9 @@ class ReaderDocument:
             and not untranslated(source, translation, native)
         }
 
-    def tokens(self, sentences: list[Sentence]) -> list[list[Token]]:
+    def tokens(self, sentences: list[Sentence], dictionary=None) -> list[list[Token]]:
         known = self.known_chunks()
-        return [tokenize(sentence.text, known) for sentence in sentences]
+        return [tokenize(sentence.text, known, dictionary) for sentence in sentences]
 
 
 def short_title(text: str) -> str:

@@ -1,0 +1,245 @@
+{
+  "dictionary": "pinned 2026-09-14 CC-CEDICT; 125061 entries",
+  "original_jieba": [
+    "春天",
+    "先看",
+    "牡丹花",
+    "，",
+    "接着就是",
+    "芍药花",
+    "，",
+    "北京",
+    "的",
+    "春天",
+    "多么",
+    "美丽",
+    "呀",
+    "！"
+  ],
+  "lookups": {
+    "牡": {
+      "simplified": "牡",
+      "traditional": "牡",
+      "pinyin": "mǔ",
+      "definitions": [
+        "(of a bird, animal or plant) male",
+        "key",
+        "hills"
+      ],
+      "alternatives": []
+    },
+    "牡丹": {
+      "simplified": "牡丹",
+      "traditional": "牡丹",
+      "pinyin": "Mǔ dan",
+      "definitions": [
+        "see 牡丹區|牡丹区[Mu3 dan5 Qu1]",
+        "tree peony (Paeonia suffruticosa)"
+      ],
+      "alternatives": [
+        [
+          "mǔ dan",
+          [
+            "tree peony (Paeonia suffruticosa)"
+          ]
+        ]
+      ]
+    },
+    "牡丹花": null,
+    "丹": {
+      "simplified": "丹",
+      "traditional": "丹",
+      "pinyin": "dān",
+      "definitions": [
+        "red",
+        "pellet",
+        "powder",
+        "cinnabar"
+      ],
+      "alternatives": []
+    },
+    "丹花": null,
+    "花": {
+      "simplified": "花",
+      "traditional": "花",
+      "pinyin": "Huā",
+      "definitions": [
+        "surname Hua",
+        "flower",
+        "blossom",
+        "CL:朵[duo3],支[zhi1],束[shu4],把[ba3],盆[pen2],簇[cu4]",
+        "fancy pattern",
+        "florid"
+      ],
+      "alternatives": [
+        [
+          "huā",
+          [
+            "flower",
+            "blossom",
+            "CL:朵[duo3],支[zhi1],束[shu4],把[ba3],盆[pen2],簇[cu4]",
+            "fancy pattern",
+            "florid",
+            "to spend (money, time)",
+            "(coll.) lecherous",
+            "lustful"
+          ]
+        ],
+        [
+          "huā",
+          [
+            "old variant of 花[hua1]"
+          ]
+        ],
+        [
+          "huā",
+          [
+            "variant of 花[hua1]",
+            "flower",
+            "blossom",
+            "also pr. [wei3]"
+          ]
+        ]
+      ]
+    },
+    "芍": {
+      "simplified": "芍",
+      "traditional": "芍",
+      "pinyin": "què",
+      "definitions": [
+        "used in 芍陂[Que4 bei1]",
+        "Chinese peony",
+        "Paeonia albiflora or lactiflora"
+      ],
+      "alternatives": [
+        [
+          "sháo",
+          [
+            "Chinese peony",
+            "Paeonia albiflora or lactiflora"
+          ]
+        ]
+      ]
+    },
+    "芍药": {
+      "simplified": "芍药",
+      "traditional": "芍藥",
+      "pinyin": "sháo yào",
+      "definitions": [
+        "Chinese peony (Paeonia lactiflora)",
+        "common herbaceous peony",
+        "peony used in TCM"
+      ],
+      "alternatives": []
+    },
+    "芍药花": null,
+    "药": {
+      "simplified": "药",
+      "traditional": "葯",
+      "pinyin": "yào",
+      "definitions": [
+        "leaf of the iris",
+        "variant of 藥|药[yao4]",
+        "medicine",
+        "drug",
+        "substance used for a specific purpose (e.g. poisoning, explosion, fermenting)",
+        "CL:種|种[zhong3],服[fu4],味[wei4]"
+      ],
+      "alternatives": [
+        [
+          "yào",
+          [
+            "medicine",
+            "drug",
+            "substance used for a specific purpose (e.g. poisoning, explosion, fermenting)",
+            "CL:種|种[zhong3],服[fu4],味[wei4]",
+            "to poison"
+          ]
+        ]
+      ]
+    },
+    "药花": null
+  },
+  "probes": {
+    "春天先看牡丹花，接着就是芍药花，北京的春天多么美丽呀！": [
+      "春天",
+      "先看",
+      "牡丹花",
+      "，",
+      "接着",
+      "就是",
+      "芍药花",
+      "，",
+      "北京",
+      "的",
+      "春天",
+      "多么",
+      "美丽",
+      "呀",
+      "！"
+    ],
+    "我给他打电话。": [
+      "我",
+      "给",
+      "他",
+      "打电话",
+      "。"
+    ],
+    "这个问题没关系。": [
+      "这个",
+      "问题",
+      "没关系",
+      "。"
+    ],
+    "事情在不知不觉中发生了变化。": [
+      "事情",
+      "在",
+      "不知不觉",
+      "中",
+      "发生",
+      "了",
+      "变化",
+      "。"
+    ],
+    "他们公布了新的研究成果。": [
+      "他们",
+      "公布",
+      "了",
+      "新",
+      "的",
+      "研究",
+      "成果",
+      "。"
+    ]
+  },
+  "enrichment": {
+    "牡丹花": {
+      "glyph": "牡丹花",
+      "pinyin": "mǔ dān huā",
+      "contextual": "",
+      "russian": [],
+      "english": [
+        "牡丹: tree peony (Paeonia suffruticosa) + 花: flower"
+      ],
+      "composed": true,
+      "meaning_source": "compositional"
+    },
+    "芍药花": {
+      "glyph": "芍药花",
+      "pinyin": "sháo yào huā",
+      "contextual": "",
+      "russian": [],
+      "english": [
+        "芍药: Chinese peony (Paeonia lactiflora) + 花: flower"
+      ],
+      "composed": true,
+      "meaning_source": "compositional"
+    }
+  },
+  "performance": {
+    "characters": 135000,
+    "tokens": 75000,
+    "seconds": 0.439,
+    "note": "warm lexical index, local machine, tokenizer only; not a latency guarantee"
+  }
+}

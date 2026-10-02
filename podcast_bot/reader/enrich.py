@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from .dictionary import Dictionary
 from .pinyin import pinyin_for
+from .tokens import BOTANICAL, compound_parts
 
 CONTEXTUAL = "contextual"
 BKRS = "bkrs"
@@ -21,11 +22,25 @@ class Lexeme:
     russian: tuple[str, ...] = field(default=())
     english: tuple[str, ...] = field(default=())
 
+    composed: bool = False
+
+    @property
+    def meaning_source(self) -> str:
+        if self.contextual:
+            return CONTEXTUAL
+        if self.composed:
+            return "compositional"
+        return "dictionary" if self.russian or self.english else "missing"
+
+    @property
+    def english_source(self) -> str:
+        return "compositional" if self.composed else CEDICT
+
     @property
     def native_source(self) -> str:
         if self.contextual:
             return CONTEXTUAL
-        return BKRS if self.russian else ""
+        return ("compositional" if self.composed else BKRS) if self.russian else ""
 
     def native(self) -> tuple[str, ...]:
         """The learner's own language: the pack's contextual meaning, else the Russian gloss."""
@@ -45,19 +60,41 @@ def enrich(
     source is skipped for pinyin because it writes syllables unseparated (rènwéi).
     """
     wanted = list(dict.fromkeys(glyphs))
-    entries = dictionary.lookup_many(wanted) if dictionary is not None else {}
-    glosses = russian.lookup_many(wanted) if russian is not None else {}
+    lexical = dictionary.lexical_entries() if dictionary is not None else {}
+    parts = {g: compound_parts(g, lexical) for g in wanted}
+    components = list(dict.fromkeys(p for pair in parts.values() if pair for p in pair))
+    entries = dictionary.lookup_many(wanted + components) if dictionary is not None else {}
+    glosses = russian.lookup_many(wanted + components) if russian is not None else {}
     result = {}
     for glyph in wanted:
         entry, gloss = entries.get(glyph), glosses.get(glyph)
         pinyin = pronunciations.get(glyph, "").strip()
         if not pinyin and entry is not None:
             pinyin = entry.pinyin
+        ru = gloss.definitions[:MAX_SENSES] if gloss else ()
+        en = entry.definitions[:MAX_SENSES] if entry else ()
+        composed = False
+        if not entry and not gloss and parts[glyph]:
+            base, suffix = parts[glyph]
+            # Explicit component glosses, not an invented full-expression definition.
+            botanical = next(
+                s
+                for s in lexical[base]
+                if BOTANICAL.search(s) and not s.startswith(("see ", "variant ", "surname"))
+            )
+            en = (f"{base}: {botanical} + {suffix}: flower",)
+            if base in glosses and suffix in glosses:
+                ru = (
+                    f"{base}: {glosses[base].definitions[0]} + {suffix}: {glosses[suffix].definitions[0]}",
+                )
+            pinyin = pinyin or pinyin_for(glyph)
+            composed = True
         result[glyph] = Lexeme(
             glyph=glyph,
             pinyin=pinyin or pinyin_for(glyph),
             contextual=meanings.get(glyph, "").strip(),
-            russian=gloss.definitions[:MAX_SENSES] if gloss else (),
-            english=entry.definitions[:MAX_SENSES] if entry else (),
+            russian=ru,
+            english=en,
+            composed=composed,
         )
     return result

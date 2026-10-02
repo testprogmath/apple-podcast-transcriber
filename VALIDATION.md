@@ -181,3 +181,21 @@ Local in-app browser smoke verified library, text creation, literal script-looki
 content, the shared Reader, rename, refresh and return to library. Native Telegram
 and real-device checks above remain pending. See `STANDALONE_READER_REPORT.md`
 for the pre-commit architecture/security/validation report and limitations.
+
+## Lexical segmentation v2 (2026-10-02)
+
+Automated: 715 Python tests, 121 Reader DOM tests and 17 library DOM tests pass;
+Ruff lint/format, compileall, JS syntax and Compose configuration pass. Controlled
+fixtures and the committed CC-CEDICT snapshot are both exercised. No real external
+API calls were made. Local browser popup smoke passed.
+
+Before production rollout, open the reported document and inspect its study chunks:
+clean jieba did not reproduce the screenshot, but a `丹花` study claim reproduced
+it exactly. Verify `牡丹花` and `芍药花` in both plain text and that original
+study document; check full pronunciation, one-occurrence highlighting, the
+compositional/dictionary label with the configured БКРС, Hanly selection and
+unchanged sentence audio. Real Telegram device checks remain pending.
+
+See `docs/LEXICAL_V2_REPORT.md` for algorithm tradeoffs, all 32 requested report
+items, exact limitations and follow-ups; `docs/lexical-v2-probes.json` contains
+actual pinned-dictionary lookup, segmentation, enrichment and performance evidence.
