@@ -17,7 +17,7 @@ from .dictionary import Dictionary
 from .documents import MAX_FILE_BYTES, ReaderDocument, clean_title, from_file, from_text
 from .enrich import enrich
 from .media import asset_path, audio_response, grant_cookie, valid_grant
-from .tokens import HAN, tokenize
+from .tokens import HAN
 from .translations import SentenceTranslations
 
 log = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ DESCRIPTION = {
 MAX_GLYPHS = 200
 MAX_GLYPH_LENGTH = 40
 MAX_SENTENCES = 200
+SPAN_FIELDS = {"sentence_id", "start", "end", "text"}
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -57,6 +58,13 @@ class ApiError(Exception):
 def json_response(status: int, payload: dict):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     return status, {"Content-Type": "application/json; charset=utf-8", **SECURITY_HEADERS}, body
+
+
+def describe(token) -> dict:
+    result = {"t": token.text, "w": token.word, "start": token.start, "end": token.end}
+    if token.override:
+        result["override"] = token.override
+    return result
 
 
 class ReaderApi:
@@ -190,6 +198,13 @@ class ReaderApi:
             if sentence is None:
                 raise ApiError(404, "Unknown Reader sentence.")
             return json_response(200, await self.translations.resolve(document, sentence, language))
+        if parts[:2] == ["api", "reader"] and len(parts) == 5 and parts[3] == "lexical-overrides":
+            document = self.authorize(headers, parts[2])
+            if method != "DELETE":
+                raise ApiError(405, "Use DELETE to remove a custom expression.")
+            if not re.fullmatch(r"[1-9][0-9]{0,17}", parts[4]):
+                raise ApiError(404, "Unknown custom expression.")
+            return self.remove_override(document, int(parts[4]))
         if parts[:2] == ["api", "reader"] and len(parts) in (3, 4):
             document = self.authorize(headers, parts[2])
             if method == "GET" and len(parts) == 3:
@@ -200,6 +215,10 @@ class ReaderApi:
                 return await self.hanly(document, self.payload(body))
             if method == "POST" and parts[3:] == ["mandarin-mosaic"]:
                 return await self.mosaic(document, self.payload(body))
+            if method == "POST" and parts[3:] == ["lexical-overrides"]:
+                return self.add_override(document, self.payload(body))
+            if method == "POST" and parts[3:] == ["selection"]:
+                return self.selection(document, self.payload(body))
             raise ApiError(405, "Unsupported Reader request.")
         raise ApiError(404, "Not found.")
 
@@ -242,35 +261,10 @@ class ReaderApi:
         sentences = document.sentences()
         audio, ranges, audio_status = document_audio(document, sentences, self.storage.root)
         local_asset = audio.pop("asset_id", None) if audio else None
-        tokens = document.tokens(sentences, self.dictionary)
-        lexemes = enrich(
-            (token.text for items in tokens for token in items if token.word),
-            document.glyph_meanings(),
-            document.glyph_pronunciations(),
-            self.dictionary,
-            self.russian,
+        tokens = self.tokens(document, sentences)
+        glossary = self.glossary(
+            document, (token.text for items in tokens for token in items if token.word)
         )
-        # Keyed by glyph rather than repeated per token: a transcript repeats each word
-        # about three times, and this is what makes carrying both languages affordable.
-        states = self.storage.vocabulary_states(lexemes)
-        glossary = {}
-        for glyph, lexeme in lexemes.items():
-            entry = {
-                "meaning_source": lexeme.meaning_source,
-                "p": lexeme.pinyin,
-                "vocabulary_state": states.get(glyph, "unknown"),
-            }
-            if lexeme.native():
-                entry["ru"] = list(lexeme.native())
-                entry["rs"] = lexeme.native_source
-            if lexeme.english:
-                entry["en"] = list(lexeme.english)
-                entry["es"] = lexeme.english_source
-            glossary[glyph] = entry
-
-        def describe(token):
-            return {"t": token.text, "w": token.word, "start": token.start, "end": token.end}
-
         result = json_response(
             200,
             {
@@ -303,6 +297,114 @@ class ReaderApi:
             result[1]["Cache-Control"] = "private, no-store"
         return result
 
+    def tokens(self, document: ReaderDocument, sentences):
+        overrides = self.storage.reader_lexical_overrides(document.id)
+        return document.tokens(sentences, self.dictionary, overrides)
+
+    def glossary(self, document: ReaderDocument, glyphs) -> dict:
+        lexemes = enrich(
+            glyphs,
+            document.glyph_meanings(),
+            document.glyph_pronunciations(),
+            self.dictionary,
+            self.russian,
+        )
+        # Keyed by glyph rather than repeated per token: a transcript repeats each word
+        # about three times, and this is what makes carrying both languages affordable.
+        states = self.storage.vocabulary_states(lexemes)
+        glossary = {}
+        for glyph, lexeme in lexemes.items():
+            entry = {
+                "meaning_source": lexeme.meaning_source,
+                "p": lexeme.pinyin,
+                "vocabulary_state": states.get(glyph, "unknown"),
+            }
+            if lexeme.native():
+                entry["ru"] = list(lexeme.native())
+                entry["rs"] = lexeme.native_source
+            if lexeme.english:
+                entry["en"] = list(lexeme.english)
+                entry["es"] = lexeme.english_source
+            glossary[glyph] = entry
+        return glossary
+
+    def span(self, document: ReaderDocument, data: dict, minimum: int = 1):
+        """A browser selection as an exact slice of one canonical sentence, or a refusal.
+
+        Offsets count Unicode code points, the convention of every Reader token span.
+        """
+        if set(data) != SPAN_FIELDS or not all(
+            type(data[key]) is int for key in ("sentence_id", "start", "end")
+        ):
+            raise ApiError(400, "Invalid selection.")
+        if not isinstance(data["text"], str):
+            raise ApiError(400, "Invalid selection.")
+        sentence = next((s for s in document.sentences() if s.id == data["sentence_id"]), None)
+        start, end, text = data["start"], data["end"], data["text"]
+        if sentence is None or not 0 <= start < end <= len(sentence.text):
+            raise ApiError(409, "This document has changed. Reopen Reader.")
+        if sentence.text[start:end] != text:
+            raise ApiError(409, "This document has changed. Reopen Reader.")
+        if not all(HAN.fullmatch(character) for character in text):
+            raise ApiError(400, "Select Chinese text within one sentence.")
+        if len(text) < minimum:
+            raise ApiError(400, "Select at least two characters to make an expression.")
+        if len(text) > MAX_GLYPH_LENGTH:
+            raise ApiError(400, f"Select at most {MAX_GLYPH_LENGTH} characters.")
+        return sentence, start, end, text
+
+    def sentence_update(self, document: ReaderDocument, sentence_id: int, override=None):
+        sentences = document.sentences()
+        sentence = next(s for s in sentences if s.id == sentence_id)
+        overrides = self.storage.reader_lexical_overrides(document.id)
+        tokens = document.tokens([sentence], self.dictionary, overrides)[0]
+        payload = {
+            "sentence": {"id": sentence.id, "tokens": [describe(t) for t in tokens]},
+            "glossary": self.glossary(document, (t.text for t in tokens if t.word)),
+        }
+        if override is not None:
+            payload["override"] = override
+        return json_response(200, payload)
+
+    def add_override(self, document: ReaderDocument, data: dict):
+        sentence, start, end, text = self.span(document, data, minimum=2)
+        existing = self.storage.reader_lexical_overrides(document.id).get(sentence.id, [])
+        active = [o for o in existing if sentence.text[o.start : o.end] == o.text]
+        same = next((o for o in active if (o.start, o.end) == (start, end)), None)
+        if same is None:
+            if any(o.start < end and start < o.end for o in active):
+                raise ApiError(409, "That overlaps an existing custom expression.")
+            stale = [o.id for o in existing if o not in active and o.start < end and start < o.end]
+            identifier = self.storage.save_reader_lexical_override(
+                document.id, sentence.id, start, end, text, stale
+            )
+        else:
+            identifier = same.id
+        override = {"id": identifier, "sentence_id": sentence.id, "start": start, "end": end}
+        return self.sentence_update(document, sentence.id, override)
+
+    def remove_override(self, document: ReaderDocument, identifier: int):
+        sentence_id = self.storage.delete_reader_lexical_override(document.id, identifier)
+        if sentence_id is None:
+            raise ApiError(404, "Unknown custom expression.")
+        if not any(s.id == sentence_id for s in document.sentences()):
+            return json_response(200, {})
+        return self.sentence_update(document, sentence_id)
+
+    def selection(self, document: ReaderDocument, data: dict):
+        """Reading aids for a selected span, without persisting anything."""
+        sentence, start, end, text = self.span(document, data)
+        return json_response(
+            200,
+            {
+                "glyph": text,
+                "sentence_id": sentence.id,
+                "start": start,
+                "end": end,
+                "entry": self.glossary(document, [text])[text],
+            },
+        )
+
     def vocabulary(self, document: ReaderDocument, data: dict):
         if set(data) != {"glyph", "state"}:
             raise ApiError(400, "Send only glyph and state.")
@@ -317,7 +419,7 @@ class ReaderApi:
         ):
             raise ApiError(400, "Invalid vocabulary item.")
         # Use the same source-owned tokenization as the popup, never browser-supplied text.
-        tokens = document.tokens(document.sentences(), self.dictionary)
+        tokens = self.tokens(document, document.sentences())
         if not any(token.word and token.text == glyph for group in tokens for token in group):
             raise ApiError(400, "That item is not a Reader word in this document.")
         if state == "unknown":
@@ -333,10 +435,29 @@ class ReaderApi:
         if not isinstance(values, list) or not values or len(values) > MAX_GLYPHS:
             raise ApiError(400, "Send between 1 and 200 vocabulary items.")
         sentences = {s.id: s for s in document.sentences()}
-        known = document.known_chunks()
         words: dict[int, set[str]] = {}
         chosen, seen = [], set()
         for value in values:
+            if isinstance(value, dict) and set(value) == {"glyph", "sentence_id", "start", "end"}:
+                # A selected span: exactly the canonical source slice, never browser text.
+                try:
+                    _, _, _, glyph = self.span(
+                        document,
+                        {
+                            "sentence_id": value["sentence_id"],
+                            "start": value["start"],
+                            "end": value["end"],
+                            "text": value["glyph"],
+                        },
+                    )
+                except ApiError:
+                    raise ApiError(
+                        400, "A selected expression is not part of the selected sentence."
+                    ) from None
+                if glyph not in seen:
+                    seen.add(glyph)
+                    chosen.append((glyph, sentences[value["sentence_id"]]))
+                continue
             if not isinstance(value, dict) or set(value) != {"glyph", "sentence_id"}:
                 raise ApiError(400, "A selected vocabulary item is invalid.")
             glyph, identifier = value["glyph"], value["sentence_id"]
@@ -350,9 +471,7 @@ class ReaderApi:
             sentence = sentences[identifier]
             if identifier not in words:
                 words[identifier] = {
-                    token.text
-                    for token in tokenize(sentence.text, known, self.dictionary)
-                    if token.word
+                    token.text for token in self.tokens(document, [sentence])[0] if token.word
                 }
             # Only lexical items the Reader itself offered in that sentence are uploadable.
             if glyph not in words[identifier]:

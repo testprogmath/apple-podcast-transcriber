@@ -23,6 +23,7 @@ REASONS = {
     401: "Unauthorized",
     404: "Not Found",
     405: "Method Not Allowed",
+    409: "Conflict",
     413: "Payload Too Large",
     500: "Internal Server Error",
     502: "Bad Gateway",

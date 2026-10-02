@@ -23,6 +23,10 @@ const state = {
   translationViews: [],
   vocabularyPending: new Set(),
   hanlyUploading: false,
+  selection: null,
+  selectionPending: false,
+  selectionBarHeld: false,
+  keyboard: false,
 };
 
 const el = (id) => document.getElementById(id);
@@ -91,9 +95,10 @@ function paintWord(glyph) {
   });
 }
 
-function toggleWord(glyph, sentenceId) {
+/** A span pins the item to its exact source slice, so it never depends on segmentation. */
+function toggleWord(glyph, sentenceId, span) {
   const index = state.words.findIndex((w) => w.glyph === glyph);
-  if (index === -1) state.words.push({ glyph, sentenceId });
+  if (index === -1) state.words.push(span ? { glyph, sentenceId, ...span } : { glyph, sentenceId });
   else state.words.splice(index, 1);
   paintWord(glyph);
   refreshCounters();
@@ -364,7 +369,11 @@ function playSentenceAudio(sentence, handlers = {}) {
   return true;
 }
 
-window.addEventListener?.("pagehide", () => { stopOriginal(); stopSpeaking(); });
+window.addEventListener?.("pagehide", () => {
+  stopOriginal();
+  stopSpeaking();
+  hideSelectionActions();
+});
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { stopOriginal(); stopSpeaking(); }
 });
@@ -434,6 +443,7 @@ function renderLexemeAction() {
   const status = el("lexeme-state");
   status.textContent = value === "known" ? "✓ Known" : value === "learning" ? "Learning · Hanly" : "";
   status.hidden = value === "unknown";
+  el("lexeme-remove-expression").hidden = !state.lexeme.override;
   const knowledge = el("lexeme-knowledge");
   knowledge.disabled = state.vocabularyPending.has(glyph) || state.hanlyUploading;
   knowledge.textContent = state.vocabularyPending.has(glyph) ? "Saving…"
@@ -497,8 +507,11 @@ function renderLexemeBody(glyph) {
 
 function openLexeme(token, sentenceId, node) {
   stopSpeaking("word");
+  hideSelectionActions();
   pronunciationButton.setAttribute("aria-label", `Pronounce ${token.t.trim()}`);
-  state.lexeme = { glyph: token.t, sentenceId, start: token.start, end: token.end };
+  state.lexeme = {
+    glyph: token.t, sentenceId, start: token.start, end: token.end, override: token.override || 0,
+  };
   closeLexeme.origin = node;
   renderLexemeBody(token.t);
   renderLexemeAction();
@@ -639,24 +652,34 @@ function audioControl(sentence) {
   return action;
 }
 
-function renderSentence(sentence) {
-  const node = document.createElement("span");
-  node.className = "sentence";
-  node.dataset.sentence = String(sentence.id);
-  const source = document.createElement("span");
-  source.className = "sentence-source";
-  node.appendChild(source);
+/** True while the reader holds a native text selection, which a tap must not override. */
+function selectingText() {
+  const selection = window.getSelection && window.getSelection();
+  return Boolean(selection && selection.rangeCount && !selection.isCollapsed);
+}
+
+/**
+ * Source text only: every canonical character is a text node of the source span and
+ * pinyin lives in <rt>. Words are spans, because browsers cannot start a selection
+ * inside a <button>.
+ */
+function renderSource(sentence, source) {
+  source.textContent = "";
   for (const token of sentence.tokens) {
     if (!token.w) {
       source.appendChild(document.createTextNode(token.t));
       continue;
     }
     const pinyin = (state.glossary[token.t] || {}).p || "";
-    const word = document.createElement("button");
-    word.type = "button";
+    const word = document.createElement("span");
     word.className = "word";
     word.dataset.glyph = token.t;
-    word.setAttribute("aria-pressed", "false");
+    if (token.override) word.dataset.override = String(token.override);
+    word.setAttribute("role", "button");
+    if (state.keyboard) word.setAttribute("tabindex", "0");
+    const picked = isPicked(token.t);
+    word.classList.toggle("picked", picked);
+    word.setAttribute("aria-pressed", picked ? "true" : "false");
     word.setAttribute("aria-label", pinyin ? `${token.t} ${pinyin}` : token.t);
     if (pinyin) {
       const ruby = document.createElement("ruby");
@@ -669,12 +692,42 @@ function renderSentence(sentence) {
       word.textContent = token.t;
     }
     word.addEventListener("click", (event) => {
-      // Inspecting a word must never toggle the Mandarin Mosaic sentence around it.
       event.stopPropagation();
+      // The click that ends a drag selection belongs to the selection, not the word.
+      if (selectingText()) return;
+      openLexeme(token, sentence.id, word);
+    });
+    word.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      // Keyboard activation only: Space would otherwise scroll the page.
+      event.preventDefault();
       openLexeme(token, sentence.id, word);
     });
     source.appendChild(word);
   }
+}
+
+/**
+ * Words are tab stops only for keyboard use: Chrome starts no drag selection on a
+ * focusable element, so a pointer press makes them plain text again first.
+ */
+function setWordsFocusable(on) {
+  if (state.keyboard === on) return;
+  state.keyboard = on;
+  document.querySelectorAll(".word").forEach((word) => {
+    if (on) word.setAttribute("tabindex", "0");
+    else word.removeAttribute("tabindex");
+  });
+}
+
+function renderSentence(sentence) {
+  const node = document.createElement("span");
+  node.className = "sentence";
+  node.dataset.sentence = String(sentence.id);
+  const source = document.createElement("span");
+  source.className = "sentence-source";
+  node.appendChild(source);
+  renderSource(sentence, source);
   const controls = document.createElement("span");
   controls.className = "sentence-controls";
   const mark = document.createElement("button");
@@ -695,8 +748,219 @@ function renderSentence(sentence) {
     controls.appendChild(translation.action);
     node.appendChild(translation.box);
   }
-  node.addEventListener("click", () => toggleSentence(sentence.id));
   return node;
+}
+
+const HAN_ONLY = /^[㐀-䶿一-鿿豈-﫿]+$/;
+const ONE_SENTENCE = "Select Chinese text within one sentence.";
+
+function hasClass(node, name) {
+  return Boolean(node && node.nodeType === 1 && node.classList && node.classList.contains(name));
+}
+
+function closestNode(node, test) {
+  for (let at = node; at; at = at.parentNode) if (test(at)) return at;
+  return null;
+}
+
+const isRt = (node) => node.nodeType === 1 && String(node.tagName).toLowerCase() === "rt";
+
+/** Resolve an element boundary to the text node next to it, as the range edge reads it. */
+function leafPoint(node, offset, edge) {
+  while (node && node.nodeType !== 3) {
+    const children = Array.from(node.childNodes || []);
+    if (!children.length) break;
+    if (edge === "start") {
+      if (offset < children.length) { node = children[offset]; offset = 0; }
+      else { node = children[children.length - 1]; offset = pointLength(node); }
+    } else if (offset > 0) {
+      node = children[Math.min(offset, children.length) - 1]; offset = pointLength(node);
+    } else {
+      node = children[0]; offset = 0;
+    }
+  }
+  return { node, offset };
+}
+
+function pointLength(node) {
+  return node.nodeType === 3 ? node.data.length : (node.childNodes || []).length;
+}
+
+/** Source text nodes in document order: pinyin is display metadata, never source. */
+function sourceLeaves(node, out = []) {
+  for (const child of Array.from(node.childNodes || [])) {
+    if (child.nodeType === 3) out.push(child);
+    else if (!isRt(child)) sourceLeaves(child, out);
+  }
+  return out;
+}
+
+/** Code points of source text before a point; JS offsets are UTF-16, spans are code points. */
+function sourceOffset(source, point, edge) {
+  let { node, offset } = point;
+  const rt = closestNode(node, isRt);
+  if (rt) {
+    // A handle resting on pinyin covers the whole syllable's character.
+    const leaf = sourceLeaves(rt.parentNode)[0];
+    if (!leaf) return null;
+    node = leaf;
+    offset = edge === "start" ? 0 : leaf.data.length;
+  }
+  let total = 0;
+  for (const leaf of sourceLeaves(source)) {
+    if (leaf === node) return total + Array.from(leaf.data.slice(0, offset)).length;
+    if (node.nodeType === 1 && closestNode(leaf, (n) => n === node)) return total;
+    total += Array.from(leaf.data).length;
+  }
+  return node.nodeType === 1 ? total : null;
+}
+
+/**
+ * Map a native DOM Range to one canonical sentence span. Returns null when the
+ * selection involves no Reader source text, or { error } when it cannot be one expression.
+ */
+function selectionSpan(range) {
+  if (!range || range.collapsed) return null;
+  const ends = ["start", "end"].map((edge) => {
+    const point = leafPoint(range[`${edge}Container`], range[`${edge}Offset`], edge);
+    const source = point.node && closestNode(point.node, (n) => hasClass(n, "sentence-source"));
+    return { edge, point, source };
+  });
+  if (!ends[0].source && !ends[1].source) return null;
+  if (ends[0].source !== ends[1].source) return { error: ONE_SENTENCE };
+  const source = ends[0].source;
+  const holder = closestNode(source, (n) => hasClass(n, "sentence"));
+  const sentence = holder && state.sentences.find((s) => String(s.id) === holder.dataset.sentence);
+  if (!sentence) return null;
+  const start = sourceOffset(source, ends[0].point, "start");
+  const end = sourceOffset(source, ends[1].point, "end");
+  if (start === null || end === null || end <= start) return null;
+  const text = Array.from(sentence.text).slice(start, end).join("");
+  if (!HAN_ONLY.test(text)) return { error: ONE_SENTENCE };
+  return { sentenceId: sentence.id, start, end, text };
+}
+
+function currentRange() {
+  const selection = window.getSelection && window.getSelection();
+  if (!selection || !selection.rangeCount || selection.isCollapsed) return null;
+  return selection.getRangeAt(0);
+}
+
+function clearNativeSelection() {
+  const selection = window.getSelection && window.getSelection();
+  if (selection && selection.removeAllRanges) selection.removeAllRanges();
+}
+
+function hideSelectionActions() {
+  state.selection = null;
+  state.selectionBarHeld = false;
+  el("selection-actions").hidden = true;
+}
+
+/** Follows the native handles; it only reads the selection and never changes it. */
+function refreshSelectionActions() {
+  refreshSelectionActions.scheduled = false;
+  if (state.selectionPending) return;
+  const range = currentRange();
+  if (!range) {
+    // A tap on the bar may collapse the selection before its click arrives.
+    if (!state.selectionBarHeld) hideSelectionActions();
+    return;
+  }
+  const span = selectionSpan(range);
+  if (!span || state.lexeme || state.open) { hideSelectionActions(); return; }
+  state.selection = span.error ? null : span;
+  el("selection-text").textContent = span.error || span.text;
+  el("selection-text").classList.toggle("bad", Boolean(span.error));
+  el("selection-expression").disabled = Boolean(span.error) || Array.from(span.text).length < 2;
+  el("selection-hanly").disabled = Boolean(span.error);
+  el("selection-actions").hidden = false;
+}
+
+function scheduleSelectionActions() {
+  if (refreshSelectionActions.scheduled) return;
+  refreshSelectionActions.scheduled = true;
+  if (window.requestAnimationFrame) window.requestAnimationFrame(refreshSelectionActions);
+  else refreshSelectionActions();
+}
+
+function spanRequest(span) {
+  return { sentence_id: span.sentenceId, start: span.start, end: span.end, text: span.text };
+}
+
+/** Replace one sentence's lexical chunks; Mosaic, translation and audio controls stay. */
+function applySentenceUpdate(result) {
+  Object.assign(state.glossary, result.glossary || {});
+  const sentence = state.sentences.find((s) => s.id === result.sentence.id);
+  if (!sentence) return null;
+  sentence.tokens = result.sentence.tokens;
+  const holder = document.querySelector(`[data-sentence="${sentence.id}"]`);
+  const source = holder && holder.querySelector(".sentence-source");
+  if (source) renderSource(sentence, source);
+  return source;
+}
+
+async function runSelectionAction(action) {
+  const span = state.selection;
+  if (!span || state.selectionPending) return;
+  state.selectionPending = true;
+  el("selection-expression").disabled = true;
+  el("selection-hanly").disabled = true;
+  try {
+    await action(span);
+    clearNativeSelection();
+    state.selectionPending = false;
+    hideSelectionActions();
+  } catch (error) {
+    // The native selection is left in place so the reader can retry or adjust it.
+    toast(error.message, true);
+    state.selectionPending = false;
+    state.selectionBarHeld = false;
+    refreshSelectionActions();
+  }
+}
+
+async function makeExpression(span) {
+  const result = await api(`/api/reader/${documentId}/lexical-overrides`, {
+    method: "POST", body: JSON.stringify(spanRequest(span)),
+  });
+  const source = applySentenceUpdate(result);
+  const token = (state.sentences.find((s) => s.id === span.sentenceId) || { tokens: [] })
+    .tokens.find((t) => t.override === result.override.id);
+  const node = source && Array.from(source.querySelectorAll(".word"))
+    .find((n) => n.dataset.override === String(result.override.id));
+  clearNativeSelection();
+  if (token && node) openLexeme(token, span.sentenceId, node);
+}
+
+async function addSelectionToHanly(span) {
+  if (isPicked(span.text)) { toast(`${span.text} is already in the Hanly basket.`); return; }
+  const result = await api(`/api/reader/${documentId}/selection`, {
+    method: "POST", body: JSON.stringify(spanRequest(span)),
+  });
+  if (!state.glossary[result.glyph]) state.glossary[result.glyph] = result.entry;
+  toggleWord(result.glyph, result.sentence_id, { start: result.start, end: result.end });
+  toast(`Added to the Hanly basket: ${result.glyph}`);
+}
+
+async function removeExpression(event) {
+  event.stopPropagation();
+  if (!state.lexeme || !state.lexeme.override) return;
+  const button = el("lexeme-remove-expression");
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const result = await api(
+      `/api/reader/${documentId}/lexical-overrides/${state.lexeme.override}`, { method: "DELETE" },
+    );
+    if (result.sentence) applySentenceUpdate(result);
+    closeLexeme();
+    toast("Custom expression removed.");
+  } catch (error) {
+    toast(`Could not remove the custom expression. ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function render(data) {
@@ -710,6 +974,7 @@ function render(data) {
   state.glossary = data.glossary || {};
   state.available = { hanly: data.hanly_available, mosaic: data.mosaic_available };
   state.reasons = { hanly: data.hanly_error, mosaic: data.mosaic_error };
+  hideSelectionActions();
   const parts = String(data.title).split("｜");
   el("source-line").textContent = parts.length > 1 ? parts[0] : "";
   el("title").textContent = parts.length > 1 ? parts.slice(1).join("｜") : data.title;
@@ -737,6 +1002,7 @@ function closeBasket() {
 }
 
 function openBasket(kind) {
+  hideSelectionActions();
   state.open = kind;
   const hanly = kind === "hanly";
   el("basket-title").textContent = hanly
@@ -842,7 +1108,9 @@ async function upload() {
       const result = await api(`/api/reader/${documentId}/hanly`, {
         method: "POST",
         body: JSON.stringify({
-          items: sent.map((w) => ({ glyph: w.glyph, sentence_id: w.sentenceId })),
+          items: sent.map((w) => (Number.isInteger(w.start)
+            ? { glyph: w.glyph, sentence_id: w.sentenceId, start: w.start, end: w.end }
+            : { glyph: w.glyph, sentence_id: w.sentenceId })),
         }),
       });
       state.words = state.words.filter((w) => !sent.some((s) => s.glyph === w.glyph));
@@ -904,10 +1172,27 @@ el("lexeme-close").addEventListener("click", closeLexeme);
 el("scrim").addEventListener("click", dismissTop);
 el("lexeme-action").addEventListener("click", (event) => {
   event.stopPropagation();
-  const { glyph, sentenceId } = state.lexeme;
-  toggleWord(glyph, sentenceId);
+  const { glyph, sentenceId, start, end, override } = state.lexeme;
+  // A custom expression keeps its basket entry if the expression is later removed.
+  toggleWord(glyph, sentenceId, override ? { start, end } : null);
   closeLexeme();
 });
+el("lexeme-remove-expression").addEventListener("click", removeExpression);
+el("selection-expression").addEventListener("click", () => runSelectionAction(makeExpression));
+el("selection-hanly").addEventListener("click", () => runSelectionAction(addSelectionToHanly));
+el("selection-cancel").addEventListener("click", () => {
+  clearNativeSelection();
+  hideSelectionActions();
+});
+const selectionBar = el("selection-actions");
+selectionBar.addEventListener("pointerdown", () => { state.selectionBarHeld = true; });
+selectionBar.addEventListener("pointercancel", () => { state.selectionBarHeld = false; });
+document.addEventListener("pointerdown", (event) => {
+  if (!closestNode(event.target, (n) => n === selectionBar)) state.selectionBarHeld = false;
+});
+// Desktop browsers collapse the selection on mousedown; the bar's controls must not.
+selectionBar.addEventListener("mousedown", (event) => event.preventDefault());
+document.addEventListener("selectionchange", scheduleSelectionActions);
 el("pinyin-toggle").addEventListener("click", () => {
   applyPinyin(!state.pinyin);
   writePreference(PINYIN_KEY, state.pinyin ? "on" : "off");
@@ -918,7 +1203,9 @@ el("language-toggle").addEventListener("click", () => {
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") dismissTop();
+  if (event.key === "Tab") setWordsFocusable(true);
 });
+document.addEventListener("pointerdown", () => setWordsFocusable(false), true);
 for (const id of ["cedict-link", "cedict-licence"]) {
   el(id).addEventListener("click", (event) => {
     if (telegram && telegram.openLink) {

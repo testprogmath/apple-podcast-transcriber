@@ -16,7 +16,7 @@ from ..models import UserError
 from ..storage import now
 from ..study.translations import untranslated, wrong_language
 from .sentences import Sentence, paragraphs, parse_sentences
-from .tokens import HAN, Token, tokenize
+from .tokens import HAN, Override, Token, segment
 
 MAX_CHARACTERS = 200_000
 MAX_FILE_BYTES = 512 * 1024
@@ -125,9 +125,18 @@ class ReaderDocument:
             and not untranslated(source, translation, native)
         }
 
-    def tokens(self, sentences: list[Sentence], dictionary=None) -> list[list[Token]]:
+    def tokens(
+        self,
+        sentences: list[Sentence],
+        dictionary=None,
+        overrides: dict[int, list[Override]] | None = None,
+    ) -> list[list[Token]]:
         known = self.known_chunks()
-        return [tokenize(sentence.text, known, dictionary) for sentence in sentences]
+        overrides = overrides or {}
+        return [
+            segment(sentence.text, known, dictionary, overrides.get(sentence.id, ()))
+            for sentence in sentences
+        ]
 
 
 def short_title(text: str) -> str:

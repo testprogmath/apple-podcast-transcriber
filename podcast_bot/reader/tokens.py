@@ -22,6 +22,17 @@ class Token:
     word: bool
     start: int = 0
     end: int = 0
+    override: int = 0
+
+
+@dataclass(frozen=True)
+class Override:
+    """A reader-chosen expression: an exact sentence-local [start, end) code-point span."""
+
+    id: int
+    start: int
+    end: int
+    text: str
 
 
 def compound_parts(word: str, entries: dict) -> tuple[str, str] | None:
@@ -135,3 +146,32 @@ def tokenize(text: str, known: frozenset[str] = frozenset(), dictionary=None) ->
     if "".join(t.text for t in tokens) != text:
         raise UserError("Reader segmentation failed to preserve the sentence.")
     return tokens
+
+
+def segment(
+    text: str, known: frozenset[str] = frozenset(), dictionary=None, overrides=()
+) -> list[Token]:
+    """Overrides bound the automatic segmentation, which runs only on the text around them.
+
+    An override applies only while its stored text still matches the sentence, and the
+    first of two overlapping overrides wins; neither case breaks reading.
+    """
+    tokens, cursor = [], 0
+    for override in sorted(overrides, key=lambda o: (o.start, o.end)):
+        if (
+            override.start < cursor
+            or not 0 <= override.start < override.end <= len(text)
+            or text[override.start : override.end] != override.text
+        ):
+            continue
+        tokens += _shift(tokenize(text[cursor : override.start], known, dictionary), cursor)
+        tokens.append(Token(override.text, True, override.start, override.end, override.id))
+        cursor = override.end
+    tokens += _shift(tokenize(text[cursor:], known, dictionary), cursor)
+    if "".join(t.text for t in tokens) != text:
+        raise UserError("Reader segmentation failed to preserve the sentence.")
+    return tokens
+
+
+def _shift(tokens: list[Token], offset: int) -> list[Token]:
+    return [Token(t.text, t.word, t.start + offset, t.end + offset) for t in tokens]
