@@ -357,7 +357,8 @@ function playSentenceAudio(sentence, handlers = {}) {
       if (audio.currentTime >= end - .1) stopOriginal(); else fail();
     };
     request.timeout = setTimeout(fail, 8000);
-    if (audio.src !== source.url || audio.error) { audio.src = source.url; audio.load(); }
+    const mediaUrl = new URL(source.url, location.href).href;
+    if (audio.src !== mediaUrl || audio.error) { audio.src = mediaUrl; audio.load(); }
     if (audio.readyState >= 1) seek();
   } catch (error) { fail(); }
   return true;

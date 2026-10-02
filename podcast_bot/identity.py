@@ -2,12 +2,17 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from .models import UserError
 
 
 def hanly_identity(metadata: dict) -> str:
+    if metadata.get("source_type") == "subtitles" and re.fullmatch(
+        r"[0-9a-f]{64}", str(metadata.get("subtitle_id", ""))
+    ):
+        return "subtitles:" + metadata["subtitle_id"]
     if all(str(metadata.get(k, "")).isdigit() for k in ("podcast_id", "episode_id")):
         return f"apple:{metadata['podcast_id']}:{metadata['episode_id']}"
     if metadata.get("feed_url") and metadata.get("guid"):
@@ -19,6 +24,8 @@ def hanly_identity(metadata: dict) -> str:
 
 
 def mosaic_identity(metadata: dict, path: Path) -> str:
+    if metadata.get("source_type") == "subtitles":
+        return hanly_identity(metadata)
     if metadata.get("podcast_id") and metadata.get("episode_id"):
         return f"apple:{metadata['podcast_id']}:{metadata['episode_id']}"
     return "file:" + str(metadata.get("canonical_source", path.name))

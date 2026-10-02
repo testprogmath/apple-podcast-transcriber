@@ -1382,7 +1382,7 @@ function podcastPlayer(options = {}) {
     errorNow() { this.error = {}; this.onerror?.(); }
   }
   const payload = structuredClone(SPEECH_DOCUMENT);
-  payload.audio = { url: "https://podcast.example/audio.mp3", duration: 20 };
+  payload.audio = { url: options.mediaUrl || "https://podcast.example/audio.mp3", duration: 20 };
   payload.sentences[0].audio = { source: "podcast", start_ms: 1000, end_ms: 3000 };
   payload.sentences[1].audio = { source: "podcast", start_ms: 5000, end_ms: 7000 };
   const env = start({ document: payload, speech: { ...(options.noTts ? {} : speech), Audio } });
@@ -1579,6 +1579,19 @@ for (const source of ["compositional", "cc-cedict", "missing"]) {
     assert.deepStrictEqual(JSON.parse(calls.at(-1).body).items, [{ glyph, sentence_id: 0 }]);
   });
 }
+test("local protected audio resolves relative URL and reuses the same player source", async () => {
+  const { body, players, speech } = podcastPlayer({ mediaUrl: "/api/reader/abc/audio" });
+  global.location.href = "https://reader.example/reader?doc=abc";
+  await settle();
+  assert.strictEqual(players.length, 0);
+  audioButton(body, 0).click(body);
+  assert.strictEqual(players[0].src, "https://reader.example/api/reader/abc/audio");
+  audioButton(body, 1).click(body);
+  assert.strictEqual(players[0].loads, 1);
+  assert.strictEqual(speech.spoken.length, 0);
+  players[0].errorNow();
+  assert.strictEqual(speech.spoken.length, 1);
+});
 
 (async () => {
   let failed = 0;

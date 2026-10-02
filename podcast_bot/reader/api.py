@@ -16,6 +16,7 @@ from .bkrs import RussianDictionary
 from .dictionary import Dictionary
 from .documents import MAX_FILE_BYTES, ReaderDocument, clean_title, from_file, from_text
 from .enrich import enrich
+from .media import asset_path, audio_response, grant_cookie, valid_grant
 from .tokens import HAN, tokenize
 from .translations import SentenceTranslations
 
@@ -28,6 +29,7 @@ TYPES = {
 }
 IDENTIFIER = re.compile(r"[0-9a-f]{32}")
 DESCRIPTION = {
+    "subtitles": "Sentences from the uploaded subtitles.",
     "podcast": "Authentic sentences from the podcast transcript.",
     "text": "Sentences selected in the Reader.",
     "pasted_text": "Sentences selected in the Reader.",
@@ -41,7 +43,7 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": (
         "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; "
-        "media-src https:; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+        "media-src 'self' https:; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
     ),
 }
 
@@ -141,6 +143,30 @@ class ReaderApi:
                 raise ApiError(400, "Enter a non-empty title.")
             self.storage.rename_reader_document(document.id, document.chat_id, title)
             return json_response(200, {"id": document.id, "title": title})
+        if len(parts) == 4 and parts[:2] == ["api", "reader"] and parts[3] == "audio":
+            if method not in {"GET", "HEAD"}:
+                raise ApiError(405, "Use GET or HEAD for audio.")
+            identifier = parts[2]
+            if not IDENTIFIER.fullmatch(identifier):
+                raise ApiError(404, "Unknown Reader document.")
+            if headers.get("x-telegram-init-data"):
+                document = self.authorize(headers, identifier)
+            else:
+                if not valid_grant(
+                    headers.get("cookie", ""),
+                    self.config.token,
+                    identifier,
+                    self.config.allowed_user_id,
+                ):
+                    raise ApiError(401, "Reopen Reader to access audio.")
+                document = self.storage.reader_document(identifier)
+                if document is None or document.chat_id != self.config.allowed_user_id:
+                    raise ApiError(404, "Unknown Reader document.")
+            source, _, _ = document_audio(document, document.sentences(), self.storage.root)
+            local = asset_path(self.storage.root, source.get("asset_id")) if source else None
+            if local is None:
+                raise ApiError(404, "Audio unavailable.")
+            return audio_response(local, method, headers)
         if (
             parts[:2] == ["api", "reader"]
             and len(parts) == 6
@@ -214,7 +240,8 @@ class ReaderApi:
     def read(self, document: ReaderDocument):
         self.storage.touch_reader_document(document.id, document.chat_id)
         sentences = document.sentences()
-        audio, ranges, audio_status = document_audio(document, sentences)
+        audio, ranges, audio_status = document_audio(document, sentences, self.storage.root)
+        local_asset = audio.pop("asset_id", None) if audio else None
         tokens = document.tokens(sentences, self.dictionary)
         lexemes = enrich(
             (token.text for items in tokens for token in items if token.word),
@@ -244,7 +271,7 @@ class ReaderApi:
         def describe(token):
             return {"t": token.text, "w": token.word, "start": token.start, "end": token.end}
 
-        return json_response(
+        result = json_response(
             200,
             {
                 "id": document.id,
@@ -270,6 +297,11 @@ class ReaderApi:
                 ],
             },
         )
+
+        if local_asset:
+            result[1]["Set-Cookie"] = grant_cookie(self.config.token, document.id, document.chat_id)
+            result[1]["Cache-Control"] = "private, no-store"
+        return result
 
     def vocabulary(self, document: ReaderDocument, data: dict):
         if set(data) != {"glyph", "state"}:
