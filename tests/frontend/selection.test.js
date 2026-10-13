@@ -221,6 +221,16 @@ test("Traditional Chinese is selected exactly as written", async () => {
   assert.strictEqual(bar(env.nodes).text, "傳統文化");
 });
 
+test("a non-Chinese document keeps plain native selection without Reader actions", async () => {
+  const dutch = sentence(0, "Met de bevrijding.", ["Met de bevrijding."]);
+  dutch.tokens[0].w = false;
+  const env = start({ doc: { ...documentWith(dutch), language: "nl", glossary: {} } });
+  await settle();
+  const text = source(env.body, 0).childNodes[0];
+  choose(env, range(text, 0, text, 3));
+  assert.strictEqual(env.nodes["selection-actions"].hidden, true);
+});
+
 test("the click that ends a selection opens no popup and selects no sentence", async () => {
   const env = start();
   await settle();

@@ -220,7 +220,14 @@ class NpoSubtitleNormalizer:
             for part in spans:
                 pieces.append(part)
                 sentences.append(
-                    Sentence(len(sentences), offset, offset + len(part), part, start, end)
+                    Sentence(
+                        len(sentences),
+                        offset,
+                        offset + len(part),
+                        part,
+                        source_start=start,
+                        source_end=end,
+                    )
                 )
                 offset += len(part) + 2
         if not sentences:

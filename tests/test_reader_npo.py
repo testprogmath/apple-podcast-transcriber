@@ -77,7 +77,7 @@ async def test_document_persistence_api_and_duplicate(reader, tmp_path):
         == "Met de bevrijding van Nederland komt er een einde aan vijf jaar overheersing door de nazi's."
     )
     assert (sentence.source_start, sentence.source_end) == (9.4, 16.04)
-    with patch("podcast_bot.reader.documents.tokenize", side_effect=AssertionError("Chinese")):
+    with patch("podcast_bot.reader.documents.segment", side_effect=AssertionError("Chinese")):
         status, data = await call(reader, "GET", f"/api/reader/{d.id}")
     assert status == 200 and data["language"] == "nl"
     assert data["sentences"][0]["source_end"] == 16.04
