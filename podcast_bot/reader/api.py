@@ -17,6 +17,7 @@ from .dictionary import Dictionary
 from .documents import MAX_FILE_BYTES, ReaderDocument, clean_title, from_file, from_text
 from .enrich import enrich
 from .media import asset_path, audio_response, grant_cookie, valid_grant
+from .npo import NpoSourceAdapter
 from .tokens import HAN
 from .translations import SentenceTranslations
 
@@ -118,6 +119,10 @@ class ReaderApi:
                     ):
                         raise ApiError(400, "Send text and an optional title.")
                     document = from_text(owner, data["text"], data.get("title"))
+                elif source == "npo":
+                    if set(data) != {"source_type", "url"} or not isinstance(data["url"], str):
+                        raise ApiError(400, "Send an NPO Start episode URL.")
+                    document = await NpoSourceAdapter().import_document(owner, data["url"])
                 elif source == "file":
                     if (
                         set(data) != {"source_type", "filename", "content"}
@@ -135,7 +140,7 @@ class ReaderApi:
                         raise ApiError(413, "Reader files must be at most 512 KiB.")
                     document = from_file(owner, raw, data["filename"])
                 else:
-                    raise ApiError(400, "Choose pasted_text or file.")
+                    raise ApiError(400, "Choose pasted_text, file or npo.")
                 self.storage.save_reader_document(document)
                 return json_response(200, {"id": document.id})
             raise ApiError(405, "Use GET or POST for the library.")
@@ -209,6 +214,8 @@ class ReaderApi:
             document = self.authorize(headers, parts[2])
             if method == "GET" and len(parts) == 3:
                 return self.read(document)
+            if method == "POST" and document.language != "zh":
+                raise ApiError(400, "Lexical tools require a Chinese document.")
             if method == "POST" and parts[3:] == ["vocabulary-state"]:
                 return self.vocabulary(document, self.payload(body))
             if method == "POST" and parts[3:] == ["hanly"]:
@@ -271,14 +278,15 @@ class ReaderApi:
                 "id": document.id,
                 "title": document.title,
                 "source_type": document.source_type,
+                "language": document.language,
                 "audio": audio,
                 "audio_status": audio_status,
                 "sentence_boundaries_approximate": any(
                     s.boundary_source == "approximate" for s in sentences
                 ),
-                "hanly_available": self.services.hanly is not None,
+                "hanly_available": document.language == "zh" and self.services.hanly is not None,
                 "hanly_error": self.services.hanly_error or "",
-                "mosaic_available": self.services.mosaic is not None,
+                "mosaic_available": document.language == "zh" and self.services.mosaic is not None,
                 "mosaic_error": self.services.mosaic_error or "",
                 "native_language": document.native_language() or "ru",
                 "glossary": glossary,
@@ -288,6 +296,8 @@ class ReaderApi:
                         "id": sentence.id,
                         "text": sentence.text,
                         "boundary_source": sentence.boundary_source,
+                        "source_start": sentence.source_start,
+                        "source_end": sentence.source_end,
                         "audio": ranges.get(sentence.id),
                         "tokens": [describe(t) for t in items],
                     }

@@ -141,6 +141,10 @@ class Storage:
         for column in ("updated", "last_opened"):
             if column not in columns:
                 self.db.execute(f"ALTER TABLE reader_documents ADD COLUMN {column} TEXT")
+        if "source_data" not in columns:
+            self.db.execute(
+                "ALTER TABLE reader_documents ADD COLUMN source_data TEXT NOT NULL DEFAULT '{}'"
+            )
         self.db.execute(
             "UPDATE reader_documents SET source_type='pasted_text' WHERE source_type='text'"
         )
@@ -517,10 +521,11 @@ class Storage:
         with self.db:
             self.db.execute(
                 """INSERT INTO reader_documents
-                (id,chat_id,title,source_type,source_reference,raw_text,hanly_key,mosaic_key,created,updated)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                (id,chat_id,title,source_type,source_reference,raw_text,hanly_key,mosaic_key,created,updated,source_data)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
-                  source_reference=excluded.source_reference, raw_text=excluded.raw_text""",
+                  source_reference=excluded.source_reference, raw_text=excluded.raw_text,
+                  source_data=excluded.source_data""",
                 (
                     document.id,
                     document.chat_id,
@@ -532,6 +537,7 @@ class Storage:
                     document.mosaic_key,
                     document.created,
                     document.created,
+                    document.source_data,
                 ),
             )
 
@@ -566,6 +572,7 @@ class Storage:
                 if item["source_type"] == "file"
                 else {
                     "podcast": "Podcast",
+                    "npo": "NPO Start",
                     "pasted_text": "Pasted text",
                     "text": "Pasted text",
                 }.get(item["source_type"], "Text")

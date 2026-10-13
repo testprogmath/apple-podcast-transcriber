@@ -741,9 +741,9 @@ function renderSentence(sentence) {
     toggleSentence(sentence.id);
   });
   controls.appendChild(mark);
-  if (canSpeak || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
+  if ((canSpeak && state.sourceLanguage !== "nl") || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
   node.appendChild(controls);
-  if (/[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
+  if (state.sourceLanguage === "nl" || /[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
     const translation = translationControl(sentence);
     controls.appendChild(translation.action);
     node.appendChild(translation.box);
@@ -867,7 +867,8 @@ function refreshSelectionActions() {
     if (!state.selectionBarHeld) hideSelectionActions();
     return;
   }
-  const span = selectionSpan(range);
+  // Expressions and Hanly are Chinese lexical tools; other languages keep plain selection.
+  const span = state.sourceLanguage === "zh" ? selectionSpan(range) : null;
   if (!span || state.lexeme || state.open) { hideSelectionActions(); return; }
   state.selection = span.error ? null : span;
   el("selection-text").textContent = span.error || span.text;
@@ -976,6 +977,9 @@ function render(data) {
   state.audioNotice = false;
   state.sentences = data.sentences;
   state.glossary = data.glossary || {};
+  state.sourceLanguage = data.language || "zh";
+  el("text").setAttribute("lang", state.sourceLanguage);
+  el("pinyin-toggle").hidden = data.language === "nl";
   state.available = { hanly: data.hanly_available, mosaic: data.mosaic_available };
   state.reasons = { hanly: data.hanly_error, mosaic: data.mosaic_error };
   hideSelectionActions();
@@ -1314,9 +1318,12 @@ el("create-reader").addEventListener("click", async () => {
   button.disabled = true;
   el("create-status").textContent = "Creating…";
   try {
+    const input = el("new-text-input").value.trim();
+    const payload = /^https?:\/\//i.test(input)
+      ? { source_type: "npo", url: input }
+      : { source_type: "pasted_text", text: el("new-text-input").value, title: el("new-title").value || "" };
     const result = await api("/api/reader/documents", {
-      method: "POST", body: JSON.stringify({ source_type: "pasted_text",
-        text: el("new-text-input").value, title: el("new-title").value || "" }),
+      method: "POST", body: JSON.stringify(payload),
     });
     openDocument(result.id);
   } catch (error) {

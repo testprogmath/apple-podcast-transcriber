@@ -21,6 +21,8 @@ class Sentence:
     end: int
     text: str
     boundary_source: str = "source"
+    source_start: float | None = None
+    source_end: float | None = None
 
 
 def _terminator(text: str, index: int) -> bool:
