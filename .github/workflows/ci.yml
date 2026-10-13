@@ -47,6 +47,7 @@ jobs:
           node tests/frontend/app.test.js
           node --check tests/frontend/library.test.js
           node tests/frontend/library.test.js
+          node tests/frontend/selection.test.js
 
   deploy:
     name: Deploy production

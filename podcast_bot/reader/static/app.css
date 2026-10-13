@@ -152,7 +152,6 @@ body {
 .sentence {
   border-radius: 8px;
   padding: 1px 0;
-  cursor: pointer;
 }
 
 .sentence.picked {
@@ -169,6 +168,8 @@ body {
   border-radius: 6px;
   padding: 0 2px;
   cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .word:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
@@ -192,6 +193,12 @@ body {
 }
 
 #text.pinyin rt { display: revert; }
+
+/* Native selection covers source characters only; pinyin and controls are display. */
+#text rt, .sentence-controls {
+  -webkit-user-select: none;
+  user-select: none;
+}
 #text.pinyin { line-height: 2.6; }
 
 ruby { ruby-align: center; }
@@ -496,3 +503,26 @@ ruby { ruby-align: center; }
 .shelf-actions { align-items: stretch; }
 .shelf-actions button { margin: 0; min-height: 48px; }
 .shelf button:disabled, #rename-panel button:disabled { opacity: .6; cursor: wait; }
+
+/* Reader actions for a native selection; the selection itself stays native. */
+#selection-actions {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 3;
+  background: var(--surface); border-top: 1px solid var(--border); box-shadow: var(--shadow);
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  -webkit-user-select: none; user-select: none;
+}
+#selection-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#selection-text { margin: 0; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+#selection-text.bad { color: var(--danger); font-size: 14px; font-weight: 500; }
+#selection-buttons { display: flex; gap: 10px; margin-top: 8px; }
+#selection-buttons button { flex: 1 1 0; margin: 0; min-height: 44px; }
+#selection-buttons .secondary {
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  color: var(--fg); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+#selection-buttons button:disabled { opacity: .45; cursor: default; }
+#lexeme .link {
+  display: block; margin: 14px auto 0; border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: 14px; text-decoration: underline; cursor: pointer;
+}
+#lexeme .link:disabled { opacity: .55; cursor: wait; }

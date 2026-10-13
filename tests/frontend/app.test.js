@@ -72,16 +72,24 @@ const words = (body) => body.querySelectorAll(".word");
 const word = (body, text) =>
   words(body).find((w) => (w.dataset.glyph || "") === text);
 const sentence = (body, id) => body.querySelector(`[data-sentence="${id}"]`);
+const mark = (body, id) => sentence(body, id).querySelector(".mark");
 
 const tests = {};
 const test = (name, fn) => (tests[name] = fn);
 
-test("tokens render as keyboard-accessible buttons with ruby pinyin", async () => {
+test("tokens render as selectable keyboard-accessible buttons with ruby pinyin", async () => {
   const { body } = start();
   await settle();
   const node = word(body, "获得");
-  assert.strictEqual(node.tagName, "button");
-  assert.strictEqual(node.type, "button");
+  // A span, not a <button>: native text selection cannot start inside a button.
+  assert.strictEqual(node.tagName, "span");
+  assert.strictEqual(node.getAttribute("role"), "button");
+  // Chrome starts no drag selection on a focusable element: tab stops are keyboard-only.
+  assert.strictEqual(node.getAttribute("tabindex"), null);
+  document.fire("keydown", { key: "Tab" });
+  assert.strictEqual(node.getAttribute("tabindex"), "0");
+  document.fire("pointerdown", {});
+  assert.strictEqual(node.getAttribute("tabindex"), null);
   assert.strictEqual(node.getAttribute("aria-pressed"), "false");
   assert.strictEqual(node.getAttribute("aria-label"), "获得 huò dé");
   const ruby = node.children[0];
@@ -110,6 +118,15 @@ test("tapping a token opens the lexeme popup and selects nothing", async () => {
   assert.strictEqual(nodes["hanly-counter"].textContent, "Hanly · 0");
   assert.ok(!node.classes.has("picked"));
   assert.ok(node.classes.has("inspecting"));
+});
+
+test("Enter on a focused token opens the lexeme popup", async () => {
+  const { body, nodes } = start();
+  await settle();
+  let prevented = false;
+  word(body, "获得").fire("keydown", { key: "Enter", preventDefault: () => (prevented = true) });
+  assert.strictEqual(nodes["lexeme-glyph"].textContent, "获得");
+  assert.ok(prevented);
 });
 
 test("popup always shows pinyin, and shows a known meaning", async () => {
@@ -328,7 +345,7 @@ test("tapping a token never toggles the Mandarin Mosaic sentence around it", asy
 test("sentence selection and lexical selection coexist", async () => {
   const { body, nodes } = start();
   await settle();
-  sentence(body, 1).fire("click");
+  mark(body, 1).click(body);
   word(body, "获得").click(body);
   nodes["lexeme-action"].fire("click");
   assert.strictEqual(nodes["hanly-counter"].textContent, "Hanly · 1");
@@ -436,8 +453,8 @@ test("partial Mandarin Mosaic upload preserves the failed sentence", async () =>
     },
   });
   await settle();
-  sentence(body, 0).fire("click");
-  sentence(body, 1).fire("click");
+  mark(body, 0).click(body);
+  mark(body, 1).click(body);
   nodes["mosaic-counter"].fire("click");
   await nodes["basket-upload"].listeners.click[0]();
   await settle();
@@ -727,7 +744,7 @@ test("several translations coexist with Hanly, Mosaic and pinyin", async () => {
   await settle();
   word(body, "获得").click(body);
   nodes["lexeme-action"].fire("click");
-  sentence(body, 0).click(body);
+  mark(body, 0).click(body);
   const mosaic = nodes["mosaic-counter"].textContent;
   const hanly = nodes["hanly-counter"].textContent;
   translationButton(body, 0).click(body);
@@ -750,7 +767,7 @@ test("failed translation retries only explicitly without changing selections", a
       : { ok: true, json: async () => ({ sentence_id: 0, translation: "Они получили медаль.", source: "generated" }) },
   }});
   await settle();
-  sentence(body, 0).click(body);
+  mark(body, 0).click(body);
   const selected = nodes["mosaic-counter"].textContent;
   const button = translationButton(body, 0);
   button.click(body);
@@ -925,7 +942,7 @@ test("speech leaves translation, baskets and pinyin independent", async () => {
   await settle();
   word(body, "获得").click(body);
   nodes["lexeme-action"].fire("click");
-  sentence(body, 0).click(body);
+  mark(body, 0).click(body);
   translationButton(body, 0).click(body);
   await settle();
   const mosaic = nodes["mosaic-counter"].textContent;
@@ -1120,7 +1137,7 @@ test("a synthesizer that refuses to speak leaves the Reader usable", async () =>
   audio.click(body);
   assert.ok(!audio.classes.has("speaking"));
   assert.strictEqual(nodes.toast.textContent, "Pronunciation unavailable");
-  sentence(body, 0).click(body);
+  mark(body, 0).click(body);
   assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 1");
 });
 
@@ -1143,7 +1160,7 @@ test("the neighbouring sentence actions never start playback", async () => {
     }) }),
   }});
   await settle();
-  sentence(body, 0).click(body);
+  mark(body, 0).click(body);
   translationButton(body, 0).click(body);
   await settle();
   word(body, "讨论").click(body);
@@ -1153,7 +1170,7 @@ test("the neighbouring sentence actions never start playback", async () => {
 test("a sentence selected for Mosaic plays without changing the selection", async () => {
   const { body, nodes, speech } = speaking();
   await settle();
-  sentence(body, 0).click(body);
+  mark(body, 0).click(body);
   assert.ok(sentence(body, 0).classes.has("picked"));
   audioButton(body, 0).click(body);
   assert.strictEqual(speech.last().text, CANONICAL);
@@ -1228,7 +1245,7 @@ test("without the Web Speech API the audio action is absent and the Reader works
   assert.ok(sentence(body, 0).querySelector(".translation-action"), "translation survives");
   word(body, "获得").click(body);
   assert.ok(!nodes.lexeme.hidden, "Hanly popup survives");
-  sentence(body, 1).click(body);
+  mark(body, 1).click(body);
   assert.strictEqual(nodes["mosaic-counter"].textContent, "Mosaic · 1");
 });
 
