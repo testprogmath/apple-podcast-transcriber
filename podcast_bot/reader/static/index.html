@@ -10,7 +10,7 @@
 <body>
 <section id="library" class="shelf" hidden>
   <h1>Reader</h1>
-  <p class="muted">Read Chinese from anywhere.</p>
+  <p class="muted">Read Chinese text and Dutch NPO subtitles.</p>
   <div class="shelf-actions">
     <button id="new-text" type="button" class="primary">+ New text</button>
     <button id="upload-file" type="button" class="secondary">Upload file</button>
@@ -26,8 +26,8 @@
   <h1>New document</h1>
   <label for="new-title">Title (optional)</label>
   <input id="new-title" type="text" maxlength="120" autocomplete="off">
-  <label for="new-text-input">Text</label>
-  <textarea id="new-text-input" rows="12" maxlength="200000" placeholder="Paste Chinese text here…"></textarea>
+  <label for="new-text-input">Chinese text or public NPO Start episode URL</label>
+  <textarea id="new-text-input" rows="12" maxlength="200000" placeholder="Paste Chinese text or https://npo.nl/start/afspelen/…"></textarea>
   <button id="clipboard-paste" type="button" class="secondary">Paste from clipboard</button>
   <p id="create-status" role="status"></p>
   <button id="create-reader" type="button" class="primary">Create Reader</button>

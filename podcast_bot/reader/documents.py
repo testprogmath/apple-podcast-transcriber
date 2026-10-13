@@ -34,8 +34,18 @@ class ReaderDocument:
     hanly_key: str
     mosaic_key: str
     created: str
+    source_data: str = "{}"
+
+    def metadata(self) -> dict:
+        return json.loads(self.source_data)
+
+    @property
+    def language(self) -> str:
+        return self.metadata().get("language", "zh")
 
     def sentences(self) -> list[Sentence]:
+        if self.source_type == "npo":
+            return [Sentence(**item) for item in self.metadata()["sentences"]]
         return parse_sentences(self.raw_text)
 
     def paragraphs(self, sentences: list[Sentence]) -> list[list[int]]:
@@ -43,7 +53,7 @@ class ReaderDocument:
 
     def material(self) -> dict:
         """The study pack this document came from, or an empty mapping for direct text."""
-        if self.source_type == "file" or not self.source_reference:
+        if self.source_type in {"file", "npo"} or not self.source_reference:
             return {}
         try:
             material = json.loads(
@@ -55,7 +65,7 @@ class ReaderDocument:
 
     def native_language(self) -> str:
         """The native language the study pack was generated for; empty for direct text."""
-        if self.source_type == "file" or not self.source_reference:
+        if self.source_type in {"file", "npo"} or not self.source_reference:
             return ""
         try:
             metadata = json.loads(
@@ -131,6 +141,8 @@ class ReaderDocument:
         dictionary=None,
         overrides: dict[int, list[Override]] | None = None,
     ) -> list[list[Token]]:
+        if self.language != "zh":
+            return [[Token(s.text, False, 0, len(s.text))] for s in sentences]
         known = self.known_chunks()
         overrides = overrides or {}
         return [
