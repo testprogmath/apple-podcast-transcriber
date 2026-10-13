@@ -199,3 +199,23 @@ unchanged sentence audio. Real Telegram device checks remain pending.
 See `docs/LEXICAL_V2_REPORT.md` for algorithm tradeoffs, all 32 requested report
 items, exact limitations and follow-ups; `docs/lexical-v2-probes.json` contains
 actual pinned-dictionary lookup, segmentation, enrichment and performance evidence.
+
+## Sparse sentence-boundary recovery (2026-10-13)
+
+Base: `675af04` (merged lexical v2). Validated locally: **829 Python tests**,
+**124 Reader DOM tests + 17 library DOM tests**, Ruff lint/format, compileall,
+JavaScript syntax and Compose config. External services were mocked; no paid calls.
+
+Regression uses the user-supplied opening of episode `1000710628079`. It verifies
+unchanged source slices/whitespace gaps, useful bounded fragments, Traditional and
+continuous Han, unchanged normal/short/English text, stable unaffected IDs, rejection
+of stale block selections, Hanly canonical membership, conservative audio alignment,
+metadata/completion warnings, no automatic retries and retained Chinese punctuation
+instructions in a truncated Whisper prompt. Existing translation size-limit test
+uses a long non-recoverable mixed-text unit so it continues testing that guard.
+
+After deployment: reopen the existing affected document, confirm the approximate
+fragment notice and multiple sentence controls; test one translation, one TTS/original
+playback and an explicitly selected Hanly upload. Actual production metadata/model
+and deployment were not inspected or changed. No lexical recognition errors were
+automatically corrected, and no semantic punctuation-restoration model was added.
