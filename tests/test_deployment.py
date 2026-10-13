@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import time
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -196,3 +197,17 @@ def test_compose_preserves_all_running_overrides(tmp_path, monkeypatch):
     result = receiver.compose_command(old)
     assert all(str(path) in result for path in paths)
     assert result.count(str(override)) == 1
+
+
+def test_image_copies_the_files_that_declare_dependencies():
+    """setuptools silently builds a package with no dependencies if this file is missing."""
+    root = Path(__file__).parent.parent
+    project = tomllib.loads((root / "pyproject.toml").read_text())
+    files = project["tool"]["setuptools"]["dynamic"]["dependencies"]["file"]
+    copied = {
+        name
+        for line in (root / "Dockerfile").read_text().splitlines()
+        if line.startswith("COPY ") and "--from" not in line
+        for name in line.split()[1:-1]
+    }
+    assert files and set(files) <= copied

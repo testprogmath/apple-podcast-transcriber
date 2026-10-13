@@ -19,7 +19,7 @@ ruff format --check .         # Verify formatting
 ruff format .                 # Apply formatting
 ```
 
-`docker compose build` builds the container; `docker compose up -d --build` builds and starts the service. `requirements.txt` holds production pins; `requirements.lock` includes it as a compatibility wrapper.
+`docker compose build` builds the container; `docker compose up -d --build` builds and starts the service. `requirements.in` declares runtime dependency ranges; `requirements.txt` holds every production pin and is compiled from it with `uv pip compile requirements.in -o requirements.txt`, never edited by hand. `requirements.lock` includes it as a compatibility wrapper.
 
 ## Coding Style & Naming Conventions
 

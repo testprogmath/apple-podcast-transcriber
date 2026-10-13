@@ -29,6 +29,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             pyproject.toml
+            requirements.in
             requirements.lock
             requirements.txt
       - name: Install ffmpeg
