@@ -184,7 +184,7 @@ class ReaderApi:
                 or language not in {"ru", "en"}
             ):
                 raise ApiError(400, "Translation accepts only language: ru or en.")
-            if not re.fullmatch(r"0|[1-9][0-9]{0,5}", parts[4]):
+            if not re.fullmatch(r"0|[1-9][0-9]{0,9}", parts[4]):
                 raise ApiError(400, "Invalid sentence ID.")
             sentence = next((s for s in document.sentences() if s.id == int(parts[4])), None)
             if sentence is None:
