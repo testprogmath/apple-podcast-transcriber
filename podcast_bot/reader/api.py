@@ -279,6 +279,9 @@ class ReaderApi:
                 "source_type": document.source_type,
                 "audio": audio,
                 "audio_status": audio_status,
+                "sentence_boundaries_approximate": any(
+                    s.boundary_source == "approximate" for s in sentences
+                ),
                 "hanly_available": self.services.hanly is not None,
                 "hanly_error": self.services.hanly_error or "",
                 "mosaic_available": self.services.mosaic is not None,
@@ -290,6 +293,7 @@ class ReaderApi:
                     {
                         "id": sentence.id,
                         "text": sentence.text,
+                        "boundary_source": sentence.boundary_source,
                         "audio": ranges.get(sentence.id),
                         "tokens": [describe(t) for t in items],
                     }
