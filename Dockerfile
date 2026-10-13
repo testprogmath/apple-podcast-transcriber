@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certi
 WORKDIR /app
 COPY requirements.lock requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.lock
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.in ./
 COPY podcast_bot ./podcast_bot
 COPY dictionary ./dictionary
 # CC-CEDICT (CC BY-SA 4.0) is converted offline from the pinned snapshot; the
