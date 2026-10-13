@@ -234,3 +234,135 @@ def test_migration_existing_database(tmp_path):
     assert store.reader_document("old").language == "zh"
     assert store.reader_document("old").source_data == "{}"
     store.db.close()
+
+
+@pytest.mark.parametrize("digits", ["123456", "1361725", "12345678", "1", "1" * 20])
+async def test_product_lengths(digits):
+    product = "VPWON_" + digits
+    async with client(page=f'"{product}" "{product}"') as c:
+        adapter = NpoSourceAdapter(c)
+        resolved, _, _ = await adapter.resolve_product_id(c, URL)
+        assert resolved == product
+        assert adapter.discover_subtitle(product).endswith(f"/{product}.vtt")
+
+
+@pytest.mark.parametrize(
+    "product",
+    [
+        "VPWON_",
+        "VPWON_abc",
+        "VPWON_123456x",
+        "xVPWON_123456",
+        "VPWON_123456_",
+        "VPWON_１２３４５６",
+        "VPWON_" + "1" * 21,
+    ],
+)
+async def test_malformed_products(product):
+    async with client(page=product) as c:
+        adapter = NpoSourceAdapter(c)
+        with pytest.raises(UserError, match="product id not found"):
+            await adapter.resolve_product_id(c, URL)
+        with pytest.raises(UserError, match="product id not found"):
+            adapter.discover_subtitle(product)
+
+
+async def test_variable_length_ambiguity():
+    async with client(page="VPWON_123456 VPWON_12345678") as c:
+        with pytest.raises(UserError, match="ambiguous product id"):
+            await NpoSourceAdapter(c).resolve_product_id(c, URL)
+
+
+@pytest.mark.parametrize("description", ["(het Wilhelmus speelt)", "(schoten)", "(taptoe-signaal)"])
+async def test_new_non_speech_preserved(description):
+    vtt = track([(3, 4, description), (4, 5, "Hallo.")])
+    async with client(vtt=vtt) as c:
+        d = await NpoSourceAdapter(c).import_document(42, URL)
+    assert d.raw_text == "Hallo."
+    assert d.metadata()["raw_vtt"] == vtt
+    assert d.metadata()["cues"][0]["raw_text"] == description
+    assert d.metadata()["cues"][0]["classification"] == "non_speech"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "(misschien)",
+        "(ik hoor schoten)",
+        "(het Wilhelmus speelt in mijn hoofd)",
+        "(schoten) Ga weg!",
+    ],
+)
+def test_parenthetical_dialogue_retained(text):
+    n = NpoSubtitleNormalizer()
+    assert n.reconstruct(n.parse(track([(3, 4, text)])))[0] == text
+
+
+def test_real_ellipsis_enumeration():
+    raw = """WEBVTT
+
+00:00:17.840 --> 00:00:19.640
+<c.yellow>Jaren van terreur...</c>
+
+00:00:21.320 --> 00:00:22.800
+<c.yellow>repressie...</c>
+
+00:00:24.800 --> 00:00:26.280
+<c.yellow>en wanhoop.</c>
+"""
+    n = NpoSubtitleNormalizer()
+    text, sentences = n.reconstruct(n.parse(raw))
+    assert text == "Jaren van terreur, repressie en wanhoop."
+    assert len(sentences) == 1
+    assert (sentences[0].source_start, sentences[0].source_end) == (17.84, 26.28)
+
+
+@pytest.mark.parametrize(
+    "first,next_text",
+    [
+        ("Begin", "en einde."),
+        ("Begin.", "en einde."),
+        ("Begin...", "vervolg."),
+        ("Begin...", "En einde."),
+        ("Begin...", "JAN: en einde."),
+        ("Begin...", "- en einde."),
+        ("Begin...", "* en einde."),
+        ("* Begin...", "en einde."),
+        ("<c.yellow>Begin...</c>", "<c.white>en einde.</c>"),
+    ],
+)
+def test_unsafe_larger_gap_refused(first, next_text):
+    n = NpoSubtitleNormalizer()
+    assert len(n.reconstruct(n.parse(track([(3, 4, first), (6, 7, next_text)])))[1]) == 2
+
+
+def test_ellipsis_gap_bound_and_non_speech_barrier():
+    n = NpoSubtitleNormalizer()
+    for items in [
+        [(3, 4, "Begin..."), (7, 8, "en einde.")],
+        [(3, 4, "Begin..."), (4, 5, "(schoten)"), (6, 7, "en einde.")],
+        [(3, 5, "Begin..."), (4, 6, "en einde.")],
+    ]:
+        assert len(n.reconstruct(n.parse(track(items)))[1]) == 2
+
+
+@pytest.mark.parametrize(
+    "raw,visible",
+    [
+        ("*Ik ga vrijwillig voor mijn land", "Ik ga vrijwillig voor mijn land"),
+        ("*Vaarwel Marie*", "Vaarwel Marie"),
+        ("* Hallo wereld *", "Hallo wereld"),
+        ("Hallo wereld *", "Hallo wereld"),
+        ("2 * 3 = 6", "2 * 3 = 6"),
+        ("*A * B", "*A * B"),
+        ("*nadruk*", "*nadruk*"),
+        ("bestand*.txt", "bestand*.txt"),
+        ("**Hallo wereld**", "**Hallo wereld**"),
+    ],
+)
+def test_lyrics_markers_preserve_raw(raw, visible):
+    n = NpoSubtitleNormalizer()
+    cues = n.parse(track([(3, 4, raw)]))
+    assert cues[0].raw_text == raw
+    assert cues[0].text == visible
+    assert n.reconstruct(cues)[0] == visible

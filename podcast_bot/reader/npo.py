@@ -16,8 +16,35 @@ from ..storage import now
 from .documents import MAX_CHARACTERS, ReaderDocument, clean_title
 from .sentences import Sentence
 
-PRODUCT = re.compile(r"(?<![\w])VPWON_[0-9]{7}(?![\w])")
-NON_SPEECH = {"explosie", "muziek", "applaus", "deurbel", "gelach", "stilte"}
+PRODUCT = re.compile(r"(?<![\w])VPWON_[0-9]{1,20}(?![\w])")
+# Exact descriptions only: parenthetical dialogue is not a sound label.
+NON_SPEECH = {
+    "explosie",
+    "muziek",
+    "applaus",
+    "deurbel",
+    "gelach",
+    "stilte",
+    "het Wilhelmus speelt",
+    "schoten",
+    "taptoe-signaal",
+}
+ELLIPSIS_GAP = 2.0  # Observed enumeration gaps: 1.68 and 2.00 seconds.
+
+
+def lyrics_text(text):
+    # TT888 uses * before lyric lines. Require a detached marker or a capitalized
+    # multiword line, not arbitrary emphasis, multiplication or wildcard syntax.
+    leading = bool(re.match(r"^\*(?:\s+(?=[^\W\d_])|(?=[A-ZÀ-Ý][^\n]*\s+[^\W\d_]))", text))
+    trailing = text.endswith(" *") or (leading and text.endswith("*"))
+    original = text
+    if leading:
+        text = text[1:].lstrip()
+    if trailing:
+        text = text[:-1].rstrip()
+    if "*" in text and (leading or trailing):
+        return original, False
+    return text, leading or trailing
 
 
 def fail(code):
@@ -63,6 +90,7 @@ class RawCue:
     classes: list[str]
     classification: str
     identifier: str = ""
+    music_marker: bool = False
 
 
 def seconds(value):
@@ -100,13 +128,14 @@ class NpoSubtitleNormalizer:
             kind = "speech"
             if not cues and visible == "888" and start <= 2:
                 kind = "tt888"
-            elif visible.lower() in {f"({word})" for word in NON_SPEECH} or visible in {
+            elif visible.lower() in {f"({word.lower()})" for word in NON_SPEECH} or visible in {
                 "",
                 "*",
                 "♪",
                 "♫",
             }:
                 kind = "non_speech"
+            visible, music_marker = lyrics_text(visible) if kind == "speech" else (visible, False)
             cues.append(
                 RawCue(
                     start,
@@ -117,6 +146,7 @@ class NpoSubtitleNormalizer:
                     sorted(set(re.findall(r"<c\.([^ >]+)", text))),
                     kind,
                     identifier,
+                    music_marker,
                 )
             )
         if not cues:
@@ -128,6 +158,7 @@ class NpoSubtitleNormalizer:
         pending = ""
         first = last = None
         previous_classes = None
+        previous_music = False
 
         def flush():
             nonlocal pending
@@ -141,11 +172,20 @@ class NpoSubtitleNormalizer:
                 continue
             text = cue.text
             speaker = bool(re.match(r"(?:[-–]|[A-ZÀ-Ý][\w ]{0,30}:)", text))
+            # Larger gaps require an explicit ellipsis plus enumeration evidence:
+            # another ellipsis item, or a final "en ..." item. Ordinary continuation
+            # remains capped at one second.
+            enumeration = pending.endswith(("...", "…")) and (
+                text.endswith(("...", "…")) or text.startswith("en ")
+            )
+            gap_limit = ELLIPSIS_GAP if enumeration else 1.0
             continuation = (
                 pending
                 and cue.start >= last
-                and cue.start - last <= 1
+                and cue.start - last <= gap_limit
                 and not speaker
+                and not cue.music_marker
+                and not previous_music
                 and cue.classes == previous_classes
                 and not text.startswith(("*", "♪", "♫"))
                 and text.lstrip(".… ")[:1].islower()
@@ -153,9 +193,14 @@ class NpoSubtitleNormalizer:
                 and len(pending) + len(text) <= 3000
             )
             if continuation:
+                separator = (
+                    ", "
+                    if enumeration and cue.start - last > 1 and not text.startswith("en ")
+                    else " "
+                )
                 pending = (
                     re.sub(r"(?:\.{3}|…)$", "", pending).rstrip()
-                    + " "
+                    + separator
                     + re.sub(r"^(?:\.{3}|…)\s*", "", text)
                 )
             else:
@@ -163,6 +208,7 @@ class NpoSubtitleNormalizer:
                 pending, first = text, cue.start
             last = cue.end
             previous_classes = cue.classes
+            previous_music = cue.music_marker
             if re.search(r"(?<!\.)[.!?][\"'’”)]*$", pending):
                 flush()
         flush()
@@ -254,7 +300,7 @@ class NpoSourceAdapter:
             "resolved_url": final,
             "subtitle_url": subtitle_url,
             "raw_vtt": raw,
-            "normalizer_version": 1,
+            "normalizer_version": 2,
             "cues": [asdict(c) for c in cues],
             "sentences": [asdict(s) for s in sentences],
         }
