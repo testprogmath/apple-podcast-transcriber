@@ -207,7 +207,7 @@ async def test_document_ownership_and_missing_document(translation):
 async def test_length_bounds_and_no_eager_translation(translation):
     r = translation.reader
     assert (await call(r, "GET", f"/api/reader/{r.document.id}"))[0] == 200
-    document = from_text(42, "中" * 3001 + "。")
+    document = from_text(42, "中" + " English" * 500 + "。")
     r.store.save_reader_document(document)
     assert (await call(r, "POST", route(document), {}))[0] == 400
     translation.client.request.assert_not_called()

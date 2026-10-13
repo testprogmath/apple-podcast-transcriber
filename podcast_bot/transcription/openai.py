@@ -28,7 +28,14 @@ class OpenAITranscriber:
             options["response_format"] = "verbose_json" if model == "whisper-1" else "json"
         if model == "whisper-1":
             options["timestamp_granularities"] = ["word", "segment"]
-            options["prompt"] = prompt[:80]  # Stay conservatively below 224 Whisper tokens.
+            prefix = (
+                "普通话播客。保留原话和自然的中文标点。"
+                if language == "zh"
+                else "Preserve sentence punctuation. "
+            )
+            options["prompt"] = (prefix + prompt)[
+                :80
+            ]  # Stay conservatively below 224 Whisper tokens.
         try:
             with chunk.path.open("rb") as audio:
                 response = await self.client.audio.transcriptions.create(file=audio, **options)
