@@ -289,3 +289,25 @@ WebView, Android Telegram WebView, Telegram Desktop, Safari, Chrome):
 - Toggle Pinyin on and play again: the spoken text is identical.
 
 Frontend regression tests: `node tests/frontend/app.test.js`.
+
+## Transcripts with sparse sentence punctuation
+
+For Chinese units containing at least 120 Han characters without a normal sentence
+break, Reader derives approximate reading fragments (target 60 source characters).
+It prefers existing whitespace/clause punctuation, then local lexical boundaries.
+An indivisible long Latin token can exceed the target. These are reading aids,
+**not restored grammatical sentences or corrected ASR**; Reader displays a notice.
+No punctuation or words are inserted and canonical `transcript.txt`, Reader raw text
+and provider timing data remain unchanged. Old documents benefit on their next open.
+
+Normal sentence IDs are retained. Recovered fragments use a separate source-offset
+ID namespace, so an old selection cannot silently refer to the first new fragment.
+Reopen the document and reselect after deploying this change. Cached translations
+remain source-text checked. Existing audio alignment still requires exact provider
+unit boundaries; otherwise the existing TTS fallback applies, without invented times.
+
+After transcription, the same detector records `sentence_quality` in metadata and
+surfaces sparse-boundary warnings in status/completion. It never automatically
+retranscribes or calls a punctuation model. Whisper's limited prompt now starts with
+punctuation guidance, so a long episode title cannot truncate it away. This improves
+the request but cannot guarantee provider punctuation or correct recognition errors.

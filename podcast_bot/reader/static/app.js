@@ -964,6 +964,10 @@ async function removeExpression(event) {
 }
 
 function render(data) {
+  const quality = el("sentence-quality");
+  quality.hidden = !data.sentence_boundaries_approximate;
+  quality.textContent = data.sentence_boundaries_approximate
+    ? "В исходном тексте мало знаков конца предложения. Показаны приблизительные фрагменты для чтения; слова не изменены." : "";
   stopOriginal();
   stopSpeaking();
   state.title = data.title;

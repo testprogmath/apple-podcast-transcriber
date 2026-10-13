@@ -207,7 +207,7 @@ async def test_document_ownership_and_missing_document(translation):
 async def test_length_bounds_and_no_eager_translation(translation):
     r = translation.reader
     assert (await call(r, "GET", f"/api/reader/{r.document.id}"))[0] == 200
-    document = from_text(42, "中" * 3001 + "。")
+    document = from_text(42, "中" + " English" * 500 + "。")
     r.store.save_reader_document(document)
     assert (await call(r, "POST", route(document), {}))[0] == 400
     translation.client.request.assert_not_called()
@@ -294,3 +294,38 @@ def test_legacy_russian_cache_is_preserved(tmp_path):
     storage.save_reader_translation("doc", 0, "你好。", "Hello.", "en")
     assert storage.reader_translation("doc", 0, "你好。", "ru") == "Привет."
     storage.close()
+
+
+@pytest.mark.parametrize(
+    "language,meaning", [("ru", RUSSIAN), ("en", "Welcome to our Chinese podcast.")]
+)
+async def test_recovered_fragment_translation_route_and_cache(translation, language, meaning):
+    from test_sentence_recovery import OPENING
+
+    r = translation.reader
+    document = from_text(42, OPENING)
+    r.store.save_reader_document(document)
+    translation.client.request.return_value = (TranslationResult(translation=meaning), {})
+    status, data = await call(r, "GET", f"/api/reader/{document.id}")
+    assert status == 200
+    fragment = data["sentences"][1]
+    assert fragment["id"] >= 1_000_000_000
+    endpoint = route(document, fragment["id"])
+    for _ in range(2):
+        status, result = await call(r, "POST", endpoint, {"language": language})
+        assert status == 200
+        assert result["sentence_id"] == fragment["id"]
+        assert result["translation"] == meaning
+    translation.client.request.assert_awaited_once()
+    payload = translation.client.request.call_args.args[2]
+    assert payload["TARGET"] == fragment["text"]
+    assert payload["previous"] == data["sentences"][0]["text"][-MAX_CONTEXT:]
+    assert (await call(r, "POST", route(document, 0), {}))[0] == 404
+    assert (await call(r, "POST", route(document, 9_999_999_999), {}))[0] == 404
+
+
+@pytest.mark.parametrize("identifier", ["10000000000", "01000000000", "-1000000000", "1e9"])
+async def test_invalid_large_fragment_identifier(translation, identifier):
+    r = translation.reader
+    assert (await call(r, "POST", route(r.document, identifier), {}))[0] == 400
+    translation.client.request.assert_not_called()

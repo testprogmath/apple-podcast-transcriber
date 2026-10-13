@@ -1610,6 +1610,25 @@ test("local protected audio resolves relative URL and reuses the same player sou
   assert.strictEqual(speech.spoken.length, 1);
 });
 
+test("approximate reading units show a notice and retain nonsequential IDs", async () => {
+  const payload = structuredClone(DOCUMENT);
+  payload.sentence_boundaries_approximate = true;
+  payload.sentences[0].id = 1000000000;
+  payload.sentences[1].id = 1000000060;
+  payload.paragraphs = [[1000000000, 1000000060]];
+  const { body, nodes } = start({ document: payload });
+  await settle();
+  assert.strictEqual(nodes["sentence-quality"].hidden, false);
+  assert.match(nodes["sentence-quality"].textContent, /приблизительные/);
+  assert.ok(sentence(body, 1000000000));
+  word(body, "获得").click(body);
+  assert.strictEqual(nodes["lexeme-context"].textContent, payload.sentences[0].text);
+});
+test("normal transcripts have no approximate-boundaries notice", async () => {
+  const { nodes } = start(); await settle();
+  assert.strictEqual(nodes["sentence-quality"].hidden, true);
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of Object.entries(tests)) {

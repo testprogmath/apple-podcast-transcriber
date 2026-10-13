@@ -13,6 +13,7 @@ import httpx
 
 from .config import Config
 from .models import Job, UserError
+from .reader.sentences import sentence_quality
 from .resolver import resolve
 from .storage import Storage, atomic_json, safe_name
 from .transcription import audio
@@ -81,12 +82,12 @@ class Pipeline:
                 else self.config.chunk_seconds
             )
             chunks = await audio.prepare(original, duration, directory, chunk_seconds)
-            prompt = f"Episode title (context only): {episode.title[:180]}\nTranscribe faithfully in the original language. Do not translate or add unspoken words. "
+            prompt = "Transcribe faithfully in the original language. Preserve sentence punctuation. Do not translate or add unspoken words. "
             if language == "zh":
                 prompt += "普通话播客。保留简体中文和自然的中文标点。"
             if episode.podcast_id == "1490732024" and language == "zh":
                 prompt += "主持人是大鹏，内容涉及汉语语法、词汇、表达和文化。"
-            prompt += f"\n{job.hints}"
+            prompt += f"\nEpisode title (context only): {episode.title[:180]}\n{job.hints}"
             started = time.monotonic()
             parts = []
             for index, chunk in enumerate(chunks):
@@ -115,6 +116,12 @@ class Pipeline:
                         raise
                 parts.append((chunk.offset, result))
             transcript = combine(parts)
+            quality = sentence_quality(transcript.text)
+            if quality["status"] != "ok":
+                log.warning("job=%s transcription_quality=%s", job.id, quality["status"])
+                await status(
+                    "Transcription has sparse sentence punctuation. Original text is preserved; Reader will show approximate reading fragments."
+                )
             elapsed = time.monotonic() - started
             output = (
                 self.storage.root
@@ -148,6 +155,7 @@ class Pipeline:
                     "duration": duration,
                     "transcription_seconds": elapsed,
                     "chunks": len(chunks),
+                    "sentence_quality": quality,
                     "job_id": job.id,
                     "filename": safe_name(episode.podcast, 60)
                     + " - "
@@ -184,12 +192,18 @@ def source_links(metadata: dict) -> str:
 
 def completion(path: Path) -> str:
     metadata = json.loads((path / "metadata.json").read_text(encoding="utf-8"))
+    warning = (
+        "\n⚠ Sparse sentence punctuation: Reader uses approximate reading fragments; original text preserved."
+        if metadata.get("sentence_quality", {}).get("status") == "sparse_sentence_boundaries"
+        else ""
+    )
     if metadata.get("study_complete"):
         settings = metadata["study_settings"]
         if settings["target_language"] != "zh":
             return (
                 f"🎙 {metadata.get('title', 'Episode')[:500]}\n✓ Transcript\n"
                 f"✓ {metadata['vocabulary_count']} useful words & expressions"
+                + warning
                 + source_links(metadata)
             )
         return (
@@ -200,10 +214,12 @@ def completion(path: Path) -> str:
             f"✓ {metadata['vocabulary_count']} useful words & expressions\n"
             f"✓ {metadata['pattern_count']} grammar patterns\n"
             f"✓ {metadata.get('mosaic_sentence_count', 0)} Mosaic sentences\n"
-            f"Level: {settings['learner_level']}" + source_links(metadata)
+            f"Level: {settings['learner_level']}" + warning + source_links(metadata)
         )
     return (
         f"Done.\nLanguage: {metadata.get('language') or 'automatic'}"
         f"\nDuration: {clock_text(metadata['duration'])}"
-        f"\nTranscription: {clock_text(metadata['transcription_seconds'])}" + source_links(metadata)
+        f"\nTranscription: {clock_text(metadata['transcription_seconds'])}"
+        + warning
+        + source_links(metadata)
     )
