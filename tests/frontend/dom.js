@@ -17,6 +17,26 @@ class Node {
     this.disabled = false;
     this.focused = false;
     this._text = "";
+    this.parentNode = null;
+  }
+
+  get nodeType() {
+    return this.tagName === "#text" ? 3 : 1;
+  }
+
+  /** Like the DOM, text set through textContent is one child text node. */
+  get childNodes() {
+    if (this.children.length || !this._text || this.tagName === "#text") return this.children;
+    if (!this._leaf || this._leaf._text !== this._text) {
+      this._leaf = new Node("#text");
+      this._leaf._text = this._text;
+      this._leaf.parentNode = this;
+    }
+    return [this._leaf];
+  }
+
+  get data() {
+    return this._text;
   }
 
   get className() {
@@ -55,11 +75,12 @@ class Node {
 
   appendChild(child) {
     this.children.push(child);
+    child.parentNode = this;
     return child;
   }
 
   append(...nodes) {
-    nodes.forEach((n) => this.children.push(n));
+    nodes.forEach((n) => this.appendChild(n));
   }
 
   setAttribute(name, value) {
@@ -69,6 +90,10 @@ class Node {
 
   getAttribute(name) {
     return name in this.attrs ? this.attrs[name] : null;
+  }
+
+  removeAttribute(name) {
+    delete this.attrs[name];
   }
 
   focus() {
@@ -113,6 +138,8 @@ class Node {
         .split(".")
         .every((c) => this.classes.has(c));
     }
+    const present = /^\.([\w-]+)\[([\w-]+)\]$/.exec(selector);
+    if (present) return this.classes.has(present[1]) && present[2] in this.attrs;
     const attr = /^\[([\w-]+)="([^"]*)"\]$/.exec(selector);
     if (attr) {
       const key = attr[1].startsWith("data-") ? attr[1].slice(5) : attr[1];

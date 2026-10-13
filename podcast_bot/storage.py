@@ -127,6 +127,11 @@ class Storage:
           id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, title TEXT NOT NULL,
           source_type TEXT NOT NULL, source_reference TEXT NOT NULL, raw_text TEXT NOT NULL,
           hanly_key TEXT NOT NULL, mosaic_key TEXT NOT NULL, created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS reader_lexical_overrides (
+          id INTEGER PRIMARY KEY, document_id TEXT NOT NULL, sentence_id INTEGER NOT NULL,
+          start INTEGER NOT NULL, "end" INTEGER NOT NULL, source_text TEXT NOT NULL,
+          created TEXT NOT NULL, updated TEXT NOT NULL,
+          UNIQUE(document_id,sentence_id,start,"end"));
         CREATE TABLE IF NOT EXISTS study_usage (id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL,
           key TEXT NOT NULL, step TEXT NOT NULL, model TEXT NOT NULL, input_chars INTEGER NOT NULL,
           input_tokens INTEGER, cached_input_tokens INTEGER, output_tokens INTEGER,
@@ -581,6 +586,49 @@ class Storage:
                 "UPDATE reader_documents SET last_opened=? WHERE id=? AND chat_id=?",
                 (now(), identifier, chat_id),
             )
+
+    def reader_lexical_overrides(self, document_id: str) -> dict:
+        from .reader.tokens import Override
+
+        result: dict[int, list[Override]] = {}
+        rows = self.db.execute(
+            'SELECT id,sentence_id,start,"end",source_text FROM reader_lexical_overrides '
+            "WHERE document_id=? ORDER BY sentence_id,start",
+            (document_id,),
+        )
+        for row in rows:
+            result.setdefault(row["sentence_id"], []).append(
+                Override(row["id"], row["start"], row["end"], row["source_text"])
+            )
+        return result
+
+    def save_reader_lexical_override(
+        self, document_id: str, sentence_id: int, start: int, end: int, text: str, stale
+    ) -> int:
+        """Insert one override, replacing the given stale rows that the new span touches."""
+        timestamp = now()
+        with self.db:
+            self.db.executemany(
+                "DELETE FROM reader_lexical_overrides WHERE id=? AND document_id=?",
+                [(identifier, document_id) for identifier in stale],
+            )
+            cursor = self.db.execute(
+                "INSERT INTO reader_lexical_overrides"
+                '(document_id,sentence_id,start,"end",source_text,created,updated) '
+                "VALUES (?,?,?,?,?,?,?)",
+                (document_id, sentence_id, start, end, text, timestamp, timestamp),
+            )
+        return cursor.lastrowid
+
+    def delete_reader_lexical_override(self, document_id: str, identifier: int) -> int | None:
+        """Remove one override of this document; returns its sentence ID, or None if absent."""
+        with self.db:
+            row = self.db.execute(
+                "DELETE FROM reader_lexical_overrides WHERE id=? AND document_id=? "
+                "RETURNING sentence_id",
+                (identifier, document_id),
+            ).fetchone()
+        return row["sentence_id"] if row else None
 
     def recent_reader_document(self, chat_id: int):
         row = self.db.execute(
