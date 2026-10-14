@@ -18,6 +18,7 @@ STATE = Path("/home/deploy/.local/state/podcast-deploy")
 OVERRIDE = APP / "docker-compose.release.yml"
 DRAIN = APP / "data/deploy-drain"
 CONTAINER = "podcast-telegram-bot-bot-1"
+RELEASES = "podcast-telegram-bot-release"
 REPOSITORY = "testprogmath/apple-podcast-transcriber"
 
 
@@ -112,6 +113,26 @@ def backup(sha):
         db.backup(target)
 
 
+def prune_releases(keep):
+    """Remove release images except the given IDs. Each one is about 1.5 GB, and
+    without pruning they filled the server's disk after some 40 deployments."""
+    listing = run(
+        ["docker", "image", "ls", "--no-trunc", "--format", "{{.Repository}}:{{.Tag}} {{.ID}}"]
+        + [RELEASES]
+    )
+    removed = 0
+    for line in listing.decode().splitlines():
+        reference, _, identifier = line.partition(" ")
+        if identifier in keep:
+            continue
+        try:
+            run(["docker", "image", "rm", reference])
+        except RuntimeError:
+            continue
+        removed += 1
+    return removed
+
+
 class LegacyBusy(RuntimeError):
     pass
 
@@ -175,6 +196,13 @@ def deploy(sha, manual=False):
         raise
     finally:
         DRAIN.unlink(missing_ok=True)
+    # Outside the rollback path: the release is live, so pruning can only report.
+    try:
+        removed = prune_releases({info["Id"], old_image})
+    except Exception:
+        print("Old release images were not pruned", flush=True)
+    else:
+        print(f"Removed {removed} old release images", flush=True)
 
 
 def interrupted(signum, _frame):
