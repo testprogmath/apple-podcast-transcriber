@@ -132,6 +132,18 @@ class Storage:
           start INTEGER NOT NULL, "end" INTEGER NOT NULL, source_text TEXT NOT NULL,
           created TEXT NOT NULL, updated TEXT NOT NULL,
           UNIQUE(document_id,sentence_id,start,"end"));
+        CREATE TABLE IF NOT EXISTS reader_contextual_lexicon (
+          context_key TEXT PRIMARY KEY, owner_id INTEGER NOT NULL,
+          meaning TEXT NOT NULL, context_note TEXT NOT NULL, created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS saved_vocabulary (
+          id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, language TEXT NOT NULL,
+          text TEXT NOT NULL, normalized_text TEXT NOT NULL,
+          document_id TEXT NOT NULL, sentence_id INTEGER NOT NULL, source_sentence TEXT NOT NULL,
+          source_start REAL, source_end REAL, target_language TEXT NOT NULL,
+          meaning TEXT NOT NULL, context_note TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL,
+          UNIQUE(owner_id,language,normalized_text,document_id,sentence_id,source_sentence));
+        CREATE INDEX IF NOT EXISTS saved_vocabulary_owner_document
+          ON saved_vocabulary(owner_id,document_id);
         CREATE TABLE IF NOT EXISTS study_usage (id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL,
           key TEXT NOT NULL, step TEXT NOT NULL, model TEXT NOT NULL, input_chars INTEGER NOT NULL,
           input_tokens INTEGER, cached_input_tokens INTEGER, output_tokens INTEGER,
@@ -186,6 +198,71 @@ class Storage:
     def delete_vocabulary_state(self, glyph: str) -> None:
         with self.db:
             self.db.execute("DELETE FROM vocabulary_state WHERE glyph=?", (glyph,))
+
+    def reader_lexical_meaning(self, key, owner):
+        row = self.db.execute(
+            "SELECT meaning,context_note FROM reader_contextual_lexicon WHERE context_key=? AND owner_id=?",
+            (key, owner),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def save_reader_lexical_meaning(self, key, owner, result):
+        with self.db:
+            self.db.execute(
+                "INSERT OR IGNORE INTO reader_contextual_lexicon VALUES (?,?,?,?,?)",
+                (key, owner, result["meaning"], result["context_note"], now()),
+            )
+
+    def saved_vocabulary(self, owner, document_id):
+        return [
+            dict(row)
+            for row in self.db.execute(
+                "SELECT * FROM saved_vocabulary WHERE owner_id=? AND document_id=? ORDER BY id",
+                (owner, document_id),
+            )
+        ]
+
+    def save_vocabulary(self, document, sentence, text, target, meaning):
+        from .reader.lexical import normalized
+
+        key = (
+            document.chat_id,
+            document.language,
+            normalized(text),
+            document.id,
+            sentence.id,
+            sentence.text,
+        )
+        timestamp = now()
+        with self.db:
+            self.db.execute(
+                "INSERT INTO saved_vocabulary (owner_id,language,normalized_text,document_id,sentence_id,"
+                "source_sentence,text,source_start,source_end,target_language,meaning,context_note,created,updated) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,language,normalized_text,document_id,"
+                "sentence_id,source_sentence) DO UPDATE SET "
+                "meaning=CASE WHEN excluded.meaning<>'' THEN excluded.meaning ELSE saved_vocabulary.meaning END,"
+                "context_note=CASE WHEN excluded.meaning<>'' THEN excluded.context_note ELSE saved_vocabulary.context_note END,"
+                "target_language=CASE WHEN excluded.meaning<>'' THEN excluded.target_language ELSE saved_vocabulary.target_language END,"
+                "updated=excluded.updated",
+                (
+                    *key,
+                    text,
+                    sentence.source_start,
+                    sentence.source_end,
+                    target,
+                    meaning.get("meaning", ""),
+                    meaning.get("context_note", ""),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+        return dict(
+            self.db.execute(
+                "SELECT * FROM saved_vocabulary WHERE owner_id=? AND language=? AND normalized_text=? AND "
+                "document_id=? AND sentence_id=? AND source_sentence=?",
+                key,
+            ).fetchone()
+        )
 
     def reader_translation(
         self, document_id: str, sentence_id: int, source_text: str, language: str = "ru"

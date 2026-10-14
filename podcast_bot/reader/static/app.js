@@ -130,7 +130,10 @@ function applyLanguage(language) {
   const toggle = el("language-toggle");
   toggle.setAttribute("aria-pressed", language === "ru" ? "true" : "false");
   toggle.textContent = language.toUpperCase();
-  if (state.lexeme) renderLexemeBody(state.lexeme.glyph);
+  if (state.lexeme) {
+    renderLexemeBody(state.lexeme.glyph);
+    if (state.capabilities?.internal_save) loadContextualMeaning();
+  }
   state.translationViews.forEach((refresh) => refresh());
 }
 
@@ -192,7 +195,7 @@ function stopSpeaking(owner) {
 }
 
 /** The Reader owns one utterance at a time, whichever control asked for it. */
-function speakMandarin(text, handlers = {}) {
+function speakText(text, handlers = {}) {
   stopOriginal();
   const words = String(text || "").trim();
   if (!canSpeak || !words) return false;
@@ -220,8 +223,11 @@ function speakMandarin(text, handlers = {}) {
   try {
     refreshVoices();
     utterance = new speech.Utterance(words);
-    utterance.lang = "zh-CN";
-    const voice = selectMandarinVoice(speech.voices);
+    utterance.lang = state.capabilities?.speech_language || "zh-CN";
+    const voice = utterance.lang === "nl-NL"
+      ? speech.voices.find((v) => /^nl[-_]nl$/i.test(v.lang || ""))
+        || speech.voices.find((v) => /^nl(?:[-_]|$)/i.test(v.lang || ""))
+      : selectMandarinVoice(speech.voices);
     if (voice) utterance.voice = voice;
     utterance.onstart = begin;
     utterance.onend = () => finish(false);
@@ -242,7 +248,7 @@ function speakMandarin(text, handlers = {}) {
 function pronounce(event) {
   event.stopPropagation();
   if (!state.lexeme) return;
-  speakMandarin(state.lexeme.glyph, {
+  speakText(state.lexeme.glyph, {
     owner: "word",
     onStart: () => pronunciationButton.classList.add("speaking"),
     onEnd: () => pronunciationButton.classList.remove("speaking"),
@@ -287,13 +293,16 @@ function stopOriginal() {
 function playSentenceAudio(sentence, handlers = {}) {
   stopOriginal();
   stopSpeaking();
+  if (state.capabilities?.internal_save) {
+    return speakText(sentence.text, { ...handlers, owner: "sentence" });
+  }
   const source = state.audio;
   const range = sentence.audio;
   if (!source || !range || range.source !== "podcast" || !window.Audio
       || !Number.isFinite(range.start_ms) || !Number.isFinite(range.end_ms)
       || range.start_ms < 0 || range.end_ms <= range.start_ms) {
     noteFallback(source && range ? "transport" : state.audioStatus);
-    return speakMandarin(sentence.text, { ...handlers, owner: "sentence" });
+    return speakText(sentence.text, { ...handlers, owner: "sentence" });
   }
   const generation = original.generation;
   const request = { handlers, phase: "loading-original", useful: 0, last: null, timeout: null, interval: null };
@@ -307,7 +316,7 @@ function playSentenceAudio(sentence, handlers = {}) {
     stopOriginal();
     if (fallback) {
       noteFallback("transport");
-      if (!speakMandarin(sentence.text, { ...handlers, owner: "sentence" })) {
+      if (!speakText(sentence.text, { ...handlers, owner: "sentence" })) {
         if (!canSpeak) toast("Pronunciation unavailable", true);
       }
     }
@@ -435,6 +444,17 @@ async function changeVocabulary(event) {
 
 function renderLexemeAction() {
   const action = el("lexeme-action");
+  const knowledge = el("lexeme-knowledge");
+  knowledge.hidden = Boolean(state.capabilities?.internal_save);
+  if (state.capabilities?.internal_save) {
+    action.textContent = state.lexeme.saving ? "Saving…" : state.lexeme.saved ? "✓ Saved" : "☆ Save";
+    action.disabled = Boolean(state.lexeme.saving);
+    action.classList.remove("remove");
+    el("lexeme-state").hidden = true;
+    el("lexeme-remove-expression").hidden = true;
+    return;
+  }
+  action.disabled = false;
   const picked = isPicked(state.lexeme.glyph);
   action.textContent = picked ? "✓ In Hanly — remove" : "+ Add to Hanly";
   action.classList.toggle("remove", picked);
@@ -444,7 +464,6 @@ function renderLexemeAction() {
   status.textContent = value === "known" ? "✓ Known" : value === "learning" ? "Learning · Hanly" : "";
   status.hidden = value === "unknown";
   el("lexeme-remove-expression").hidden = !state.lexeme.override;
-  const knowledge = el("lexeme-knowledge");
   knowledge.disabled = state.vocabularyPending.has(glyph) || state.hanlyUploading;
   knowledge.textContent = state.vocabularyPending.has(glyph) ? "Saving…"
     : persistedVocabulary(glyph) === "known" ? "Mark as unknown"
@@ -481,6 +500,27 @@ function renderContext(glyph, sentenceId) {
 }
 
 function renderLexemeBody(glyph) {
+  el("lexeme-retry").hidden = true;
+  el("lexeme-note").textContent = "";
+  el("lexeme-pinyin").hidden = !state.capabilities?.pinyin && Boolean(state.capabilities);
+  if (state.capabilities?.internal_save) {
+    el("lexeme-glyph").textContent = glyph;
+    el("lexeme-pinyin").textContent = "";
+    const list = el("lexeme-senses");
+    list.textContent = "";
+    const item = document.createElement("li");
+    const entry = state.lexeme?.meanings?.[state.language];
+    item.textContent = entry?.meaning || "Loading meaning…";
+    list.appendChild(item);
+    el("lexeme-senses-label").hidden = false;
+    el("lexeme-senses-label").textContent = "Meaning in context";
+    el("lexeme-source").textContent = entry ? "Generated contextual meaning" : "";
+    el("lexeme-note").textContent = entry?.context_note || "";
+    el("lexeme-context-label").textContent = "In context";
+    renderContext(glyph, state.lexeme.sentenceId);
+    return;
+  }
+  el("lexeme-context-label").textContent = "В контексте";
   const entry = state.glossary[glyph] || {};
   el("lexeme-glyph").textContent = glyph;
   el("lexeme-pinyin").textContent = entry.p || "";
@@ -511,6 +551,9 @@ function openLexeme(token, sentenceId, node) {
   pronunciationButton.setAttribute("aria-label", `Pronounce ${token.t.trim()}`);
   state.lexeme = {
     glyph: token.t, sentenceId, start: token.start, end: token.end, override: token.override || 0,
+    saved: (state.savedVocabulary || []).some((item) => item.sentence_id === sentenceId
+      && item.source_sentence === state.sentences.find((s) => s.id === sentenceId)?.text
+      && item.normalized_text === token.t.normalize("NFC").toLowerCase().trim().replace(/\s+/g," ")),
   };
   closeLexeme.origin = node;
   renderLexemeBody(token.t);
@@ -519,6 +562,70 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme").hidden = false;
   el("scrim").hidden = false;
   el("lexeme-action").focus();
+  if (state.capabilities?.internal_save) loadContextualMeaning();
+}
+
+/** Lookup is occurrence/context-owned: never put Dutch senses in the glyph glossary. */
+async function loadContextualMeaning() {
+  const lexeme = state.lexeme;
+  const language = state.language;
+  if (!lexeme || !state.capabilities?.internal_save) return;
+  lexeme.meanings ||= {};
+  lexeme.requests ||= {};
+  if (lexeme.meanings[language]) { renderLexemeBody(lexeme.glyph); return; }
+  try {
+    lexeme.requests[language] ||= api(`/api/reader/${documentId}/lexical`, {
+      method: "POST", body: JSON.stringify({ ...spanRequest({sentenceId:lexeme.sentenceId,
+        start:lexeme.start,end:lexeme.end,text:lexeme.glyph}), target_language:language }),
+    }).finally(() => { delete lexeme.requests[language]; });
+    const result = await lexeme.requests[language];
+    lexeme.meanings[language] = result;
+    // A completed save wins over an older in-flight lookup reporting unsaved.
+    lexeme.saved = lexeme.saved || result.saved;
+    if (state.lexeme === lexeme && state.language === language) {
+      renderLexemeBody(lexeme.glyph); renderLexemeAction();
+    }
+  } catch (error) {
+    if (state.lexeme !== lexeme || state.language !== language) return;
+    el("lexeme-senses").textContent = error.message;
+    el("lexeme-retry").hidden = false;
+  }
+}
+
+async function saveInternal(span) {
+  const sourceSentence = state.sentences.find((s) => s.id === span.sentenceId)?.text;
+  const already = (state.savedVocabulary || []).some((item) => item.sentence_id === span.sentenceId
+    && item.source_sentence === sourceSentence
+    && item.normalized_text === span.text.normalize("NFC").toLowerCase().trim().replace(/\s+/g," "));
+  const result = await api(`/api/reader/${documentId}/saved-vocabulary`, {
+    method:"POST", body:JSON.stringify({...spanRequest(span), target_language:state.language}),
+  });
+  state.savedVocabulary ||= [];
+  state.savedVocabulary = state.savedVocabulary.filter((item) => item.id !== result.item.id);
+  state.savedVocabulary.push(result.item);
+  toast(already ? "✓ Already saved" : "✓ Saved");
+  return result;
+}
+
+async function saveInspector() {
+  const lexeme = state.lexeme;
+  if (!lexeme || lexeme.saving || lexeme.saved) return;
+  lexeme.saving = true; renderLexemeAction();
+  try {
+    await saveInternal({sentenceId:lexeme.sentenceId,start:lexeme.start,end:lexeme.end,text:lexeme.glyph});
+    lexeme.saved = true;
+  } catch (error) { toast(error.message, true); }
+  finally { lexeme.saving = false; if(state.lexeme === lexeme) renderLexemeAction(); }
+}
+
+async function saveSelectedExpression(span) {
+  // Meaning is optional: provider failure must not prevent a private source-preserving save.
+  try {
+    await api(`/api/reader/${documentId}/lexical`, {
+      method:"POST", body:JSON.stringify({...spanRequest(span),target_language:state.language}),
+    });
+  } catch (error) { /* Save without meaning; a later inspector lookup can retry. */ }
+  await saveInternal(span);
 }
 
 function translationControl(sentence) {
@@ -740,8 +847,8 @@ function renderSentence(sentence) {
     event.stopPropagation();
     toggleSentence(sentence.id);
   });
-  controls.appendChild(mark);
-  if ((canSpeak && state.sourceLanguage !== "nl") || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
+  if (state.capabilities?.mosaic !== false) controls.appendChild(mark);
+  if ((canSpeak && state.capabilities?.speech_language) || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
   node.appendChild(controls);
   if (state.sourceLanguage === "nl" || /[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
     const translation = translationControl(sentence);
@@ -821,13 +928,14 @@ function sourceOffset(source, point, edge) {
  */
 function selectionSpan(range) {
   if (!range || range.collapsed) return null;
+  const boundaryError = state.capabilities?.internal_save ? "Select source text within one sentence." : ONE_SENTENCE;
   const ends = ["start", "end"].map((edge) => {
     const point = leafPoint(range[`${edge}Container`], range[`${edge}Offset`], edge);
     const source = point.node && closestNode(point.node, (n) => hasClass(n, "sentence-source"));
     return { edge, point, source };
   });
   if (!ends[0].source && !ends[1].source) return null;
-  if (ends[0].source !== ends[1].source) return { error: ONE_SENTENCE };
+  if (ends[0].source !== ends[1].source) return { error: boundaryError };
   const source = ends[0].source;
   const holder = closestNode(source, (n) => hasClass(n, "sentence"));
   const sentence = holder && state.sentences.find((s) => String(s.id) === holder.dataset.sentence);
@@ -836,7 +944,16 @@ function selectionSpan(range) {
   const end = sourceOffset(source, ends[1].point, "end");
   if (start === null || end === null || end <= start) return null;
   const text = Array.from(sentence.text).slice(start, end).join("");
-  if (!HAN_ONLY.test(text)) return { error: ONE_SENTENCE };
+  if (state.capabilities?.internal_save) {
+    const chars = Array.from(sentence.text);
+    let left = start, right = end;
+    while (left < right && /\s/.test(chars[left])) left++;
+    while (right > left && /\s/.test(chars[right-1])) right--;
+    const selected = chars.slice(left,right).join("");
+    if (!selected || Array.from(selected).length > 200) return {error:"Select a word or expression within one sentence (up to 200 characters)."};
+    return {sentenceId:sentence.id,start:left,end:right,text:selected};
+  }
+  if (!HAN_ONLY.test(text)) return { error: boundaryError };
   return { sentenceId: sentence.id, start, end, text };
 }
 
@@ -868,12 +985,15 @@ function refreshSelectionActions() {
     return;
   }
   // Expressions and Hanly are Chinese lexical tools; other languages keep plain selection.
-  const span = state.sourceLanguage === "zh" ? selectionSpan(range) : null;
+  const span = (state.capabilities?.internal_save || state.sourceLanguage === "zh") ? selectionSpan(range) : null;
   if (!span || state.lexeme || state.open) { hideSelectionActions(); return; }
   state.selection = span.error ? null : span;
   el("selection-text").textContent = span.error || span.text;
   el("selection-text").classList.toggle("bad", Boolean(span.error));
-  el("selection-expression").disabled = Boolean(span.error) || Array.from(span.text).length < 2;
+  el("selection-expression").textContent = state.capabilities?.internal_save ? "Save expression" : "Make expression";
+  el("selection-hanly").hidden = !state.capabilities?.hanly;
+  el("selection-text").setAttribute("lang", state.sourceLanguage || "zh");
+  el("selection-expression").disabled = Boolean(span.error) || (!state.capabilities?.internal_save && Array.from(span.text).length < 2);
   el("selection-hanly").disabled = Boolean(span.error);
   el("selection-actions").hidden = false;
 }
@@ -977,9 +1097,16 @@ function render(data) {
   state.audioNotice = false;
   state.sentences = data.sentences;
   state.glossary = data.glossary || {};
+  state.savedVocabulary = data.saved_vocabulary || [];
   state.sourceLanguage = data.language || "zh";
+  state.capabilities = data.capabilities || (state.sourceLanguage === "nl"
+    ? {lexical_inspector:"contextual",speech_language:"nl-NL",pinyin:false,hanly:false,mosaic:false,internal_save:true}
+    : state.sourceLanguage === "zh" ? {lexical_inspector:"chinese",speech_language:"zh-CN",pinyin:true,hanly:true,mosaic:true,internal_save:false}
+    : {lexical_inspector:null,speech_language:"",pinyin:false,hanly:false,mosaic:false,internal_save:false});
+  el("counters").hidden = !state.capabilities.hanly && !state.capabilities.mosaic;
+  el("attribution").hidden = state.capabilities.lexical_inspector !== "chinese";
   el("text").setAttribute("lang", state.sourceLanguage);
-  el("pinyin-toggle").hidden = data.language === "nl";
+  el("pinyin-toggle").hidden = !state.capabilities.pinyin;
   state.available = { hanly: data.hanly_available, mosaic: data.mosaic_available };
   state.reasons = { hanly: data.hanly_error, mosaic: data.mosaic_error };
   hideSelectionActions();
@@ -1180,13 +1307,15 @@ el("lexeme-close").addEventListener("click", closeLexeme);
 el("scrim").addEventListener("click", dismissTop);
 el("lexeme-action").addEventListener("click", (event) => {
   event.stopPropagation();
+  if (state.capabilities?.internal_save) { saveInspector(); return; }
   const { glyph, sentenceId, start, end, override } = state.lexeme;
   // A custom expression keeps its basket entry if the expression is later removed.
   toggleWord(glyph, sentenceId, override ? { start, end } : null);
   closeLexeme();
 });
 el("lexeme-remove-expression").addEventListener("click", removeExpression);
-el("selection-expression").addEventListener("click", () => runSelectionAction(makeExpression));
+el("lexeme-retry").addEventListener("click", loadContextualMeaning);
+el("selection-expression").addEventListener("click", () => runSelectionAction(state.capabilities?.internal_save ? saveSelectedExpression : makeExpression));
 el("selection-hanly").addEventListener("click", () => runSelectionAction(addSelectionToHanly));
 el("selection-cancel").addEventListener("click", () => {
   clearNativeSelection();
