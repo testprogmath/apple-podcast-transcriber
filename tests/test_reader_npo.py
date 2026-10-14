@@ -382,10 +382,12 @@ async def test_telegram_npo_import_opens_persisted_reader(config, store, url):
     handlers = BotHandlers(replace(config, reader_url="https://reader.example"), store)
     message = update("  " + url + "\n")
     async with client() as c:
-        with patch("podcast_bot.bot.NpoSourceAdapter", return_value=NpoSourceAdapter(c)):
-            with patch("podcast_bot.bot.from_text", side_effect=AssertionError("Chinese path")):
-                await handlers.handle(message, SimpleNamespace())
-                await handlers.handle(message, SimpleNamespace())
+        with (
+            patch("podcast_bot.bot.NpoSourceAdapter", return_value=NpoSourceAdapter(c)),
+            patch("podcast_bot.bot.from_text", side_effect=AssertionError("Chinese path")),
+        ):
+            await handlers.handle(message, SimpleNamespace())
+            await handlers.handle(message, SimpleNamespace())
     d = store.recent_reader_document(42)
     assert d.source_type == "npo" and d.language == "nl"
     assert d.metadata()["original_url"] == url
