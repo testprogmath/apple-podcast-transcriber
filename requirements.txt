@@ -15,7 +15,7 @@ feedparser==6.0.14
     # via -r requirements.in
 feedparser-sgmllib==2.1.0
     # via feedparser
-filelock==4.0.3
+filelock==4.1.0
     # via -r requirements.in
 h11==0.16.0
     # via
@@ -40,17 +40,17 @@ jieba==0.42.1
     # via -r requirements.in
 jiter==0.17.0
     # via openai
-openai==3.19.2
+openai==3.28.0
     # via -r requirements.in
-pydantic==2.13.5
+pydantic==2.14.0
     # via
     #   -r requirements.in
     #   openai
-pydantic-core==2.46.5
+pydantic-core==2.50.0
     # via pydantic
 pypinyin==0.55.0
     # via -r requirements.in
-python-dotenv==1.2.3
+python-dotenv==1.2.4
     # via -r requirements.in
 python-telegram-bot==22.8
     # via -r requirements.in
@@ -63,6 +63,7 @@ truststore==0.10.5
 typing-extensions==4.16.0
     # via
     #   anyio
+    #   httpx2
     #   openai
     #   pydantic
     #   pydantic-core
