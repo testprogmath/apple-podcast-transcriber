@@ -334,7 +334,16 @@ async def test_hanly_failure_is_surfaced_without_losing_the_collection(reader):
     assert row["status"] == "unconfirmed"
 
 
+def cache_mosaic_english(reader, document=None):
+    document = document or reader.document
+    for sentence in document.sentences():
+        reader.store.save_reader_translation(
+            document.id, sentence.id, sentence.text, "English translation for this sentence.", "en"
+        )
+
+
 async def test_mosaic_uploads_only_the_selected_canonical_sentences(reader):
+    cache_mosaic_english(reader)
     status, data = await call(
         reader,
         "POST",
@@ -352,6 +361,7 @@ async def test_mosaic_uploads_only_the_selected_canonical_sentences(reader):
 
 
 async def test_mosaic_uses_the_existing_segmentation(reader):
+    cache_mosaic_english(reader)
     await call(
         reader, "POST", f"/api/reader/{reader.document.id}/mandarin-mosaic", {"sentence_ids": [2]}
     )
@@ -372,6 +382,7 @@ async def test_invalid_sentence_ids_are_refused(reader, payload):
 
 
 async def test_mosaic_pack_association_is_stable_and_never_duplicates_sentences(reader):
+    cache_mosaic_english(reader)
     path = f"/api/reader/{reader.document.id}/mandarin-mosaic"
     first = (await call(reader, "POST", path, {"sentence_ids": [0]}))[1]
     second = (await call(reader, "POST", path, {"sentence_ids": [0, 2]}))[1]
@@ -385,6 +396,7 @@ async def test_mosaic_pack_association_is_stable_and_never_duplicates_sentences(
 
 
 async def test_mosaic_partial_failure_is_reported_per_sentence(reader):
+    cache_mosaic_english(reader)
     reader.services.mosaic.client.reject = {"他们获得了菲尔兹奖。"}
     status, data = await call(
         reader,
@@ -631,6 +643,7 @@ async def test_reader_uploads_do_not_disturb_the_study_pack_snapshot(config, sto
     reader = SimpleNamespace(
         api=api, store=store, services=services, headers={"x-telegram-init-data": valid_init_data()}
     )
+    cache_mosaic_english(reader, document)
     assert (
         await call(
             reader, "POST", f"/api/reader/{document.id}/mandarin-mosaic", {"sentence_ids": [0]}

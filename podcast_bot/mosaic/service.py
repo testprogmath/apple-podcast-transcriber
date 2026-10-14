@@ -182,6 +182,16 @@ class MosaicUploadService:
             "SELECT * FROM mosaic_packs WHERE source_id=?", (source_id,)
         ).fetchone()
         pack = json.loads(row["payload"])
+        if any(
+            not json.loads(r["payload"]).get("English", "").strip()
+            for r in self.storage.db.execute(
+                "SELECT payload FROM mosaic_sentences WHERE source_id=? AND status!='uploaded'",
+                (source_id,),
+            )
+        ):
+            raise UserError(
+                "A pending Mosaic sentence has no English translation. Existing records were not changed."
+            )
         if row["status"] != "created":
             with self.storage.db:
                 self.storage.db.execute(
@@ -245,6 +255,8 @@ class MosaicUploadService:
     ) -> UploadResult:
         """Reader entry point: stage the selected sentences, then upload the pending ones."""
         async with self._lock:
+            if any(not english.strip() for _, english in sentences):
+                raise UserError("English translation is required for Mandarin Mosaic.")
             self.stage(source_id, name, description, sentences, source_reference)
             return await self._upload(source_id)
 
