@@ -16,6 +16,8 @@ from .bkrs import RussianDictionary
 from .dictionary import Dictionary
 from .documents import MAX_FILE_BYTES, ReaderDocument, clean_title, from_file, from_text
 from .enrich import enrich
+from .languages import capabilities
+from .lexical import ContextualLexical, normalized
 from .media import asset_path, audio_response, grant_cookie, valid_grant
 from .npo import NpoSourceAdapter
 from .tokens import HAN
@@ -78,9 +80,13 @@ class ReaderApi:
         dictionary=None,
         russian=None,
         translations=None,
+        lexical=None,
     ):
         self.config, self.storage, self.services = config, storage, services
         self.translations = translations or SentenceTranslations(storage)
+        self.lexical = lexical or ContextualLexical(
+            storage, self.translations.client, self.translations.model
+        )
         self.dev_mode = dev_mode
         self.dictionary = Dictionary() if dictionary is None else dictionary
         self.russian = RussianDictionary() if russian is None else russian
@@ -113,19 +119,27 @@ class ReaderApi:
                 source = data.get("source_type")
                 if source == "pasted_text":
                     if (
-                        set(data) - {"source_type", "text", "title"}
+                        set(data) - {"source_type", "text", "title", "language"}
                         or not isinstance(data.get("text"), str)
                         or not isinstance(data.get("title", ""), str)
                     ):
                         raise ApiError(400, "Send text and an optional title.")
-                    document = from_text(owner, data["text"], data.get("title"))
+                    document = from_text(
+                        owner,
+                        data["text"],
+                        data.get("title"),
+                        language=self.document_language(data),
+                    )
                 elif source == "npo":
                     if set(data) != {"source_type", "url"} or not isinstance(data["url"], str):
                         raise ApiError(400, "Send an NPO Start episode URL.")
                     document = await NpoSourceAdapter().import_document(owner, data["url"])
                 elif source == "file":
                     if (
-                        set(data) != {"source_type", "filename", "content"}
+                        (
+                            set(data) - {"source_type", "filename", "content", "language"}
+                            or not {"source_type", "filename", "content"} <= set(data)
+                        )
                         or not isinstance(data["filename"], str)
                         or not isinstance(data["content"], str)
                     ):
@@ -138,7 +152,9 @@ class ReaderApi:
                         raise ApiError(400, "Invalid file content.") from None
                     if len(raw) > MAX_FILE_BYTES:
                         raise ApiError(413, "Reader files must be at most 512 KiB.")
-                    document = from_file(owner, raw, data["filename"])
+                    document = from_file(
+                        owner, raw, data["filename"], language=self.document_language(data)
+                    )
                 else:
                     raise ApiError(400, "Choose pasted_text, file or npo.")
                 self.storage.save_reader_document(document)
@@ -205,6 +221,8 @@ class ReaderApi:
             return json_response(200, await self.translations.resolve(document, sentence, language))
         if parts[:2] == ["api", "reader"] and len(parts) == 5 and parts[3] == "lexical-overrides":
             document = self.authorize(headers, parts[2])
+            if document.language != "zh":
+                raise ApiError(400, "Custom lexical segmentation requires a Chinese document.")
             if method != "DELETE":
                 raise ApiError(405, "Use DELETE to remove a custom expression.")
             if not re.fullmatch(r"[1-9][0-9]{0,17}", parts[4]):
@@ -214,6 +232,32 @@ class ReaderApi:
             document = self.authorize(headers, parts[2])
             if method == "GET" and len(parts) == 3:
                 return self.read(document)
+            if parts[3:] == ["saved-vocabulary"] and method == "GET":
+                return json_response(
+                    200, {"items": self.storage.saved_vocabulary(document.chat_id, document.id)}
+                )
+            if method == "POST" and parts[3:] in (["lexical"], ["saved-vocabulary"]):
+                if not capabilities(document.language)["internal_save"]:
+                    raise ApiError(400, "Contextual tools are unavailable for this language.")
+                data = self.payload(body)
+                target = data.pop("target_language", "ru")
+                if not isinstance(target, str) or target not in {"ru", "en"}:
+                    raise ApiError(400, "Choose ru or en for meaning.")
+                sentence, start, end, text = self.contextual_span(document, data)
+                if parts[3:] == ["lexical"]:
+                    meaning = await self.lexical.resolve(document, sentence, text, target)
+                    saved = any(
+                        item["normalized_text"] == normalized(text)
+                        and item["sentence_id"] == sentence.id
+                        and item["source_sentence"] == sentence.text
+                        for item in self.storage.saved_vocabulary(document.chat_id, document.id)
+                    )
+                    return json_response(
+                        200, {**meaning, "saved": saved, "text": text, "start": start, "end": end}
+                    )
+                meaning = self.lexical.cached(document, sentence, text, target) or {}
+                item = self.storage.save_vocabulary(document, sentence, text, target, meaning)
+                return json_response(200, {"item": item, "saved": True})
             if method == "POST" and document.language != "zh":
                 raise ApiError(400, "Lexical tools require a Chinese document.")
             if method == "POST" and parts[3:] == ["vocabulary-state"]:
@@ -254,6 +298,13 @@ class ReaderApi:
         return document
 
     @staticmethod
+    def document_language(data):
+        language = data.get("language", "zh")
+        if not isinstance(language, str) or language not in {"zh", "nl"}:
+            raise ApiError(400, "Choose zh or nl for the document language.")
+        return language
+
+    @staticmethod
     def payload(body: bytes) -> dict:
         try:
             data = json.loads(body.decode("utf-8"))
@@ -279,6 +330,10 @@ class ReaderApi:
                 "title": document.title,
                 "source_type": document.source_type,
                 "language": document.language,
+                "capabilities": capabilities(document.language),
+                "saved_vocabulary": self.storage.saved_vocabulary(document.chat_id, document.id)
+                if capabilities(document.language)["internal_save"]
+                else [],
                 "audio": audio,
                 "audio_status": audio_status,
                 "sentence_boundaries_approximate": any(
@@ -316,6 +371,8 @@ class ReaderApi:
         return document.tokens(sentences, self.dictionary, overrides)
 
     def glossary(self, document: ReaderDocument, glyphs) -> dict:
+        if document.language != "zh":
+            return {}
         lexemes = enrich(
             glyphs,
             document.glyph_meanings(),
@@ -341,6 +398,32 @@ class ReaderApi:
                 entry["es"] = lexeme.english_source
             glossary[glyph] = entry
         return glossary
+
+    def contextual_span(self, document, data):
+        if (
+            set(data) != SPAN_FIELDS
+            or not all(type(data[k]) is int for k in ("sentence_id", "start", "end"))
+            or not isinstance(data["text"], str)
+        ):
+            raise ApiError(400, "Invalid selection.")
+        sentence = next((s for s in document.sentences() if s.id == data["sentence_id"]), None)
+        start, end = data["start"], data["end"]
+        if (
+            sentence is None
+            or not 0 <= start < end <= len(sentence.text)
+            or sentence.text[start:end] != data["text"]
+        ):
+            raise ApiError(
+                409, "Select exact source text within one sentence. Reopen Reader if it changed."
+            )
+        while start < end and sentence.text[start].isspace():
+            start += 1
+        while end > start and sentence.text[end - 1].isspace():
+            end -= 1
+        text = sentence.text[start:end]
+        if not text or len(text) > 200 or not any(c.isalpha() for c in text):
+            raise ApiError(400, "Select a word or expression of at most 200 characters.")
+        return sentence, start, end, text
 
     def span(self, document: ReaderDocument, data: dict, minimum: int = 1):
         """A browser selection as an exact slice of one canonical sentence, or a refusal.

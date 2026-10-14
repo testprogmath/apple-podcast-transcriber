@@ -15,6 +15,7 @@ from ..identity import collection_name, hanly_identity
 from ..models import UserError
 from ..storage import now
 from ..study.translations import untranslated, wrong_language
+from .languages import dutch_tokens
 from .sentences import Sentence, paragraphs, parse_sentences
 from .tokens import HAN, Override, Token, segment
 
@@ -141,6 +142,8 @@ class ReaderDocument:
         dictionary=None,
         overrides: dict[int, list[Override]] | None = None,
     ) -> list[list[Token]]:
+        if self.language == "nl":
+            return [dutch_tokens(s.text) for s in sentences]
         if self.language != "zh":
             return [[Token(s.text, False, 0, len(s.text))] for s in sentences]
         known = self.known_chunks()
@@ -157,18 +160,27 @@ def short_title(text: str) -> str:
     return first or "Untitled text"
 
 
-def check_text(text: str) -> str:
+def check_text(text: str, language: str = "zh") -> str:
+    if language not in {"zh", "nl"}:
+        raise UserError("Reader supports zh or nl documents.")
     if not text.strip():
         raise UserError("Reader needs some text. Send Chinese text or a .txt/.md file.")
     if len(text) > MAX_CHARACTERS:
         raise UserError(f"Reader accepts at most {MAX_CHARACTERS:,} characters.")
-    if not HAN.search(text):
+    if language == "zh" and not HAN.search(text):
         raise UserError("Reader expects Chinese text.")
     return text
 
 
-def from_text(chat_id: int, text: str, title: str | None = None, source_type: str = "pasted_text"):
-    text = check_text(text.strip())
+def from_text(
+    chat_id: int,
+    text: str,
+    title: str | None = None,
+    source_type: str = "pasted_text",
+    *,
+    language: str = "zh",
+):
+    text = check_text(text.strip(), language)
     identifier = secrets.token_hex(16)
     return ReaderDocument(
         id=identifier,
@@ -180,6 +192,7 @@ def from_text(chat_id: int, text: str, title: str | None = None, source_type: st
         hanly_key="reader:" + identifier,
         mosaic_key="reader:" + identifier,
         created=now(),
+        source_data=json.dumps({"language": language}) if language != "zh" else "{}",
     )
 
 
@@ -231,7 +244,7 @@ def markdown_text(text: str) -> str:
     return text
 
 
-def from_file(chat_id: int, raw: bytes, filename: str) -> ReaderDocument:
+def from_file(chat_id: int, raw: bytes, filename: str, *, language: str = "zh") -> ReaderDocument:
     name = file_name(filename)
     if len(raw) > MAX_FILE_BYTES:
         raise UserError("Reader files must be at most 512 KiB.")
@@ -243,5 +256,5 @@ def from_file(chat_id: int, raw: bytes, filename: str) -> ReaderDocument:
         raise UserError("Reader needs a UTF-8 text file, not binary content.")
     if Path(name).suffix.lower() in {".md", ".markdown"}:
         text = markdown_text(text)
-    document = from_text(chat_id, text, Path(name).stem, "file")
+    document = from_text(chat_id, text, Path(name).stem, "file", language=language)
     return replace(document, source_reference=name)
