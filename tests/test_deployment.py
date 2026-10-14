@@ -106,6 +106,11 @@ def test_failed_release_rolls_back_and_removes_drain(tmp_path, monkeypatch):
             raise RuntimeError("unhealthy")
 
     monkeypatch.setattr(receiver, "wait_ready", ready)
+
+    def unexpected(keep):
+        raise AssertionError("a failed release must keep every image")
+
+    monkeypatch.setattr(receiver, "prune_releases", unexpected)
     monkeypatch.setattr(receiver.sys, "stdin", SimpleNamespace(buffer=None))
     with pytest.raises(RuntimeError):
         receiver.deploy(sha)
@@ -211,3 +216,75 @@ def test_image_copies_the_files_that_declare_dependencies():
         for name in line.split()[1:-1]
     }
     assert files and set(files) <= copied
+
+
+def test_prune_keeps_live_and_previous_releases_and_survives_refusals(monkeypatch):
+    calls = []
+    listing = (
+        "podcast-telegram-bot-release:new sha256:new\n"
+        "podcast-telegram-bot-release:old sha256:old\n"
+        "podcast-telegram-bot-release:stale sha256:stale\n"
+        "podcast-telegram-bot-release:busy sha256:busy\n"
+    )
+
+    def run(args):
+        calls.append(args)
+        if args[:3] == ["docker", "image", "ls"]:
+            assert args[-1] == receiver.RELEASES
+            return listing.encode()
+        if args[-1].endswith(":busy"):
+            raise RuntimeError("image is in use")
+        return b""
+
+    monkeypatch.setattr(receiver, "run", run)
+    assert receiver.prune_releases({"sha256:new", "sha256:old"}) == 1
+    removed = [args[-1] for args in calls if args[:3] == ["docker", "image", "rm"]]
+    assert removed == ["podcast-telegram-bot-release:stale", "podcast-telegram-bot-release:busy"]
+
+
+def successful_deploy(tmp_path, monkeypatch, prune):
+    sha = "a" * 40
+    monkeypatch.setattr(receiver, "STATE", tmp_path)
+    monkeypatch.setattr(receiver, "DRAIN", tmp_path / "drain")
+    monkeypatch.setattr(receiver.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0))
+    monkeypatch.setattr(receiver, "current_main", lambda: sha)
+    monkeypatch.setattr(
+        receiver,
+        "inspect_container",
+        lambda: {"Image": "old-id", "Config": {"Healthcheck": {"Test": ["CMD", "probe"]}}},
+    )
+    monkeypatch.setattr(receiver, "backup", lambda _: None)
+    monkeypatch.setattr(receiver, "compose_command", lambda _: ["docker", "compose"])
+    monkeypatch.setattr(receiver, "drain", lambda: None)
+    monkeypatch.setattr(
+        receiver,
+        "run",
+        lambda args: json.dumps(
+            [{"Id": "new-id", "Config": {"Labels": {"org.opencontainers.image.revision": sha}}}]
+        ).encode(),
+    )
+    written = []
+    monkeypatch.setattr(receiver, "write_image", written.append)
+    monkeypatch.setattr(receiver, "wait_ready", lambda image, **kwargs: None)
+    monkeypatch.setattr(receiver, "prune_releases", prune)
+    monkeypatch.setattr(receiver.sys, "stdin", SimpleNamespace(buffer=None))
+    receiver.deploy(sha)
+    return sha, written
+
+
+def test_successful_deploy_prunes_all_but_live_and_previous(tmp_path, monkeypatch, capsys):
+    kept = []
+    sha, written = successful_deploy(tmp_path, monkeypatch, lambda keep: kept.append(keep) or 3)
+    assert kept == [{"new-id", "old-id"}]
+    assert written == [f"podcast-telegram-bot-release:{sha}"]
+    assert "Removed 3 old release images" in capsys.readouterr().out
+
+
+def test_failed_pruning_never_rolls_back_a_live_release(tmp_path, monkeypatch, capsys):
+    def broken(keep):
+        raise RuntimeError("docker unavailable")
+
+    sha, written = successful_deploy(tmp_path, monkeypatch, broken)
+    assert written == [f"podcast-telegram-bot-release:{sha}"]
+    assert (tmp_path / "current-sha").read_text() == sha + "\n"
+    assert "Old release images were not pruned" in capsys.readouterr().out

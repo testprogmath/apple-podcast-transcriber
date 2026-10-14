@@ -16,6 +16,13 @@ and the check is skipped. Everything else is identical, including draining, the 
 the image revision check, readiness and rollback. Both modes serialise on the same file lock, so
 a dispatched branch and an automatic main release cannot interleave; the later one simply wins.
 
+After a release is live and healthy, the helper removes every other `podcast-telegram-bot-release`
+image except the one it replaced, which stays as the rollback target. Each release image is about
+1.5 GB; without this, 38 of them filled the server's 75 GB disk in October 2026 and the next
+deployment failed at the SQLite backup with `OperationalError`. Pruning runs only after success,
+and a pruning failure is reported but never rolls back the live release. Older releases can still
+be restored by dispatching their commit.
+
 Dispatching is gated by write access to the repository, the same permission as merging to main.
 Add required reviewers to the `production` environment if that should be a second pair of eyes.
 
