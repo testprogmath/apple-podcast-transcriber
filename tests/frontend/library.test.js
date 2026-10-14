@@ -155,4 +155,17 @@ test("library request failure is retryable",async()=>{
   fail=false;e.nodes["library-retry"].click();await settle();
   assert.equal(e.nodes["library-retry"].hidden,true);
 });
+test("NPO URL uses import and Dutch renders without Chinese controls",async()=>{
+  const dutch={...DOC,language:"nl",source_type:"npo",glossary:{},hanly_available:false,mosaic_available:false,
+    sentences:[{id:0,text:"Hallo wereld.",tokens:[{t:"Hallo wereld.",w:false}],source_start:1,source_end:2}]};
+  const e=start({respond:(p,o)=>o.method==="POST"?ok({id:ID}):p===`/api/reader/${ID}`?ok(dutch):null});
+  await settle();e.nodes["new-text"].click();e.nodes["new-text-input"].value="https://npo.nl/start/afspelen/een-dunne-lijn";
+  e.nodes["create-reader"].click();await settle();
+  assert.deepEqual(JSON.parse(e.calls.find(c=>c.method==="POST").body),{source_type:"npo",url:"https://npo.nl/start/afspelen/een-dunne-lijn"});
+  const opened=start({search:`?doc=${ID}`,respond:(p)=>p===`/api/reader/${ID}`?ok(dutch):null});
+  await settle();
+  assert.equal(opened.nodes["pinyin-toggle"].hidden,true);
+  assert.equal(opened.body.querySelectorAll(".word").length,0);
+  assert.equal(opened.nodes.text.getAttribute("lang"),"nl");
+});
 (async()=>{let failed=0;for(const [name,fn] of tests){try{await fn();console.log(`✓ ${name}`);}catch(e){failed++;console.error(name,e);}}console.log(`${tests.length-failed}/${tests.length} library frontend tests passed`);if(failed)process.exitCode=1;})();
