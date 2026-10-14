@@ -1,6 +1,10 @@
 # NPO Start subtitle import
 
-Paste a public HTTPS `npo.nl/start/afspelen/<slug>` episode URL into **New text**.
+Send a public NPO Start episode URL directly to the Telegram bot to import it and
+receive an **Open Reader** button. Authorization and Reader configuration are
+checked before fetching; the existing adapter and persistence are reused.
+
+Alternatively, paste a public HTTPS `npo.nl/start/afspelen/<slug>` episode URL into **New text**.
 The existing documents POST endpoint accepts `{"source_type":"npo","url":"…"}`.
 Authenticated ownership, library, rename, reading position and translation are reused.
 Chinese text/file imports retain their existing behavior.
