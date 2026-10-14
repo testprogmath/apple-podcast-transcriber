@@ -366,3 +366,72 @@ def test_lyrics_markers_preserve_raw(raw, visible):
     assert cues[0].raw_text == raw
     assert cues[0].text == visible
     assert n.reconstruct(cues)[0] == visible
+
+
+@pytest.mark.parametrize(
+    "url", [URL, "https://npo.nl/start/afspelen/het-verhaal-van-nederland-de-tweede-wereldoorlog_2"]
+)
+async def test_telegram_npo_import_opens_persisted_reader(config, store, url):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from test_reader import update
+
+    from podcast_bot.bot import BotHandlers
+
+    handlers = BotHandlers(replace(config, reader_url="https://reader.example"), store)
+    message = update("  " + url + "\n")
+    async with client() as c:
+        with patch("podcast_bot.bot.NpoSourceAdapter", return_value=NpoSourceAdapter(c)):
+            with patch("podcast_bot.bot.from_text", side_effect=AssertionError("Chinese path")):
+                await handlers.handle(message, SimpleNamespace())
+                await handlers.handle(message, SimpleNamespace())
+    d = store.recent_reader_document(42)
+    assert d.source_type == "npo" and d.language == "nl"
+    assert d.metadata()["original_url"] == url
+    assert d.sentences()[0].source_start == 9.4
+    assert len(store.reader_library(42)) == 1
+    reply = message.effective_message.reply_text.call_args
+    assert (
+        reply.kwargs["reply_markup"]
+        .inline_keyboard[0][0]
+        .web_app.url.endswith(f"/reader/?doc={d.id}")
+    )
+    assert "Chinese" not in reply.args[0] and "Hanly" not in reply.args[0]
+    assert store.claim() is None
+
+
+async def test_telegram_npo_errors_and_authorization(config, store):
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from test_reader import update
+
+    from podcast_bot.bot import BotHandlers
+
+    adapter = NpoSourceAdapter()
+    adapter.import_document = AsyncMock(side_effect=UserError("NPO import: subtitle not found."))
+    enabled = replace(config, reader_url="https://reader.example")
+    with patch("podcast_bot.bot.NpoSourceAdapter", return_value=adapter):
+        denied = update(URL, 99)
+        await BotHandlers(enabled, store).handle(denied, SimpleNamespace())
+        denied.effective_message.reply_text.assert_not_called()
+        adapter.import_document.assert_not_called()
+        disabled = update(URL)
+        await BotHandlers(replace(enabled, reader_enabled=False), store).handle(
+            disabled, SimpleNamespace()
+        )
+        adapter.import_document.assert_not_called()
+        missing_url = update(URL)
+        await BotHandlers(replace(enabled, reader_url=""), store).handle(
+            missing_url, SimpleNamespace()
+        )
+        adapter.import_document.assert_not_called()
+        message = update(URL)
+        await BotHandlers(enabled, store).handle(message, SimpleNamespace())
+        assert (
+            message.effective_message.reply_text.call_args.args[0]
+            == "NPO import: subtitle not found."
+        )
+    assert store.recent_reader_document(42) is None

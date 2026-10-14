@@ -37,6 +37,8 @@ from .pipeline import Pipeline, cleanup_abandoned
 from .queue import Worker
 from .reader.api import ReaderApi
 from .reader.documents import MAX_FILE_BYTES, file_name, from_file, from_text, from_transcript
+from .reader.npo import NpoSourceAdapter
+from .reader.npo import valid_url as valid_npo_url
 from .reader.server import ReaderServer
 from .resolver.apple import parse_url
 from .storage import Storage, request_key
@@ -61,7 +63,7 @@ Use /language before uploading to choose the subtitle language.
 /language zh — default podcast language (zh, de, en, nl)
 /native ru — language for translations and explanations
 /regenerate [HSK4] — rebuild the latest study pack without speech-to-text
-/reader — open the Reader library; paste text or upload TXT/Markdown
+/reader — open the Reader library; paste Chinese text, send an NPO Start link or upload TXT/Markdown
 /hanly — merge selected vocabulary into the latest episode collection
 /add_hanly 不知不觉 — add any Chinese word, phrase or sentence to Hanly as one card
 /mosaic — upload the latest Chinese study sentences to Mandarin Mosaic
@@ -170,7 +172,12 @@ class BotHandlers:
         self.storage.save_reader_document(document)
         count = len(document.sentences())
         await message.reply_text(
-            f"📖 {document.title}\n{count} sentences ready. Tap words for Hanly, sentences for Mandarin Mosaic.",
+            f"📖 {document.title}\n{count} sentences ready. "
+            + (
+                "Open Reader to read and translate."
+                if document.language != "zh"
+                else "Tap words for Hanly, sentences for Mandarin Mosaic."
+            ),
             reply_markup=reader_markup(self.config, document.id),
         )
 
@@ -595,9 +602,16 @@ class BotHandlers:
             if command == "/reader":
                 self.require_reader()
                 await message.reply_text(
-                    "📖 Reader — paste Chinese text or upload a .txt/.md file.",
+                    "📖 Reader — paste Chinese text, send an NPO Start link or upload a .txt/.md file.",
                     reply_markup=reader_markup(self.config),
                 )
+                return
+            if not command and valid_npo_url(text.strip()):
+                self.require_reader()
+                document = await NpoSourceAdapter().import_document(
+                    update.effective_chat.id, text.strip()
+                )
+                await self.open_reader(message, document)
                 return
             if not command and not re.search(r"https://podcasts\.apple\.com/", text):
                 await self.open_reader(message, from_text(update.effective_chat.id, text.strip()))
