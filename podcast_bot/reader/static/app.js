@@ -851,20 +851,39 @@ function renderSentence(sentence) {
   if (state.capabilities?.mosaic !== false) controls.appendChild(mark);
   if ((canSpeak && state.capabilities?.speech_language) || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
   if (state.capabilities?.internal_save) {
+    node.classList.add("sentence-learnable");
     const save = document.createElement("button");
     save.type = "button";
     save.className = "sentence-save";
-    save.textContent = "Save sentence";
+    save.setAttribute("aria-label", "Save sentence");
+    save.setAttribute("aria-pressed", "false");
+    save.title = "Save sentence for Review";
+    const bookmark = document.createElementNS(SVG_NS, "svg");
+    bookmark.setAttribute("class", "sentence-save-icon");
+    bookmark.setAttribute("viewBox", "0 0 24 24");
+    bookmark.setAttribute("aria-hidden", "true");
+    bookmark.setAttribute("focusable", "false");
+    const outline = document.createElementNS(SVG_NS, "path");
+    outline.setAttribute("d", "M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4Z");
+    outline.setAttribute("stroke", "currentColor");
+    outline.setAttribute("stroke-width", "1.7");
+    outline.setAttribute("stroke-linejoin", "round");
+    bookmark.appendChild(outline);
+    save.appendChild(bookmark);
     save.addEventListener("click", async (event) => {
       event.stopPropagation();
       if (save.disabled) return;
       save.disabled = true;
+      save.setAttribute("aria-busy", "true");
       try {
         await api(`/api/reader/${documentId}/saved-sentences`, {
           method: "POST", body: JSON.stringify({sentence_id: sentence.id, target_language: state.language}),
         });
-        save.textContent = "✓ Sentence saved";
+        save.setAttribute("aria-label", "Sentence saved");
+        save.setAttribute("aria-pressed", "true");
+        save.title = "Sentence saved for Review";
       } catch (error) { save.disabled = false; toast(error.message, true); }
+      finally { save.setAttribute("aria-busy", "false"); }
     });
     controls.appendChild(save);
   }

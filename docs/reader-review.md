@@ -136,7 +136,8 @@ and retries the same interaction and grade after uncertain network outcomes.
 
 Library → Review → Start Review → reveal → grade → completion → Library uses the
 same API helper and Telegram auth as Reader. No standalone login is introduced.
-Save sentence is a compact text action beside existing sentence controls.
+Save sentence is a compact bookmark icon beside existing sentence controls, with
+an accessible label and a filled saved state.
 
 System Web Speech uses the existing shared channel. Review specifies the target's
 speech locale (Dutch `nl-NL`) instead of changing Reader's language state. Starting
