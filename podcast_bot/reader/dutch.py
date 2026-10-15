@@ -2,8 +2,10 @@
 
 import logging
 import os
+import re
 import sqlite3
 import unicodedata
+from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
@@ -48,6 +50,36 @@ def article_evidence(pos, tags):
     return sorted({GENDER_ARTICLE[t] for t in tags if t in GENDER_ARTICLE}) if pos == "noun" else []
 
 
+def validate_metadata(metadata):
+    """Compatibility is separate from the content pin selected by an installer/operator."""
+    if not isinstance(metadata, dict) or any(not isinstance(v, str) for v in metadata.values()):
+        raise ValueError("invalid metadata value type")
+    if metadata.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("schema version mismatch")
+    if metadata.get("builder_version") != BUILDER_VERSION:
+        raise ValueError("builder version mismatch")
+    for key in ("source", "source_url", "license", "license_url"):
+        if metadata.get(key) != SNAPSHOT[key]:
+            raise ValueError("unsupported dictionary provenance")
+    if metadata.get("language") != "nl" or not metadata.get("attribution"):
+        raise ValueError("invalid dictionary attribution/language")
+    for key in ("compressed_sha256", "subset_sha256", "input_sha256"):
+        if not re.fullmatch(r"[a-f0-9]{64}", metadata.get(key, "")):
+            raise ValueError("invalid source checksum")
+    for key in ("wiktextract_revision", "wikitextprocessor_revision"):
+        if not re.fullmatch(r"[a-f0-9]{40}", metadata.get(key, "")):
+            raise ValueError("invalid extractor revision")
+    for key in ("dump_date", "extraction_date"):
+        date.fromisoformat(metadata.get(key, ""))
+    kind = metadata.get("input_kind")
+    if kind not in {"subset", "compressed"} or metadata["input_sha256"] != metadata.get(
+        f"{kind}_sha256"
+    ):
+        raise ValueError("invalid source input metadata")
+    if not metadata.get("transformation"):
+        raise ValueError("missing transformation")
+
+
 class DutchDictionary:
     def __init__(self, path=None, *, snapshot=None):
         self.db = None
@@ -75,19 +107,9 @@ class DutchDictionary:
             if not {"entries_key", "senses_entry", "surfaces_key", "forms_surface"} <= indexes:
                 raise ValueError("missing lookup indexes")
             metadata = dict(connection.execute("SELECT key,value FROM metadata"))
-            expected = {
-                **(SNAPSHOT if snapshot is None else snapshot),
-                "schema_version": SCHEMA_VERSION,
-                "builder_version": BUILDER_VERSION,
-                "language": "nl",
-            }
-            if any(metadata.get(k) != v for k, v in expected.items()):
-                raise ValueError("incompatible metadata")
-            kind = metadata.get("input_kind")
-            if kind not in {"subset", "compressed"} or metadata.get("input_sha256") != metadata.get(
-                f"{kind}_sha256"
-            ):
-                raise ValueError("invalid source input metadata")
+            validate_metadata(metadata)
+            if snapshot is not None and any(metadata.get(k) != v for k, v in snapshot.items()):
+                raise ValueError("content pin mismatch")
             if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise ValueError("integrity")
             self.db, self.metadata, self.reason = connection, metadata, ""
