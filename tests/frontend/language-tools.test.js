@@ -350,4 +350,78 @@ for (const message of ["Contextual lookup failed","Contextual meaning is unavail
   assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
   assert.equal(e.nodes["lexeme-retry"].hidden,false);
 });
+
+const sentenceRequests = e => e.calls.filter(c=>c.path.endsWith("/translation"));
+const translatedSentence = (id,translation) => ok({sentence_id:id,translation});
+for (const [language,value,label] of [["ru","Это перевод полного предложения.","Пример"],["en","This is the complete sentence translation.","Example"]]) test(`inspector reuses full-sentence translation endpoint for ${language}`,async()=>{
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?translatedSentence(0,value):null});
+  await settle();if(language==="en"){e.nodes["language-toggle"].click();await settle();}
+  word(e,"bevrijding").click();await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,value);
+  assert.equal(e.nodes["lexeme-sentence-translation"].getAttribute("lang"),language);
+  assert.equal(e.nodes["lexeme-context-label"].textContent,label);
+  assert.equal(e.nodes["lexeme-sentence-translation"].querySelectorAll(".hit").length,0);
+  assert(e.nodes["lexeme-context"].querySelector(".hit"));
+  assert.deepEqual(sentenceRequests(e).map(c=>c.body),[{language}]);
+  assert(e.calls.findIndex(c=>c.body?.mode==="dictionary")<e.calls.findIndex(c=>c.path.endsWith("/translation")),"local dictionary request starts first");
+});
+test("Reader cached sentence appears synchronously in inspector without duplicate request",async()=>{
+  const value="Уже переведённое предложение.";
+  const e=start({respond:p=>p.endsWith("/translation")?translatedSentence(0,value):null});
+  await settle();holder(e,0).querySelector(".translation-action").click();await settle();
+  assert.equal(sentenceRequests(e).length,1);
+  word(e,"bevrijding").click();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,value,"no loading frame for a cache hit");
+  await settle();assert.equal(sentenceRequests(e).length,1);
+  e.nodes["lexeme-close"].click();word(e,"Nederland").click();await settle();
+  assert.equal(sentenceRequests(e).length,1,"same sentence shared by different inspected words");
+});
+test("pending sentence request is shared with Reader; lexical channels render independently",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?pending:b?.mode==="dictionary"?localResult(b.text,[candidate("bevrijding",{article:"de"})]):null});
+  await settle();holder(e,0).querySelector(".translation-action").click();
+  word(e,"bevrijding").click();await settle();
+  assert.equal(sentenceRequests(e).length,1);
+  assert.match(e.nodes["lexeme-sentence-translation"].textContent,/Перевод предложения…/);
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/de bevrijding/);
+  assert.equal(e.nodes["lexeme-senses"].textContent,"освобождение");
+  assert.match(e.nodes["lexeme-context"].textContent,/Met de bevrijding/);
+  complete(translatedSentence(0,"Перевод готов."));await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Перевод готов.");
+  assert.equal(holder(e,0).querySelector(".translation-text").textContent,"Перевод готов.");
+});
+test("sentence failure leaves dictionary, lexical result, Dutch example and Save functional",async()=>{
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?error("private provider error"):b?.mode==="dictionary"?localResult(b.text,[candidate("bevrijding",{article:"de"})]):null});
+  await settle();word(e,"bevrijding").click();await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Перевод предложения недоступен.");
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/de bevrijding/);
+  assert.equal(e.nodes["lexeme-senses"].textContent,"освобождение");
+  assert.match(e.nodes["lexeme-context"].textContent,/Met de bevrijding/);
+  e.nodes["lexeme-action"].click();await settle();assert.equal(e.nodes["lexeme-action"].textContent,"✓ Saved");
+});
+test("inspector sentence cache is reused by the normal Reader translation control",async()=>{
+  const e=start();await settle();word(e,"bevrijding").click();await settle();
+  const value=e.nodes["lexeme-sentence-translation"].textContent;
+  e.nodes["lexeme-close"].click();holder(e,0).querySelector(".translation-action").click();await settle();
+  assert.equal(holder(e,0).querySelector(".translation-text").textContent,value);
+  assert.equal(sentenceRequests(e).length,1);
+});
+test("language switch ignores stale sentence translation and uses per-target cache",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?(b.language==="ru"?pending:translatedSentence(0,"English sentence.")):null});
+  await settle();word(e,"bevrijding").click();await settle();e.nodes["language-toggle"].click();await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"English sentence.");
+  complete(translatedSentence(0,"Русское предложение."));await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"English sentence.");
+  e.nodes["language-toggle"].click();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Русское предложение.");
+  await settle();assert.equal(sentenceRequests(e).length,2);
+});
+test("late previous-sentence translation cannot replace current example",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const e=start({respond:p=>p.endsWith("/sentences/0/translation")?pending:p.endsWith("/sentences/1/translation")?translatedSentence(1,"Новое предложение."):null});
+  await settle();word(e,"bevrijding").click();await settle();word(e,"greep",1).click();await settle();
+  complete(translatedSentence(0,"Старое предложение."));await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Новое предложение.");
+});
 (async()=>{let failed=0;for(const [name,fn]of tests){try{await fn();console.log(`✓ ${name}`);}catch(e){failed++;console.error(name,e);}}console.log(`${tests.length-failed}/${tests.length} Dutch frontend tests passed`);if(failed)process.exitCode=1;})();

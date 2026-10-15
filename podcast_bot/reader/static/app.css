@@ -554,3 +554,5 @@ ruby { ruby-align: center; }
 #lexeme-dictionary-more { margin-top: 1rem; }
 .dictionary-credit summary { cursor: pointer; }
 .dictionary-credit a { color: inherit; }
+
+#lexeme-sentence-translation { margin: .4rem 0 0; color: var(--muted); line-height: 1.6; }

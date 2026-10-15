@@ -21,6 +21,7 @@ const state = {
   audioStatus: "",
   audioNotice: false,
   translationViews: [],
+  sentenceTranslationEntries: new Map(),
   vocabularyPending: new Set(),
   hanlyUploading: false,
   selection: null,
@@ -133,6 +134,7 @@ function applyLanguage(language) {
   if (state.lexeme) {
     renderLexemeBody(state.lexeme.glyph);
     if (state.capabilities?.internal_save) loadContextualMeaning();
+    loadInspectorSentenceTranslation();
   }
   state.translationViews.forEach((refresh) => refresh());
 }
@@ -615,6 +617,7 @@ async function loadDutchDictionary() {
 
 function renderLexemeBody(glyph) {
   renderDutchDictionary();
+  renderInspectorSentenceTranslation();
   el("lexeme-retry").hidden = true;
   el("lexeme-note").textContent = "";
   el("lexeme-pinyin").hidden = !state.capabilities?.pinyin && Boolean(state.capabilities);
@@ -633,7 +636,8 @@ function renderLexemeBody(glyph) {
     const dutch = state.capabilities?.local_dictionary === "dutch";
     el("lexeme-source").textContent = !dutch && entry ? "Generated contextual meaning" : "";
     el("lexeme-note").textContent = dutch ? "" : entry?.context_note || "";
-    el("lexeme-context-label").textContent = "In context";
+    el("lexeme-context-label").textContent = state.capabilities?.local_dictionary === "dutch"
+      ? state.language === "ru" ? "Пример" : "Example" : "In context";
     renderContext(glyph, state.lexeme.sentenceId);
     return;
   }
@@ -681,6 +685,44 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme-action").focus();
   loadDutchDictionary();
   if (state.capabilities?.internal_save) loadContextualMeaning();
+  loadInspectorSentenceTranslation();
+}
+
+/** Shares the sentence control's cache/pending request, never the lexical provider. */
+function renderInspectorSentenceTranslation() {
+  const node = el("lexeme-sentence-translation");
+  const lexeme = state.lexeme;
+  const entry = state.sentenceTranslationEntries.get(lexeme?.sentenceId);
+  node.hidden = state.capabilities?.local_dictionary !== "dutch" || !lexeme || !entry;
+  if (node.hidden) { node.textContent = ""; return; }
+  const language = state.language;
+  node.setAttribute("lang", language);
+  node.textContent = entry.cache[language] || (lexeme.sentenceTranslationErrors?.[language]
+    ? language === "ru" ? "Перевод предложения недоступен." : "Sentence translation unavailable."
+    : language === "ru" ? "Перевод предложения…" : "Translating sentence…");
+}
+
+async function loadInspectorSentenceTranslation() {
+  const lexeme = state.lexeme;
+  if (!lexeme || state.capabilities?.local_dictionary !== "dutch") return;
+  const entry = state.sentenceTranslationEntries.get(lexeme.sentenceId);
+  if (!entry) return;
+  const language = state.language;
+  renderInspectorSentenceTranslation();
+  if (entry.cache[language] || lexeme.sentenceTranslationRequests?.[language]) return;
+  lexeme.sentenceTranslationRequests ||= {};
+  lexeme.sentenceTranslationErrors ||= {};
+  lexeme.sentenceTranslationRequests[language] = true;
+  delete lexeme.sentenceTranslationErrors[language];
+  renderInspectorSentenceTranslation();
+  try {
+    await entry.load(language);
+  } catch (error) {
+    lexeme.sentenceTranslationErrors[language] = true;
+  } finally {
+    delete lexeme.sentenceTranslationRequests[language];
+    if (state.lexeme === lexeme && state.language === language) renderInspectorSentenceTranslation();
+  }
 }
 
 /** Lookup is occurrence/context-owned: never put Dutch senses in the glyph glossary. */
@@ -769,6 +811,21 @@ function translationControl(sentence) {
   content.hidden = true;
   const cache = {};
   const pending = {};
+  function load(language) {
+    if (cache[language]) return Promise.resolve(cache[language]);
+    if (!pending[language]) {
+      pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
+        method: "POST", body: JSON.stringify({ language }),
+      }).then((result) => {
+        if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
+          throw new Error("Invalid translation");
+        }
+        cache[language] = result.translation;
+      }).finally(() => { delete pending[language]; });
+    }
+    return pending[language];
+  }
+  state.sentenceTranslationEntries.set(sentence.id, {cache, load});
   let visible = false;
   let revision = 0;
   box.addEventListener("click", (event) => event.stopPropagation());
@@ -791,17 +848,7 @@ function translationControl(sentence) {
       label("Translating…");
       action.setAttribute("aria-busy", "true");
       try {
-        if (!pending[language]) {
-          pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
-            method: "POST", body: JSON.stringify({ language }),
-          }).then((result) => {
-            if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
-              throw new Error("Invalid translation");
-            }
-            cache[language] = result.translation;
-          }).finally(() => { delete pending[language]; });
-        }
-        await pending[language];
+        await load(language);
       } catch (error) {
         if (requestRevision !== revision) return;
         visible = false;

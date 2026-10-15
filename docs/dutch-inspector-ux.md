@@ -63,7 +63,7 @@ pronunciation or Save. Dictionary misses still allow contextual translation.
 
 15 new deterministic Python cases cover exact oorlog/vrijheid sentences, idiomatic
 greep and a selected phrase, RU/EN targets, response shape/verbosity failures,
-cache separation and unchanged non-Dutch behavior. Ten additional DOM cases cover
+cache separation and unchanged non-Dutch behavior. Eighteen additional DOM cases cover
 one contextual result, hidden legacy prose, target selection, source disclosure,
 entry/license links, order, provider unavailability, RU fallback-to-details transitions, source preservation
 and EN/RU switching. Existing failure, timeout,
@@ -71,7 +71,7 @@ miss, ambiguous noun, Save and Chinese tests also pass.
 
 - Focused Dutch inspector/dictionary/Reader language tests: **96 passed**.
 - Full Python suite: **1126 passed**.
-- Full frontend/DOM: **209 passed** (125 core, 35 Dutch, 18 library, 22 selection,
+- Full frontend/DOM: **217 passed** (125 core, 43 Dutch, 18 library, 22 selection,
   9 Review).
 - Ruff lint/format, JS syntax and `git diff --check`: passed.
 
@@ -92,3 +92,33 @@ are conservatively unavailable. **FOLLOW-UP:** evaluate live contextual quality
 only in an explicitly authorized provider run. **NO ISSUE:** artifact/schema,
 builder/distribution/morphology, Saved Vocabulary/Review, Chinese, Hanly and Mosaic
 implementation remain unchanged. No push or deployment is part of this task.
+
+
+## Full sentence translation in the inspector
+
+The preceding cleanup was already committed as `e1dbf8b` and `93e0445`; this is
+an explicit follow-up in the same worktree/branch. Dutch inspectors now show the
+full-sentence translation directly below the Dutch source under “Пример” (RU) or
+“Example” (EN). Only the selected Dutch source span is highlighted; no translated
+span alignment or extra lexical-provider output is requested.
+
+`translationControl` retains its existing sentence/language cache, pending requests,
+validation and endpoint. It exposes that same cache/loader through a view registry
+for the inspector. There is one cached value and one pending request per existing
+sentence control/target, shared in both directions. Cache hits render synchronously;
+backend study/cache lookup remains in the existing `SentenceTranslations` service.
+The dictionary request starts first; word and sentence translations load independently.
+Failure shows a short localized sentence-only unavailable message and preserves
+source, dictionary, lexical translation, speech and Save. Reopening the inspector or
+using the existing Reader sentence control can retry. Late results cannot replace
+another selected sentence or target language.
+
+Eight new deterministic frontend cases cover RU/EN output and labels, immediate
+cache hits without duplicate requests, shared in-flight requests, pending/loading,
+failure isolation, reverse cache reuse and stale sentence/language responses.
+All **217 frontend/DOM** and **1126 Python** tests passed after this follow-up;
+Ruff lint/format, JS syntax and diff checks passed. Browser acceptance used the real
+local dictionary plus independently mocked word/sentence translation responses.
+No live provider call, push or deployment occurred. Dictionary assets, morphology,
+lexical translation semantics, storage schemas, Review and integrations are untouched;
+Chinese regression tests pass. Final review found no merge blocker.
