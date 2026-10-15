@@ -434,7 +434,7 @@ ruby { ruby-align: center; }
 .sentence-controls { display: inline-flex; align-items: center; gap: 2px; }
 .sentence-controls button {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; padding: 0; margin: 0; border: 0;
+  flex: 0 0 40px; width: 40px; height: 40px; padding: 0; margin: 0; border: 0;
   border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer;
   font: inherit; vertical-align: middle;
 }
@@ -533,4 +533,12 @@ ruby { ruby-align: center; }
 .review-meaning { line-height: 1.6; }
 .review-grades { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.5rem; }
 
-.sentence-save { border: 0; background: transparent; color: inherit; opacity: .65; font: inherit; font-size: .75rem; padding: .2rem .4rem; cursor: pointer; }
+.sentence-save-icon { display: block; width: 20px; height: 20px; fill: none; }
+.sentence-save[aria-pressed="true"] { color: var(--blue); }
+.sentence-save[aria-pressed="true"] .sentence-save-icon { fill: currentColor; }
+.sentence-save[aria-busy="true"] { opacity: .5; cursor: wait; }
+
+@media (max-width: 520px) {
+  .sentence-learnable { grid-template-columns: minmax(0, 1fr); }
+  .sentence-learnable .sentence-controls { justify-self: end; }
+}

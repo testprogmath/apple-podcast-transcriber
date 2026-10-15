@@ -144,9 +144,15 @@ test("save complete sentence uses canonical identity, preferred language and ret
   const e=start({respond: p=>p.endsWith("/saved-sentences")?(++saves===1?error("Save failed"):ok({saved:true})):null});
   await settle();
   const save=holder(e,0).querySelector(".sentence-save");
-  assert.equal(save.textContent,"Save sentence");
+  assert.equal(save.textContent, "");
+  assert.equal(save.getAttribute("aria-label"), "Save sentence");
+  assert.equal(save.getAttribute("aria-pressed"), "false");
+  assert(save.querySelector("svg"));
   save.click();await settle();assert.equal(save.disabled,false);
-  save.click();await settle();assert.equal(save.textContent,"✓ Sentence saved");
+  save.click();await settle();assert.equal(save.getAttribute("aria-label"), "Sentence saved");
+  assert.equal(save.getAttribute("aria-pressed"), "true");
+  assert.equal(save.getAttribute("aria-busy"), "false");
+  assert.equal(save.textContent, "");
   assert.equal(save.disabled,true);
   const request=e.calls.filter(c=>c.path.endsWith("/saved-sentences")).at(-1);
   assert.deepEqual(request.body,{sentence_id:0,target_language:"ru"});
