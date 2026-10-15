@@ -41,3 +41,10 @@ update the snapshot date, entry count, sizes and checksum in this table. Verify 
 shasum -a 256 dictionary/cedict_ts.u8.gz
 python -m pytest -q tests/test_dictionary.py
 ```
+
+## Dutch raw Wiktionary projection
+
+Dutch uses a separate, optional artifact with its own builder, source pins and
+[notice](LICENSE-DUTCH.txt). No Dutch binary/raw dataset is committed here.
+See [build/deployment documentation](../docs/dutch-local-dictionary.md) and
+[artifact manifest](dutch-artifact.json). CC-CEDICT packaging above is unchanged.

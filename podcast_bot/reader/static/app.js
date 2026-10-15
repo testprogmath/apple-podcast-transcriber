@@ -499,7 +499,109 @@ function renderContext(glyph, sentenceId) {
   }
 }
 
+/** Local evidence and contextual generation deliberately have independent requests/state. */
+function lexicalRequest(span, mode = "contextual", language = state.language) {
+  const controller = new AbortController();
+  let timer;
+  const deadline = new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(mode === "dictionary" ? "Dictionary unavailable." : "Meaning timed out. Please retry."));
+      controller.abort();
+    }, mode === "dictionary" ? 5000 : 20000);
+  });
+  const request = api(`/api/reader/${documentId}/lexical`, {
+    method: "POST", signal: controller.signal,
+    body: JSON.stringify({...spanRequest(span), target_language: language,
+      ...(mode === "dictionary" ? {mode} : {})}),
+  }).then((result) => {
+    if (mode === "dictionary") {
+      if (typeof result.dictionary?.available !== "boolean" || !Array.isArray(result.dictionary.candidates))
+        throw new Error("Dictionary unavailable.");
+    } else if (typeof result.meaning !== "string" || !result.meaning.trim()) {
+      throw new Error("Meaning unavailable. Please retry.");
+    }
+    return result;
+  });
+  return Promise.race([request, deadline]).finally(() => clearTimeout(timer));
+}
+
+function dictionarySense(sense, showArticle) {
+  const li = document.createElement("li");
+  const grammar = new Set(["neuter", "masculine", "feminine", "common-gender", "countable", "uncountable"]);
+  const labels = (sense.labels || []).filter(t => !grammar.has(t));
+  li.textContent = [showArticle && sense.articles?.length ? sense.articles.join(" / ") : "",
+    labels.length ? `(${labels.join(", ")})` : "", ...(sense.glosses || [])].filter(Boolean).join(" ");
+  return li;
+}
+
+function dictionaryCandidate(candidate) {
+  const box = document.createElement("div");
+  box.className = "dictionary-candidate";
+  const articles = [...new Set(candidate.senses.flatMap(s => s.articles || []))];
+  const singleArticle = articles.length === 1 ? articles[0] + " " : "";
+  const heading = document.createElement("p");
+  heading.className = "dictionary-lemma";
+  heading.textContent = `${candidate.lemma !== state.lexeme.glyph ? "→ " : ""}${singleArticle}${candidate.lemma}`
+    + (candidate.plural.length ? ` · ${candidate.plural.join(", ")}` : "") + ` [${candidate.pos}]`;
+  box.appendChild(heading);
+  const senses = document.createElement("ul");
+  for (const sense of candidate.senses.slice(0, 2)) senses.appendChild(dictionarySense(sense, articles.length > 1));
+  box.appendChild(senses);
+  if (candidate.senses.length > 2 || candidate.diminutive.length) {
+    const more = document.createElement("details"), summary = document.createElement("summary");
+    summary.textContent = "More senses and forms"; more.appendChild(summary);
+    const rest = document.createElement("ul");
+    for (const sense of candidate.senses.slice(2)) rest.appendChild(dictionarySense(sense, articles.length > 1));
+    more.appendChild(rest);
+    if (candidate.diminutive.length) {
+      const diminutive = document.createElement("p");
+      diminutive.textContent = `Diminutive: ${candidate.diminutive.join(", ")}`; more.appendChild(diminutive);
+    }
+    box.appendChild(more);
+  }
+  const source = document.createElement("a");
+  source.textContent = "Wiktionary"; source.href = candidate.source_url;
+  source.target = "_blank"; source.rel = "noopener noreferrer";
+  box.appendChild(source);
+  return box;
+}
+
+function renderDutchDictionary() {
+  const visible = state.capabilities?.local_dictionary === "dutch";
+  el("lexeme-dictionary").hidden = !visible;
+  if (!visible) return;
+  const container = el("lexeme-dictionary-content"); container.textContent = "";
+  const result = state.lexeme?.dictionary;
+  el("lexeme-dictionary-label").textContent = result?.is_ambiguous
+    ? result.candidates.length > 1 ? `Dictionary · multiple analyses (${result.candidates.length})`
+      : "Dictionary · sense-dependent articles" : "Dictionary";
+  if (!result || !result.available || !result.candidates.length) {
+    container.textContent = !result ? "Loading dictionary…" : !result.available
+      ? "Dictionary unavailable. Contextual meaning remains available." : "No local dictionary entry. Contextual meaning may help.";
+    return;
+  }
+  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate));
+  if (result.candidates.length > 2) {
+    const more = document.createElement("details"), summary = document.createElement("summary");
+    summary.textContent = `Other analyses (${result.candidates.length - 2})`; more.appendChild(summary);
+    for (const candidate of result.candidates.slice(2)) more.appendChild(dictionaryCandidate(candidate));
+    container.appendChild(more);
+  }
+}
+
+async function loadDutchDictionary() {
+  const lexeme = state.lexeme;
+  if (!lexeme || state.capabilities?.local_dictionary !== "dutch") return;
+  try {
+    const result = await lexicalRequest({sentenceId:lexeme.sentenceId,start:lexeme.start,
+      end:lexeme.end,text:lexeme.glyph}, "dictionary");
+    lexeme.dictionary = result.dictionary;
+  } catch (error) { lexeme.dictionary = {available:false,candidates:[]}; }
+  if (state.lexeme === lexeme) renderDutchDictionary();
+}
+
 function renderLexemeBody(glyph) {
+  renderDutchDictionary();
   el("lexeme-retry").hidden = true;
   el("lexeme-note").textContent = "";
   el("lexeme-pinyin").hidden = !state.capabilities?.pinyin && Boolean(state.capabilities);
@@ -562,6 +664,7 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme").hidden = false;
   el("scrim").hidden = false;
   el("lexeme-action").focus();
+  loadDutchDictionary();
   if (state.capabilities?.internal_save) loadContextualMeaning();
 }
 
@@ -574,10 +677,9 @@ async function loadContextualMeaning() {
   lexeme.requests ||= {};
   if (lexeme.meanings[language]) { renderLexemeBody(lexeme.glyph); return; }
   try {
-    lexeme.requests[language] ||= api(`/api/reader/${documentId}/lexical`, {
-      method: "POST", body: JSON.stringify({ ...spanRequest({sentenceId:lexeme.sentenceId,
-        start:lexeme.start,end:lexeme.end,text:lexeme.glyph}), target_language:language }),
-    }).finally(() => { delete lexeme.requests[language]; });
+    lexeme.requests[language] ||= lexicalRequest({sentenceId:lexeme.sentenceId,
+      start:lexeme.start,end:lexeme.end,text:lexeme.glyph}, "contextual", language)
+      .finally(() => { delete lexeme.requests[language]; });
     const result = await lexeme.requests[language];
     lexeme.meanings[language] = result;
     // A completed save wins over an older in-flight lookup reporting unsaved.
@@ -621,9 +723,7 @@ async function saveInspector() {
 async function saveSelectedExpression(span) {
   // Meaning is optional: provider failure must not prevent a private source-preserving save.
   try {
-    await api(`/api/reader/${documentId}/lexical`, {
-      method:"POST", body:JSON.stringify({...spanRequest(span),target_language:state.language}),
-    });
+    await lexicalRequest(span);
   } catch (error) { /* Save without meaning; a later inspector lookup can retry. */ }
   await saveInternal(span);
 }

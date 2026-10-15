@@ -17,6 +17,7 @@ CAPABILITIES = {
     },
     "nl": {
         "lexical_inspector": "contextual",
+        "local_dictionary": "dutch",
         "speech_language": "nl-NL",
         "pinyin": False,
         "hanly": False,

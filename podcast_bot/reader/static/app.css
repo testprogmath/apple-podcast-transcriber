@@ -542,3 +542,11 @@ ruby { ruby-align: center; }
   .sentence-learnable { grid-template-columns: minmax(0, 1fr); }
   .sentence-learnable .sentence-controls { justify-self: end; }
 }
+
+#lexeme-dictionary { margin-bottom: 1.25rem; }
+.dictionary-candidate { margin: .65rem 0; overflow-wrap: anywhere; }
+.dictionary-candidate .dictionary-lemma { font-weight: 600; margin: .4rem 0; }
+.dictionary-candidate ul { padding-left: 1.2rem; margin: .35rem 0; }
+.dictionary-candidate details, #lexeme-dictionary-content > details { margin-top: .5rem; }
+.dictionary-candidate a, .dictionary-credit { font-size: .75rem; color: var(--muted); }
+.dictionary-credit { margin: .75rem 0; }
