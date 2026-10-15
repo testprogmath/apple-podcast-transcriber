@@ -223,7 +223,7 @@ function speakText(text, handlers = {}) {
   try {
     refreshVoices();
     utterance = new speech.Utterance(words);
-    utterance.lang = state.capabilities?.speech_language || "zh-CN";
+    utterance.lang = handlers.speechLanguage || state.capabilities?.speech_language || "zh-CN";
     const voice = utterance.lang === "nl-NL"
       ? speech.voices.find((v) => /^nl[-_]nl$/i.test(v.lang || ""))
         || speech.voices.find((v) => /^nl(?:[-_]|$)/i.test(v.lang || ""))
@@ -831,6 +831,7 @@ function renderSentence(sentence) {
   const node = document.createElement("span");
   node.className = "sentence";
   node.dataset.sentence = String(sentence.id);
+  node.id = `s-${sentence.id}`;
   const source = document.createElement("span");
   source.className = "sentence-source";
   node.appendChild(source);
@@ -849,6 +850,24 @@ function renderSentence(sentence) {
   });
   if (state.capabilities?.mosaic !== false) controls.appendChild(mark);
   if ((canSpeak && state.capabilities?.speech_language) || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
+  if (state.capabilities?.internal_save) {
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "sentence-save";
+    save.textContent = "Save sentence";
+    save.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (save.disabled) return;
+      save.disabled = true;
+      try {
+        await api(`/api/reader/${documentId}/saved-sentences`, {
+          method: "POST", body: JSON.stringify({sentence_id: sentence.id, target_language: state.language}),
+        });
+        save.textContent = "✓ Sentence saved";
+      } catch (error) { save.disabled = false; toast(error.message, true); }
+    });
+    controls.appendChild(save);
+  }
   node.appendChild(controls);
   if (state.sourceLanguage === "nl" || /[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
     const translation = translationControl(sentence);
@@ -1374,6 +1393,10 @@ if (documentId) {
 
 
 function showView(view) {
+  stopOriginal();
+  stopSpeaking();
+  el("review").hidden = view !== "review";
+  if (view !== "document") el("sentence-quality").hidden = true;
   for (const id of ["bar", "text", "attribution"]) el(id).hidden = view !== "document";
   el("library").hidden = view !== "library";
   el("new-document").hidden = view !== "create";
@@ -1513,4 +1536,160 @@ el("rename-save").addEventListener("click", async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+
+// Review uses the same authenticated API and speech channel as Reader.
+const reviewSession = {items: [], index: 0, epoch: 0, busy: false};
+function reviewButton(text, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = text;
+  button.addEventListener("click", action);
+  return button;
+}
+async function openReview() {
+  showView("review");
+  const epoch = ++reviewSession.epoch;
+  reviewSession.busy = false;
+  el("review-card").hidden = true;
+  el("review-start").hidden = true;
+  el("review-status").textContent = "Loading…";
+  try {
+    const data = await api("/api/reader/review");
+    if (epoch !== reviewSession.epoch) return;
+    el("review-status").textContent = data.due ? `${data.due} due` : "Nothing due right now.";
+    if (!data.due && data.next_due_at) el("review-status").textContent += ` Next: ${new Date(data.next_due_at).toLocaleString()}`;
+    el("review-start").textContent = "Start Review";
+    el("review-start").hidden = !data.due;
+  } catch (error) {
+    if (epoch !== reviewSession.epoch) return;
+    el("review-status").textContent = error.message;
+    el("review-start").hidden = false;
+    el("review-start").textContent = "Retry Review";
+  }
+}
+async function startReview() {
+  if (reviewSession.busy) return;
+  reviewSession.busy = true;
+  const epoch = ++reviewSession.epoch;
+  el("review-start").disabled = true;
+  try {
+    const data = await api("/api/reader/review", {method: "POST", body: JSON.stringify({listening: canSpeak})});
+    if (epoch !== reviewSession.epoch) return;
+    reviewSession.items = data.items;
+    reviewSession.index = 0;
+    el("review-start").hidden = true;
+    renderReviewCard();
+  } catch (error) {
+    if (epoch === reviewSession.epoch) el("review-status").textContent = error.message;
+  } finally {
+    if (epoch === reviewSession.epoch) reviewSession.busy = false;
+    el("review-start").disabled = false;
+  }
+}
+function reviewContext(card, blank = false) {
+  const context = document.createElement("p");
+  context.className = "review-context";
+  if (card.span) {
+    const chars = Array.from(card.text);
+    const [start, end] = card.span;
+    context.appendChild(document.createTextNode(chars.slice(0, start).join("")));
+    const target = document.createElement(blank ? "span" : "mark");
+    target.textContent = blank ? "_____" : chars.slice(start, end).join("");
+    context.appendChild(target);
+    context.appendChild(document.createTextNode(chars.slice(end).join("")));
+  } else context.textContent = card.text;
+  return context;
+}
+function renderReviewCard() {
+  stopSpeaking();
+  const box = el("review-card");
+  box.textContent = "";
+  const card = reviewSession.items[reviewSession.index];
+  box.hidden = !card;
+  if (!card) {
+    el("review-status").textContent = "Session complete. Your reviews are saved.";
+    el("review-start").hidden = false;
+    el("review-start").textContent = "Check due items";
+    return;
+  }
+  el("review-status").textContent = `${reviewSession.index + 1} / ${reviewSession.items.length}`;
+  const heading = document.createElement("h2");
+  heading.textContent = {recognition: "Recognition", cloze: "Cloze", listening: "Listening"}[card.exercise];
+  box.appendChild(heading);
+  if (card.exercise === "listening") {
+    box.appendChild(reviewButton("▶ Play sentence", () => {
+      speakText(card.text, {owner: "review", speechLanguage: card.speech_language});
+    }));
+  } else {
+    box.appendChild(reviewContext(card, card.exercise === "cloze"));
+    if (card.exercise === "recognition" && card.kind !== "sentence") {
+      const prompt = document.createElement("p");
+      prompt.textContent = `What does “${card.target}” mean here?`;
+      box.appendChild(prompt);
+    }
+  }
+  const epoch = reviewSession.epoch;
+  const reveal = reviewButton(card.exercise === "listening" ? "Show text" : card.kind === "sentence" ? "Show translation" : "Show answer", async () => {
+    if (reveal.disabled) return;
+    reveal.disabled = true;
+    try {
+      const answer = await api(`/api/reader/review/${card.id}/answer`, {method: "POST", body: "{}"});
+      if (epoch !== reviewSession.epoch) return;
+      reveal.hidden = true;
+      if (card.exercise !== "recognition") {
+        const old = box.querySelector(".review-context");
+        if (old) old.remove();
+        box.appendChild(reviewContext(card));
+      }
+      const meaning = document.createElement("p");
+      meaning.className = "review-meaning";
+      meaning.textContent = (card.target ? `${card.target} · ` : "") + answer.meaning;
+      box.appendChild(meaning);
+      const provenance = document.createElement("a");
+      provenance.href = `/reader/?doc=${encodeURIComponent(card.document_id)}#s-${card.sentence_id}`;
+      provenance.textContent = card.title;
+      box.appendChild(provenance);
+      const grades = document.createElement("div");
+      grades.className = "review-grades";
+      let pending = false;
+      let chosen = null;
+      for (const grade of ["Again", "Hard", "Good", "Easy"]) {
+        const button = reviewButton(grade, async () => {
+          if (pending || (chosen && chosen !== grade)) return;
+          chosen = grade;
+          pending = true;
+          for (const control of grades.children) control.disabled = true;
+          try {
+            await api(`/api/reader/review/${card.id}/grade`, {method: "POST", body: JSON.stringify({
+              grade: grade.toLowerCase(), exercise: card.exercise, interaction: card.interaction,
+            })});
+            if (epoch !== reviewSession.epoch) return;
+            reviewSession.index++;
+            renderReviewCard();
+          } catch (error) {
+            if (epoch !== reviewSession.epoch) return;
+            el("review-status").textContent = `${error.message} Retry ${grade}, or reopen Review.`;
+            button.disabled = false;
+          } finally { pending = false; }
+        });
+        grades.appendChild(button);
+      }
+      box.appendChild(grades);
+    } catch (error) {
+      if (epoch !== reviewSession.epoch) return;
+      reveal.disabled = false;
+      el("review-status").textContent = error.message;
+    }
+  });
+  box.appendChild(reveal);
+}
+el("review-open").addEventListener("click", openReview);
+el("review-start").addEventListener("click", startReview);
+el("review-back").addEventListener("click", () => {
+  reviewSession.epoch++;
+  reviewSession.busy = false;
+  loadLibrary();
 });

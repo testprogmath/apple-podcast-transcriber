@@ -144,6 +144,28 @@ class Storage:
           UNIQUE(owner_id,language,normalized_text,document_id,sentence_id,source_sentence));
         CREATE INDEX IF NOT EXISTS saved_vocabulary_owner_document
           ON saved_vocabulary(owner_id,document_id);
+        CREATE TABLE IF NOT EXISTS reader_saved_spans (
+          saved_item_id INTEGER PRIMARY KEY REFERENCES saved_vocabulary(id),
+          start INTEGER NOT NULL, end INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS reader_saved_sentences (
+          id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, document_id TEXT NOT NULL,
+          sentence_id INTEGER NOT NULL, language TEXT NOT NULL, source_sentence TEXT NOT NULL,
+          source_start REAL, source_end REAL, target_language TEXT NOT NULL, created TEXT NOT NULL,
+          UNIQUE(owner_id,document_id,sentence_id,source_sentence));
+        CREATE TABLE IF NOT EXISTS reader_review_state (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INTEGER NOT NULL,
+          vocabulary_id INTEGER UNIQUE REFERENCES saved_vocabulary(id),
+          sentence_id INTEGER UNIQUE REFERENCES reader_saved_sentences(id),
+          due_at TEXT NOT NULL, interval_days REAL NOT NULL DEFAULT 0,
+          ease REAL NOT NULL DEFAULT 2.5, review_count INTEGER NOT NULL DEFAULT 0,
+          lapse_count INTEGER NOT NULL DEFAULT 0, last_reviewed_at TEXT,
+          CHECK ((vocabulary_id IS NULL) != (sentence_id IS NULL)));
+        CREATE INDEX IF NOT EXISTS reader_review_due ON reader_review_state(owner_id,due_at,id);
+        CREATE TABLE IF NOT EXISTS reader_review_history (
+          id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL,
+          target_id INTEGER NOT NULL REFERENCES reader_review_state(id),
+          interaction TEXT NOT NULL UNIQUE, exercise_type TEXT NOT NULL, grade TEXT NOT NULL,
+          reviewed_at TEXT NOT NULL, previous_state TEXT NOT NULL, resulting_state TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS study_usage (id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL,
           key TEXT NOT NULL, step TEXT NOT NULL, model TEXT NOT NULL, input_chars INTEGER NOT NULL,
           input_tokens INTEGER, cached_input_tokens INTEGER, output_tokens INTEGER,
@@ -222,7 +244,7 @@ class Storage:
             )
         ]
 
-    def save_vocabulary(self, document, sentence, text, target, meaning):
+    def save_vocabulary(self, document, sentence, text, target, meaning, span=None):
         from .reader.lexical import normalized
 
         key = (
@@ -256,13 +278,22 @@ class Storage:
                     timestamp,
                 ),
             )
-        return dict(
-            self.db.execute(
-                "SELECT * FROM saved_vocabulary WHERE owner_id=? AND language=? AND normalized_text=? AND "
-                "document_id=? AND sentence_id=? AND source_sentence=?",
-                key,
-            ).fetchone()
-        )
+            item = dict(
+                self.db.execute(
+                    "SELECT * FROM saved_vocabulary WHERE owner_id=? AND language=? AND normalized_text=? AND "
+                    "document_id=? AND sentence_id=? AND source_sentence=?",
+                    key,
+                ).fetchone()
+            )
+            if span is not None:
+                start, end = span
+                if sentence.text[start:end] != text:
+                    raise ValueError("Invalid saved span")
+                self.db.execute(
+                    "INSERT OR IGNORE INTO reader_saved_spans VALUES (?,?,?)",
+                    (item["id"], start, end),
+                )
+        return item
 
     def reader_translation(
         self, document_id: str, sentence_id: int, source_text: str, language: str = "ru"

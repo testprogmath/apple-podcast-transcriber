@@ -20,6 +20,7 @@ from .languages import capabilities
 from .lexical import ContextualLexical, normalized
 from .media import asset_path, audio_response, grant_cookie, valid_grant
 from .npo import NpoSourceAdapter
+from .review import Review, ReviewError
 from .tokens import HAN
 from .translations import SentenceTranslations
 
@@ -108,6 +109,51 @@ class ReaderApi:
         if method == "GET" and path.startswith("/reader/"):
             return self.static(path[len("/reader/") :])
         parts = path.strip("/").split("/")
+        if parts[:3] == ["api", "reader", "review"]:
+            owner = self.authenticate(headers)
+            review = Review(self.storage, self.config.token)
+            try:
+                if len(parts) == 3 and method in {"GET", "POST"}:
+                    data = self.payload(body) if method == "POST" else {}
+                    if set(data) - {"listening"} or not isinstance(
+                        data.get("listening", False), bool
+                    ):
+                        raise ApiError(400, "Send only listening capability.")
+                    return json_response(200, review.batch(owner, data.get("listening", False)))
+                if (
+                    len(parts) == 5
+                    and re.fullmatch(r"[1-9][0-9]{0,17}", parts[3])
+                    and method == "POST"
+                ):
+                    if parts[4] == "grade":
+                        return json_response(
+                            200, review.grade(owner, int(parts[3]), self.payload(body))
+                        )
+                    if parts[4] == "answer":
+                        if self.payload(body):
+                            raise ApiError(400, "Answer accepts no source data.")
+                        return json_response(
+                            200,
+                            await review.answer(
+                                owner, int(parts[3]), self.lexical, self.translations
+                            ),
+                        )
+                raise ApiError(405, "Unsupported Review request.")
+            except ReviewError as exc:
+                raise ApiError(exc.status, exc.message) from None
+        if len(parts) == 5 and parts[:2] == ["api", "reader"] and parts[3] == "saved-sentences":
+            document = self.authorize(headers, parts[2])
+            if method != "DELETE" or not re.fullmatch(r"[1-9][0-9]{0,17}", parts[4]):
+                raise ApiError(405, "Use DELETE for a saved sentence.")
+            # Match the document as well as the authenticated owner.
+            row = self.storage.db.execute(
+                "SELECT id FROM reader_saved_sentences WHERE id=? AND owner_id=? AND document_id=?",
+                (int(parts[4]), document.chat_id, document.id),
+            ).fetchone()
+            if not row:
+                raise ApiError(404, "Unknown saved sentence.")
+            Review(self.storage, self.config.token).delete_sentence(document.chat_id, row["id"])
+            return json_response(200, {"deleted": True})
         if parts == ["api", "reader", "documents"]:
             owner = self.authenticate(headers)
             if method == "GET":
@@ -236,6 +282,26 @@ class ReaderApi:
                 return json_response(
                     200, {"items": self.storage.saved_vocabulary(document.chat_id, document.id)}
                 )
+            if method == "POST" and parts[3:] == ["saved-sentences"]:
+                if not capabilities(document.language)["internal_save"]:
+                    raise ApiError(400, "Sentence saving is unavailable for this language.")
+                data = self.payload(body)
+                if (
+                    set(data) - {"sentence_id", "target_language"}
+                    or type(data.get("sentence_id")) is not int
+                    or not isinstance(data.get("target_language", "ru"), str)
+                    or data.get("target_language", "ru") not in {"ru", "en"}
+                ):
+                    raise ApiError(400, "Send sentence_id and optional target_language.")
+                sentence = next(
+                    (s for s in document.sentences() if s.id == data["sentence_id"]), None
+                )
+                if sentence is None:
+                    raise ApiError(404, "Unknown Reader sentence.")
+                item = Review(self.storage, self.config.token).save_sentence(
+                    document, sentence, data.get("target_language", "ru")
+                )
+                return json_response(200, {"item": item, "saved": True})
             if method == "POST" and parts[3:] in (["lexical"], ["saved-vocabulary"]):
                 if not capabilities(document.language)["internal_save"]:
                     raise ApiError(400, "Contextual tools are unavailable for this language.")
@@ -256,7 +322,9 @@ class ReaderApi:
                         200, {**meaning, "saved": saved, "text": text, "start": start, "end": end}
                     )
                 meaning = self.lexical.cached(document, sentence, text, target) or {}
-                item = self.storage.save_vocabulary(document, sentence, text, target, meaning)
+                item = self.storage.save_vocabulary(
+                    document, sentence, text, target, meaning, (start, end)
+                )
                 return json_response(200, {"item": item, "saved": True})
             if method == "POST" and document.language != "zh":
                 raise ApiError(400, "Lexical tools require a Chinese document.")

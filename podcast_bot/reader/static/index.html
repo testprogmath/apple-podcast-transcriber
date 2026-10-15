@@ -18,8 +18,16 @@
   </div>
   <p id="library-status" role="status">Loading…</p>
   <button id="library-retry" type="button" class="secondary" hidden>Retry</button>
+  <button id="review-open" type="button" class="secondary">Review</button>
   <h2>Recent</h2>
   <div id="document-list"></div>
+</section>
+<section id="review" class="shelf" hidden>
+  <button id="review-back" type="button" class="secondary">← Library</button>
+  <h1>Review</h1>
+  <p id="review-status" role="status"></p>
+  <button id="review-start" type="button" class="primary">Start Review</button>
+  <article id="review-card" hidden></article>
 </section>
 <section id="new-document" class="shelf" hidden>
   <button id="create-back" type="button" class="secondary">← Reader</button>

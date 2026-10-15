@@ -68,6 +68,8 @@ The private chat has a Telegram command menu with Russian descriptions. Tap **Me
 
 ## Interactive Reader
 
+Dutch saved words, expressions and complete sentences feed internal contextual Review (Library → Review). See [Review v1](docs/reader-review.md) for exercises, scheduling, persistence and limitations.
+
 The Reader is a Telegram Mini App for reading Chinese and collecting material from it. Open it and you get the text in comfortable type, with every Chinese lexical item tappable and every sentence selectable.
 
 Two destinations, deliberately different:
