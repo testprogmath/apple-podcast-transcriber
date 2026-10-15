@@ -433,6 +433,14 @@ async def test_custom_expression_is_a_hanly_reader_word_while_it_exists(env):
 
 
 async def test_mosaic_and_sentence_identity_are_unchanged(env):
+    sentence = env.document.sentences()[0]
+    env.store.save_reader_translation(
+        env.document.id,
+        sentence.id,
+        sentence.text,
+        "Learning Chinese is not as difficult as imagined.",
+        "en",
+    )
     _, before = await call(env, "GET", f"/api/reader/{env.document.id}")
     await create(env, 0, "想象中")
     _, after = await call(env, "GET", f"/api/reader/{env.document.id}")

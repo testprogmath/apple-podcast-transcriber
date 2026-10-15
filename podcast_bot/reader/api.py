@@ -728,13 +728,24 @@ class ReaderApi:
                 or "Mandarin Mosaic upload is not configured on the server.",
             )
         chosen = self.selected(document, data)
-        translations = document.known_translations()
+        existing = service.sentence_status(document.mosaic_key)
+        prepared = []
         try:
+            # Resolve everything before staging or contacting Mosaic. Retries reuse
+            # exact cached translations; existing remote snapshots stay untouched.
+            for sentence in chosen:
+                if sentence.text in existing:
+                    continue
+                translated = await self.translations.resolve(document, sentence, "en")
+                english = translated["translation"].strip()
+                if not english:
+                    raise UserError("English translation is required for Mandarin Mosaic.")
+                prepared.append((sentence.text, english))
             result = await service.upload_sentences_for(
                 document.mosaic_key,
                 document.title,
                 DESCRIPTION[document.source_type],
-                [(s.text, translations.get(s.text, "")) for s in chosen],
+                prepared,
                 source_reference=document.source_reference or document.mosaic_key,
             )
         except UserError as exc:
