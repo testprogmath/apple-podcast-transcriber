@@ -21,7 +21,7 @@ The existing pip install command remains unchanged. Runtime dependency ranges li
 
 Repository settings: enable Actions and Dependabot alerts/security updates if disabled. Require **Python quality and tests** in a branch ruleset for `main` to enforce CI before merging; committed YAML does not set repository rules.
 
-Tests block unexpected networking and mock OpenAI, Telegram, Mandarin Mosaic, and Firebase/Firestore APIs. Real ffmpeg tests use generated local audio. See `VALIDATION.md` for results and validation boundaries. No paid call is required to run tests.
+Tests block unexpected networking and mock OpenAI, Telegram, Mandarin Mosaic, and Firebase/Firestore APIs. Real ffmpeg tests use generated local audio. No paid call is required to run tests.
 
 Modules: `resolver/`, `transcription/`, `reader/` (sentence parsing, lexical segmentation, documents, init-data validation, HTTP API/server, static Mini App), `study/` (typed schemas, source validation/chunking, prompts, API adapter/checkpoints, selection, renderers), plus `pipeline.py`, `storage.py`, `queue.py`, and `bot.py`. Additional derived outputs can be added within `study/` without changing speech recognition.
 
