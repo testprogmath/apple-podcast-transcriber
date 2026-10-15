@@ -8,7 +8,7 @@ Two destinations, deliberately different:
 
 **Hanly gets vocabulary.** Tapping a word opens it rather than filing it: a bottom sheet shows the glyph, its tone-mark pinyin, and its contextual meaning when the study pack has one, with a single `+ Add to Hanly` control. Nothing enters the basket until you press it, and reopening a selected word offers `✓ In Hanly — remove` instead. The header then shows `Hanly · 3`. Each entry remembers the sentence it was selected from, which becomes the card's study note; selecting the same word again from a different sentence keeps the first context rather than silently re-pointing the note. The Reader segments Chinese into lexical items and a tap picks one of those; a longer phrase goes through a native text selection (below), and either way Hanly receives an exact slice of the source sentence. Multi-character chunks that the study pipeline already extracted for an episode (`研究成果`, `做研究`) are recognised as single items ahead of the generic segmenter. Punctuation, whitespace and Latin text are not tappable.
 
-**Mandarin Mosaic gets sentences.** Tap a sentence's ○ marker and the whole sentence is selected. Tapping or long-pressing the text itself never selects a sentence: long-press belongs to native text selection. Uploading sends those complete sentences through the existing Mandarin Mosaic sentence API with the existing jieba segmentation. Whole documents are never uploaded.
+**Mandarin Mosaic gets sentences.** Tap a sentence's ○ marker and the whole sentence is selected. Tapping or long-pressing the text itself never selects a sentence: long-press belongs to native text selection. Uploading sends those complete sentences through the existing Mandarin Mosaic sentence API with the existing jieba segmentation. Whole documents are never uploaded. New sentences require English translations: the Reader reuses exact study or cached English translations and generates missing ones before contacting Mosaic. If translation fails, nothing new is sent and your selection is kept for retry. Existing Mosaic records are not repaired or overwritten; pending legacy records without English are blocked with an error.
 
 **Custom expressions come from native selection.** Long-press Chinese text and drag the platform's own selection handles across as many lexical items as you need, for example from `研究` to `成果`. A small bar at the bottom offers `Make expression` and `+ Add to Hanly`; Copy, Look Up and Translate stay in the platform menu. `Make expression` stores that exact span of that one sentence, and from then on the Reader shows it as one item with its own popup, whole-phrase pinyin, dictionary meaning when one exists, pronunciation and vocabulary state. The popup of such an item offers `Remove custom expression`, which brings back the automatic segmentation and leaves Hanly, Mosaic and translations alone. `+ Add to Hanly` puts the selected phrase in the Hanly basket without changing the segmentation. A selection must stay inside one sentence and contain only Chinese characters; anything else is refused with `Select Chinese text within one sentence.` rather than trimmed. Expressions are overrides by span: one occurrence, never every identical string, and they may not overlap. An expression is dropped silently if its stored text no longer matches the sentence, so a changed transcript never applies it to different text.
 
@@ -311,3 +311,61 @@ surfaces sparse-boundary warnings in status/completion. It never automatically
 retranscribes or calls a punctuation model. Whisper's limited prompt now starts with
 punctuation guidance, so a long episode title cannot truncate it away. This improves
 the request but cannot guarantee provider punctuation or correct recognition errors.
+
+## Library and standalone documents
+
+Reader works without processing a podcast. `/reader/` opens the library;
+`/reader/?doc=<id>` remains a direct link. The ← Reader link returns to the library.
+The shelf lists at most 100 documents by last opened (creation time for unopened
+items), with ID as a deterministic tie-breaker. Its API returns metadata only.
+Reloading a document preserves its URL and saved data.
+
+Normal paste into the textarea is always available. **Paste from clipboard** is
+optional: it reads only after a click and, if denied or unavailable, asks you to
+paste manually without erasing your text. Create failures keep the title and text.
+Titles are optional, deterministic, single-line Unicode text; automatic titles
+use the first non-empty line, up to 60 characters. Supplied/renamed titles have
+markup removed, whitespace folded, and a 120-character limit. Only outer
+whitespace is trimmed from pasted text; internal line breaks remain unchanged.
+
+File import shares one adapter between Telegram and the Mini App. It validates
+UTF-8 strictly, removes a BOM, rejects binary control bytes and keeps only a
+sanitized basename as source metadata. Markdown headings, lists, quotes, inline
+emphasis/link syntax and fence markers are removed conservatively; code contents
+and literal HTML remain plain inert text. It is not a Markdown renderer. No
+uploaded file blob is stored: only document text and safe filename metadata.
+The browser transports bounded bytes as base64 JSON (512 KiB becomes about
+683 KiB), below the existing 1 MiB HTTP body limit. The 200,000-character text
+limit also applies. There is no web/PDF/DOCX/EPUB import.
+
+**Rename** edits only the stored title and updated timestamp. Document ID,
+translation cache, Hanly/Mosaic keys and study selections remain unchanged.
+Existing podcast documents stay in the same table. Legacy `text` sources migrate
+to `pasted_text`; supported producers are `podcast`, `pasted_text`, and `file`.
+Future source adapters can produce the same entity; no web adapter is added.
+SQLite adds nullable `updated` and `last_opened` columns, backfills updated from
+created, and preserves IDs and integration data.
+
+Both standalone integration keys remain `reader:<document-id>`. Identical text
+created twice intentionally gets two documents and two keys. Rename itself makes
+no remote request: the existing Hanly merge updates its collection name on the
+next explicit upload, retaining the UUID; an existing Mosaic pack keeps its
+original name/snapshot. The podcast Hanly episode key and separate Reader Mosaic
+pack are unchanged. Existing Hanly Notes ownership/context rules are unchanged.
+
+All sources use the same segmentation, CC-CEDICT/pinyin, popup, baskets and
+translation endpoint. Translation remains lazy: exact study translation, then
+cached generated translation, then on-demand generation. Word pronunciation uses
+system Mandarin speech. The same sentence speaker button uses original podcast
+audio when aligned/available, otherwise system Mandarin speech; pasted/files go
+directly to speech without an absent-audio warning. Device speech availability
+still applies equally to all sources.
+
+Library/create/rename use validated Telegram initData and the existing single-user
+allowlist (the existing explicit local dev mode remains). Browser owner/chat IDs
+are rejected, never trusted. Titles/text/filenames are rendered with textContent;
+the existing CSP remains. Requests are bounded by the existing HTTP server.
+There is no create-request idempotency mechanism in the existing architecture:
+buttons prevent double-submit, but an explicit retry after a lost response can
+create another document; check the library first. No global text deduplication,
+delete, search, folders, or reading-position tracking is added.
