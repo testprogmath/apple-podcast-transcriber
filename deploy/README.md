@@ -77,3 +77,14 @@ On first deployment from a legacy image without a health check, the helper stops
 bot while holding SQLite’s writer lock, preventing a new claim during bootstrap. If a job
 has started, deployment fails safely and can be retried. Never use this key for an interactive
 shell or unrelated server administration.
+
+## Optional Dutch dictionary
+
+Install separately into the existing host `data/dictionaries` directory using
+[the explicit installer](../docs/dutch-dictionary-distribution.md), then set
+`READER_DUTCH_DICTIONARY=/app/data/dictionaries/current/dutch.sqlite3` in `.env`.
+The existing `./data:/app/data` volume retains generations across image replacement.
+No Compose, image build, startup download or forced-SSH deployment change is needed.
+Use an authorized operator shell or pre-stage assets through your normal file-transfer
+process; the image receive helper is not a general-purpose SSH installer endpoint.
+Restart the bot explicitly after changing the selected generation.

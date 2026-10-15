@@ -165,10 +165,21 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-kind", choices=("subset", "compressed"), default="subset")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--snapshot-json",
+        type=Path,
+        help="Operator-reviewed replacement for the default source pin",
+    )
     args = parser.parse_args()
     print(
         json.dumps(
-            build(args.source, args.output, source_kind=args.source_kind, overwrite=args.overwrite)
+            build(
+                args.source,
+                args.output,
+                source_kind=args.source_kind,
+                overwrite=args.overwrite,
+                snapshot=json.loads(args.snapshot_json.read_text()) if args.snapshot_json else None,
+            )
         )
     )
 
