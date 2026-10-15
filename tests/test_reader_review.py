@@ -342,3 +342,106 @@ def test_invalid_saved_span_rolls_back_vocabulary(reader):
     with pytest.raises(ValueError):
         reader.store.save_vocabulary(doc, doc.sentences()[0], "woord", "ru", {}, (0, 3))
     assert reader.store.saved_vocabulary(doc.chat_id, doc.id) == []
+
+
+def test_vocabulary_delete_cannot_orphan_span_or_rebind_to_new_occurrence(context):
+    import sqlite3
+
+    reader, doc, sentence, item, review = context
+    card = review.batch(doc.chat_id)["items"][0]
+    review.grade(doc.chat_id, card["id"], grade_data(card))
+    with pytest.raises(sqlite3.IntegrityError), reader.store.db:
+        reader.store.db.execute("DELETE FROM saved_vocabulary WHERE id=?", (item["id"],))
+    repeated = reader.store.save_vocabulary(
+        doc,
+        sentence,
+        item["text"],
+        "ru",
+        {"meaning": "во власти"},
+        (TEXT.index(item["text"]), TEXT.index(item["text"]) + len(item["text"])),
+    )
+    assert repeated["id"] == item["id"]
+    state, saved = review.target(doc.chat_id, card["id"])
+    assert review.card(state, saved, False)["span"] == card["span"]
+    assert state["review_count"] == 1
+    assert reader.store.db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    assert not reader.store.db.execute("PRAGMA foreign_key_check").fetchall()
+
+
+def test_unscheduled_vocabulary_delete_is_blocked_by_saved_span(context):
+    import sqlite3
+
+    reader, _, _, item, _ = context
+    with pytest.raises(sqlite3.IntegrityError), reader.store.db:
+        reader.store.db.execute("DELETE FROM saved_vocabulary WHERE id=?", (item["id"],))
+    assert reader.store.db.execute("SELECT count(*) FROM reader_saved_spans").fetchone()[0] == 1
+
+
+def test_explicit_child_cleanup_allows_resave_with_new_review_identity(context):
+    reader, doc, sentence, item, review = context
+    card = review.batch(doc.chat_id)["items"][0]
+    review.grade(doc.chat_id, card["id"], grade_data(card))
+    with reader.store.db:
+        reader.store.db.execute(
+            "DELETE FROM reader_review_history WHERE target_id=?", (card["id"],)
+        )
+        reader.store.db.execute("DELETE FROM reader_review_state WHERE id=?", (card["id"],))
+        reader.store.db.execute(
+            "DELETE FROM reader_saved_spans WHERE saved_item_id=?", (item["id"],)
+        )
+        reader.store.db.execute("DELETE FROM saved_vocabulary WHERE id=?", (item["id"],))
+    start = TEXT.index(item["text"])
+    new_item = reader.store.save_vocabulary(
+        doc, sentence, item["text"], "ru", {}, (start, start + len(item["text"]))
+    )
+    new_card = review.batch(doc.chat_id)["items"][0]
+    assert (
+        new_item["id"] == item["id"]
+    )  # Parent ID reuse is safe only after explicit child cleanup.
+    assert new_card["id"] > card["id"] and new_card["span"][0] == start
+    with pytest.raises(ReviewError):
+        review.grade(doc.chat_id, new_card["id"], grade_data(card))
+
+
+def test_sentence_service_delete_cleans_history_and_state_with_enforced_foreign_keys(context):
+    reader, doc, sentence, _, review = context
+    saved = review.save_sentence(doc, sentence, "ru")
+    card = next(c for c in review.batch(doc.chat_id)["items"] if c["kind"] == "sentence")
+    review.grade(doc.chat_id, card["id"], grade_data(card))
+    review.delete_sentence(doc.chat_id, saved["id"])
+    for table, column in (
+        ("reader_saved_sentences", "id"),
+        ("reader_review_state", "id"),
+        ("reader_review_history", "target_id"),
+    ):
+        key = saved["id"] if table == "reader_saved_sentences" else card["id"]
+        assert not reader.store.db.execute(
+            f"SELECT 1 FROM {table} WHERE {column}=?", (key,)
+        ).fetchone()
+    assert not reader.store.db.execute("PRAGMA foreign_key_check").fetchall()
+
+
+@pytest.mark.parametrize(
+    "table", ["reader_saved_spans", "reader_review_state", "reader_review_history"]
+)
+def test_open_rejects_preexisting_orphan_review_links(tmp_path, table):
+    import sqlite3
+
+    storage = Storage(tmp_path)
+    storage.db.execute("PRAGMA foreign_keys=OFF")
+    with storage.db:
+        if table == "reader_saved_spans":
+            storage.db.execute("INSERT INTO reader_saved_spans VALUES (999,0,5)")
+        elif table == "reader_review_state":
+            storage.db.execute(
+                "INSERT INTO reader_review_state(owner_id,vocabulary_id,due_at) VALUES (42,999,'2030-01-01')"
+            )
+        else:
+            storage.db.execute(
+                "INSERT INTO reader_review_history(owner_id,target_id,interaction,exercise_type,grade,reviewed_at,previous_state,resulting_state) VALUES (42,999,'x','recognition','good','2030-01-01','{}','{}')"
+            )
+    storage.db.close()
+    with pytest.raises(
+        sqlite3.IntegrityError, match=f"Invalid Reader review references in {table}"
+    ):
+        Storage(tmp_path)

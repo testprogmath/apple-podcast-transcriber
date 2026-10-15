@@ -51,6 +51,7 @@ class Storage:
         self.db = sqlite3.connect(self.root / "bot.sqlite3")
         self.db.row_factory = sqlite3.Row
         self.db.executescript("""
+        PRAGMA foreign_keys=ON;
         PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS jobs (
           id INTEGER PRIMARY KEY, url TEXT NOT NULL, language TEXT, model TEXT NOT NULL,
@@ -171,6 +172,16 @@ class Storage:
           input_tokens INTEGER, cached_input_tokens INTEGER, output_tokens INTEGER,
           timestamp TEXT NOT NULL, status TEXT NOT NULL, estimated_cost REAL);
         """)
+        # Review references must never silently rebind when an INTEGER PRIMARY KEY is reused.
+        # Existing databases with invalid links require explicit repair, not guessed cleanup.
+        for table in (
+            "reader_saved_spans",
+            "reader_review_state",
+            "reader_review_history",
+        ):
+            if self.db.execute(f"PRAGMA foreign_key_check({table})").fetchone():
+                self.db.close()
+                raise sqlite3.IntegrityError(f"Invalid Reader review references in {table}")
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(reader_documents)")}
         for column in ("updated", "last_opened"):
             if column not in columns:

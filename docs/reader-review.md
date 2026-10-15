@@ -36,6 +36,33 @@ on Review access. Original vocabulary rows remain intact. New targets are due at
 creation time. The due index bounds the returned batch; initialization may touch
 all of an owner's targets, but the collection is never sent to the client.
 
+## Referential integrity and deletion
+
+Every Storage connection enables SQLite foreign-key enforcement. The declared review
+foreign keys use default `ON DELETE NO ACTION` (no cascade). Opening a database with
+orphan saved-span, review-state or history references fails explicitly with
+`sqlite3.IntegrityError`; it does not silently delete evidence or guess new parents.
+
+A saved span belongs to exactly one vocabulary ID and is interpreted only against
+that item's immutable saved source snapshot. Vocabulary IDs themselves can be reused
+by SQLite, so referenced vocabulary rows cannot be deleted without explicit child
+cleanup. There is currently no vocabulary-delete API. An unreferenced vocabulary row
+can be deleted; after explicit cleanup/re-save a fresh AUTOINCREMENT review target
+ID prevents a stale interaction from applying to the new target.
+
+Sentence deletion through Review deliberately removes history, then state, then the
+saved sentence in one transaction. Direct SQL deletion of referenced sentence/state
+parents is blocked. Review history is otherwise retained.
+
+Saved targets intentionally have no foreign key to Reader documents or sentence IDs:
+they retain authentic source snapshots across re-imports. No document-delete API
+exists. Direct SQL document deletion leaves snapshots/state/history intact; cards can
+still show the saved context, but answer reveal returns an explicit unavailable error.
+Re-imports do not migrate saved offsets to new text. If sentence IDs/text change,
+Review keeps the original snapshot and uses only exact ID+text matches for lazy answer
+generation. Current-document links and saved timing can become stale after a source
+revision; source-version navigation is outside v1.
+
 ## Scheduler
 
 No scheduler dependency exists in the inspected main. V1 uses a small deterministic
