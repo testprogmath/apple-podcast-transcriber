@@ -149,6 +149,7 @@ test("save complete sentence uses canonical identity, preferred language and ret
   assert.equal(save.getAttribute("aria-pressed"), "false");
   assert(save.querySelector("svg"));
   save.click();await settle();assert.equal(save.disabled,false);
+  assert.equal(save.getAttribute("aria-busy"), "false");
   save.click();await settle();assert.equal(save.getAttribute("aria-label"), "Sentence saved");
   assert.equal(save.getAttribute("aria-pressed"), "true");
   assert.equal(save.getAttribute("aria-busy"), "false");
