@@ -1197,7 +1197,7 @@ function openBasket(kind) {
   const available = state.available[kind];
   const note = hanly
     ? "Selected words will be added to this document's Hanly collection."
-    : "Selected sentences will be added to this document's Mandarin Mosaic pack.";
+    : "Selected sentences will be added to this document's Mandarin Mosaic pack with English translations. Missing translations will be generated before uploading.";
   el("basket-note").textContent = available
     ? note
     : state.reasons[kind] || "Not configured on the server.";
