@@ -526,3 +526,11 @@ ruby { ruby-align: center; }
   font: inherit; font-size: 14px; text-decoration: underline; cursor: pointer;
 }
 #lexeme .link:disabled { opacity: .55; cursor: wait; }
+
+#review-card { margin-top: 2rem; border-top: 1px solid var(--border, #ddd); padding-top: 1rem; }
+.review-context { font-size: 1.4rem; line-height: 1.8; white-space: pre-wrap; }
+.review-context mark { background: transparent; color: inherit; border-bottom: 2px solid currentColor; }
+.review-meaning { line-height: 1.6; }
+.review-grades { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.5rem; }
+
+.sentence-save { border: 0; background: transparent; color: inherit; opacity: .65; font: inherit; font-size: .75rem; padding: .2rem .4rem; cursor: pointer; }

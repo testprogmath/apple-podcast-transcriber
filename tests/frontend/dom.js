@@ -92,6 +92,12 @@ class Node {
     return name in this.attrs ? this.attrs[name] : null;
   }
 
+  remove() {
+    if (!this.parentNode) return;
+    this.parentNode.children = this.parentNode.children.filter(child => child !== this);
+    this.parentNode = null;
+  }
+
   removeAttribute(name) {
     delete this.attrs[name];
   }

@@ -139,4 +139,16 @@ test("expression lookup failure still saves; save failure keeps native selection
  e.nodes["selection-expression"].click();await settle();assert.match(e.nodes.toast.textContent,/Save failed/);assert(e.selection.range);
  assert.equal(e.nodes["selection-expression"].disabled,false);
 });
+test("save complete sentence uses canonical identity, preferred language and retry handler",async()=>{
+  let saves=0;
+  const e=start({respond: p=>p.endsWith("/saved-sentences")?(++saves===1?error("Save failed"):ok({saved:true})):null});
+  await settle();
+  const save=holder(e,0).querySelector(".sentence-save");
+  assert.equal(save.textContent,"Save sentence");
+  save.click();await settle();assert.equal(save.disabled,false);
+  save.click();await settle();assert.equal(save.textContent,"✓ Sentence saved");
+  assert.equal(save.disabled,true);
+  const request=e.calls.filter(c=>c.path.endsWith("/saved-sentences")).at(-1);
+  assert.deepEqual(request.body,{sentence_id:0,target_language:"ru"});
+});
 (async()=>{let failed=0;for(const [name,fn]of tests){try{await fn();console.log(`✓ ${name}`);}catch(e){failed++;console.error(name,e);}}console.log(`${tests.length-failed}/${tests.length} Dutch frontend tests passed`);if(failed)process.exitCode=1;})();
