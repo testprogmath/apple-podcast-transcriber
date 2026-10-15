@@ -48,3 +48,6 @@ Dutch uses a separate, optional artifact with its own builder, source pins and
 [notice](LICENSE-DUTCH.txt). No Dutch binary/raw dataset is committed here.
 See [build/deployment documentation](../docs/dutch-local-dictionary.md) and
 [artifact manifest](dutch-artifact.json). CC-CEDICT packaging above is unchanged.
+
+Dutch release packaging, verified installation and rollback commands are in
+[distribution operations](../docs/dutch-dictionary-distribution.md).

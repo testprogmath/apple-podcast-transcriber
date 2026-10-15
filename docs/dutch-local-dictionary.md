@@ -211,28 +211,20 @@ upstream URL. Deploying a separately verified file through the existing persiste
 `./data:/app/data` mount avoids adding source downloads to runtime or image construction.
 The application image itself remains built the same way.
 
-Before distributing/installing, publish the artifact plus notice/manifest as one
-versioned asset set and retain the pinned raw/subset source in controlled artifact
-storage for future reproducibility. The upstream moving URL may cease serving this
-snapshot. Verify installed bytes against the manifest, e.g. on Linux:
-
-```sh
-sha256sum /path/to/dutch.sqlite3
-# Must equal d698f7098b5b44a7e32dbc0f01959899fe0467c6082ebb60b568fd3d8ff7248b
-```
-
-Copy the verified file and notice/manifest into ignored `data/dictionaries/`, readable
-by the configured container UID. Configure `.env`:
+Use the explicit, verified bundle installer described in
+[distribution operations](dutch-dictionary-distribution.md). It installs SQLite,
+manifest and attribution together under the existing persistent data mount.
+Configure `.env` after installation:
 
 ```dotenv
-READER_DUTCH_DICTIONARY=/app/data/dictionaries/dutch.sqlite3
+READER_DUTCH_DICTIONARY=/app/data/dictionaries/current/dutch.sqlite3
 ```
 
-Reader opens it read-only at startup; install/configuration requires a normal
-operator-controlled restart. Optionally mount the artifact separately with `:ro`
-for filesystem enforcement; this is not needed to change the SQLite connection's
-read-only/query-only behavior. Do not point at a partially copied artifact: install
-via a temporary file and atomic rename. No Docker/production restart was performed.
+Reader opens the resolved generation read-only at startup. Restart it explicitly
+after installing/upgrading/rolling back. Runtime validates compatible schema,
+builder and provenance metadata; compatible content updates no longer require an
+application update. The installer verifies the exact independently pinned manifest
+and all asset hashes before selection. No startup or Docker build downloads data.
 
 If not configured, the default is `reader/dutch.sqlite3` adjacent to the module;
 normal images do not include it and Dutch contextual behavior continues gracefully.
