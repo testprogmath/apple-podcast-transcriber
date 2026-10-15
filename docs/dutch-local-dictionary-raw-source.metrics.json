@@ -1,0 +1,2769 @@
+{
+  "extraction": {
+    "uncompressed_bytes": 25614284530,
+    "raw_records": 10913997,
+    "dutch_records": 146492,
+    "seconds": 183.09313129191287,
+    "subset_bytes": 222550596,
+    "subset_sha256": "e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8",
+    "compressed_bytes": 2981058381,
+    "compressed_sha256": "3dac8a09e57827bef493e2e6b552fe917bf3b1fc55dee05c4e4a3702aff5dbdb"
+  },
+  "build": {
+    "counts": {
+      "records": 146492,
+      "dutch_records": 146492,
+      "pos:noun": 75664,
+      "senses_with_form_of": 99054,
+      "senses_with_alt_of": 3366,
+      "pos:adj": 13410,
+      "pos:verb": 40464,
+      "pos:character": 64,
+      "pos:interfix": 9,
+      "pos:prefix": 233,
+      "pos:intj": 520,
+      "pos:adv": 1726,
+      "pos:conj": 103,
+      "pos:article": 21,
+      "pos:prep": 186,
+      "pos:pron": 268,
+      "pos:det": 163,
+      "pos:num": 157,
+      "pos:name": 12405,
+      "pos:contraction": 25,
+      "pos:phrase": 343,
+      "pos:symbol": 1,
+      "pos:suffix": 231,
+      "pos:prep_phrase": 329,
+      "pos:proverb": 139,
+      "pos:particle": 2,
+      "pos:circumpos": 17,
+      "pos:circumfix": 9,
+      "pos:punct": 2,
+      "pos:postp": 1
+    },
+    "fields": {
+      "senses": 146492,
+      "pos": 146492,
+      "head_templates": 146430,
+      "forms": 65067,
+      "derived": 16233,
+      "descendants": 9862,
+      "etymology_text": 64009,
+      "etymology_links": 59906,
+      "etymology_templates": 57843,
+      "sounds": 124903,
+      "hyphenations": 53990,
+      "word": 146492,
+      "lang": 146492,
+      "lang_code": 146492,
+      "inflection_templates": 22251,
+      "categories": 43108,
+      "related": 7957,
+      "etymology_number": 7771,
+      "synonyms": 4653,
+      "antonyms": 848,
+      "wikipedia": 216,
+      "hypernyms": 286,
+      "hyponyms": 229,
+      "holonyms": 21,
+      "coordinate_terms": 284,
+      "meronyms": 23,
+      "abbreviations": 8,
+      "original_title": 5,
+      "translations": 1,
+      "source": 1
+    },
+    "noun_stats": {
+      "lexical_noun_records": 35673,
+      "article": 35349,
+      "one_article": 34833,
+      "both_articles": 516,
+      "plural": 30134,
+      "multiple_plurals": 1679,
+      "diminutive": 20672,
+      "english_gloss": 35666,
+      "triple": 28783,
+      "learner_gloss": 34125,
+      "sense_tag:uncountable": 5702,
+      "sense_tag:plural": 197,
+      "sense_tag:plural-only": 123,
+      "sense_tag:no-plural": 0,
+      "sense_tag:no-diminutive": 14483
+    },
+    "sense_tags": [
+      [
+        "form-of",
+        99054
+      ],
+      [
+        "plural",
+        44970
+      ],
+      [
+        "neuter",
+        35442
+      ],
+      [
+        "singular",
+        28170
+      ],
+      [
+        "masculine",
+        23839
+      ],
+      [
+        "feminine",
+        21777
+      ],
+      [
+        "present",
+        18936
+      ],
+      [
+        "indicative",
+        18850
+      ],
+      [
+        "past",
+        18361
+      ],
+      [
+        "no-diminutive",
+        17457
+      ],
+      [
+        "dated",
+        15090
+      ],
+      [
+        "formal",
+        14388
+      ],
+      [
+        "subjunctive",
+        11282
+      ],
+      [
+        "diminutive",
+        9315
+      ],
+      [
+        "attributive",
+        9311
+      ],
+      [
+        "participle",
+        9279
+      ],
+      [
+        "second-person",
+        7590
+      ],
+      [
+        "imperative",
+        6904
+      ],
+      [
+        "uncountable",
+        6718
+      ],
+      [
+        "transitive",
+        5057
+      ],
+      [
+        "archaic",
+        4734
+      ],
+      [
+        "first-person",
+        3688
+      ],
+      [
+        "third-person",
+        3564
+      ],
+      [
+        "alt-of",
+        3366
+      ],
+      [
+        "definite",
+        3313
+      ],
+      [
+        "not-comparable",
+        3308
+      ],
+      [
+        "intransitive",
+        2753
+      ],
+      [
+        "obsolete",
+        2198
+      ],
+      [
+        "alternative",
+        1202
+      ],
+      [
+        "comparative",
+        1180
+      ],
+      [
+        "historical",
+        1074
+      ],
+      [
+        "informal",
+        1014
+      ],
+      [
+        "Netherlands",
+        1013
+      ],
+      [
+        "superlative",
+        1009
+      ],
+      [
+        "figuratively",
+        905
+      ],
+      [
+        "Belgium",
+        902
+      ],
+      [
+        "abbreviation",
+        861
+      ],
+      [
+        "idiomatic",
+        718
+      ],
+      [
+        "partitive",
+        697
+      ],
+      [
+        "with-gij",
+        679
+      ],
+      [
+        "derogatory",
+        675
+      ],
+      [
+        "indefinite",
+        640
+      ],
+      [
+        "morpheme",
+        553
+      ],
+      [
+        "rare",
+        492
+      ],
+      [
+        "colloquial",
+        455
+      ],
+      [
+        "uncommon",
+        443
+      ],
+      [
+        "dialectal",
+        405
+      ],
+      [
+        "slang",
+        384
+      ],
+      [
+        "common-gender",
+        368
+      ],
+      [
+        "countable",
+        338
+      ],
+      [
+        "Suriname",
+        325
+      ],
+      [
+        "reflexive",
+        293
+      ],
+      [
+        "vulgar",
+        279
+      ],
+      [
+        "predicative",
+        251
+      ],
+      [
+        "broadly",
+        248
+      ],
+      [
+        "literally",
+        216
+      ],
+      [
+        "by-personal-gender",
+        204
+      ],
+      [
+        "ergative",
+        197
+      ],
+      [
+        "initialism",
+        157
+      ],
+      [
+        "adverb",
+        155
+      ],
+      [
+        "pronominal",
+        155
+      ],
+      [
+        "humorous",
+        147
+      ],
+      [
+        "plural-only",
+        144
+      ],
+      [
+        "dative",
+        122
+      ],
+      [
+        "genitive",
+        119
+      ],
+      [
+        "collective",
+        118
+      ],
+      [
+        "often",
+        109
+      ],
+      [
+        "offensive",
+        108
+      ],
+      [
+        "Southern",
+        106
+      ],
+      [
+        "Brabant",
+        102
+      ],
+      [
+        "Internet",
+        97
+      ],
+      [
+        "nonstandard",
+        96
+      ],
+      [
+        "in-plural",
+        92
+      ],
+      [
+        "poetic",
+        89
+      ],
+      [
+        "Judaism",
+        83
+      ],
+      [
+        "misspelling",
+        79
+      ],
+      [
+        "usually",
+        75
+      ],
+      [
+        "proscribed",
+        72
+      ],
+      [
+        "literary",
+        71
+      ],
+      [
+        "Indonesia",
+        67
+      ],
+      [
+        "letter",
+        63
+      ],
+      [
+        "metonymically",
+        59
+      ],
+      [
+        "clipping",
+        54
+      ],
+      [
+        "especially",
+        53
+      ],
+      [
+        "regional",
+        48
+      ],
+      [
+        "contraction",
+        47
+      ],
+      [
+        "impersonal",
+        46
+      ],
+      [
+        "euphemistic",
+        46
+      ],
+      [
+        "accusative",
+        45
+      ],
+      [
+        "childish",
+        43
+      ],
+      [
+        "personal",
+        42
+      ],
+      [
+        "auxiliary",
+        40
+      ],
+      [
+        "sometimes",
+        38
+      ],
+      [
+        "West",
+        38
+      ],
+      [
+        "in-compounds",
+        36
+      ],
+      [
+        "Flanders",
+        36
+      ],
+      [
+        "pronunciation-spelling",
+        34
+      ],
+      [
+        "East",
+        34
+      ],
+      [
+        "also",
+        32
+      ],
+      [
+        "Northern",
+        31
+      ],
+      [
+        "Greek",
+        31
+      ],
+      [
+        "lowercase",
+        30
+      ],
+      [
+        "demonstrative",
+        28
+      ],
+      [
+        "invariable",
+        27
+      ],
+      [
+        "uppercase",
+        26
+      ],
+      [
+        "copulative",
+        25
+      ],
+      [
+        "acronym",
+        25
+      ],
+      [
+        "ellipsis",
+        24
+      ],
+      [
+        "slur",
+        24
+      ],
+      [
+        "mildly",
+        24
+      ],
+      [
+        "relative",
+        23
+      ],
+      [
+        "ethnic",
+        23
+      ],
+      [
+        "plural-normally",
+        22
+      ],
+      [
+        "endearing",
+        22
+      ],
+      [
+        "ambitransitive",
+        22
+      ],
+      [
+        "possessive",
+        21
+      ],
+      [
+        "nominative",
+        21
+      ],
+      [
+        "neologism",
+        21
+      ],
+      [
+        "postpositional",
+        19
+      ],
+      [
+        "pronoun",
+        18
+      ],
+      [
+        "distal",
+        17
+      ],
+      [
+        "with-definite-article",
+        17
+      ],
+      [
+        "unstressed",
+        16
+      ],
+      [
+        "dependent",
+        15
+      ],
+      [
+        "ditransitive",
+        15
+      ],
+      [
+        "Eastern",
+        14
+      ],
+      [
+        "emphatic",
+        14
+      ],
+      [
+        "possibly",
+        14
+      ],
+      [
+        "Limburg",
+        14
+      ],
+      [
+        "jargon",
+        14
+      ],
+      [
+        "relational",
+        13
+      ],
+      [
+        "Antilles",
+        13
+      ],
+      [
+        "objective",
+        12
+      ],
+      [
+        "no-gloss",
+        12
+      ],
+      [
+        "Dutch",
+        11
+      ],
+      [
+        "intensifier",
+        11
+      ],
+      [
+        "Hinduism",
+        11
+      ],
+      [
+        "interrogative",
+        10
+      ],
+      [
+        "Twente",
+        10
+      ],
+      [
+        "sarcastic",
+        10
+      ],
+      [
+        "The-Hague",
+        9
+      ],
+      [
+        "subjective",
+        9
+      ],
+      [
+        "mainly",
+        9
+      ],
+      [
+        "particle",
+        9
+      ],
+      [
+        "South-Africa",
+        9
+      ],
+      [
+        "perfect",
+        9
+      ],
+      [
+        "capitalized",
+        9
+      ],
+      [
+        "proximal",
+        8
+      ],
+      [
+        "ironic",
+        8
+      ],
+      [
+        "negative",
+        8
+      ],
+      [
+        "adverbial",
+        7
+      ],
+      [
+        "gender-neutral",
+        7
+      ],
+      [
+        "familiar",
+        7
+      ],
+      [
+        "with-indirect-object",
+        7
+      ],
+      [
+        "common",
+        7
+      ],
+      [
+        "specifically",
+        7
+      ],
+      [
+        "Jewish",
+        7
+      ],
+      [
+        "US",
+        6
+      ],
+      [
+        "person",
+        6
+      ],
+      [
+        "apocopic",
+        6
+      ],
+      [
+        "Roman",
+        6
+      ],
+      [
+        "indeclinable",
+        6
+      ],
+      [
+        "subordinating",
+        5
+      ],
+      [
+        "Germanic",
+        5
+      ],
+      [
+        "absolute",
+        5
+      ],
+      [
+        "agent",
+        5
+      ],
+      [
+        "Japanese",
+        5
+      ],
+      [
+        "article",
+        5
+      ],
+      [
+        "no-superlative",
+        5
+      ],
+      [
+        "diacritic",
+        4
+      ],
+      [
+        "future",
+        4
+      ],
+      [
+        "conditional",
+        4
+      ],
+      [
+        "hypercorrect",
+        4
+      ],
+      [
+        "Marxism",
+        4
+      ],
+      [
+        "Flemish",
+        4
+      ],
+      [
+        "Middle-Ages",
+        4
+      ],
+      [
+        "Nazism",
+        4
+      ],
+      [
+        "Groningen",
+        4
+      ],
+      [
+        "bureaucratese",
+        3
+      ],
+      [
+        "deliberate",
+        3
+      ],
+      [
+        "Northeastern",
+        3
+      ],
+      [
+        "European-Union",
+        3
+      ],
+      [
+        "imperfect",
+        3
+      ],
+      [
+        "inflected",
+        3
+      ],
+      [
+        "onomatopoeic",
+        3
+      ],
+      [
+        "ablative",
+        3
+      ],
+      [
+        "Ancient-Rome",
+        3
+      ],
+      [
+        "mnemonic",
+        3
+      ],
+      [
+        "Brabantian",
+        3
+      ],
+      [
+        "coordinating",
+        2
+      ],
+      [
+        "singular-only",
+        2
+      ],
+      [
+        "modal",
+        2
+      ],
+      [
+        "temporal",
+        2
+      ],
+      [
+        "Greco-Roman",
+        2
+      ],
+      [
+        "with-negation",
+        2
+      ],
+      [
+        "verb",
+        2
+      ],
+      [
+        "excessive",
+        2
+      ],
+      [
+        "phrase",
+        2
+      ],
+      [
+        "physical",
+        2
+      ],
+      [
+        "calque",
+        2
+      ],
+      [
+        "contracted",
+        2
+      ],
+      [
+        "general",
+        2
+      ],
+      [
+        "specific",
+        2
+      ],
+      [
+        "nominal",
+        2
+      ],
+      [
+        "polite",
+        2
+      ],
+      [
+        "Norse",
+        2
+      ],
+      [
+        "nonce-word",
+        2
+      ],
+      [
+        "name",
+        2
+      ],
+      [
+        "Limburgish",
+        2
+      ],
+      [
+        "independent",
+        2
+      ],
+      [
+        "empty-gloss",
+        2
+      ],
+      [
+        "Moroccan",
+        2
+      ],
+      [
+        "Caribbean",
+        2
+      ],
+      [
+        "EU",
+        1
+      ],
+      [
+        "adjectival",
+        1
+      ],
+      [
+        "Mormonism",
+        1
+      ],
+      [
+        "directional",
+        1
+      ],
+      [
+        "Spanish",
+        1
+      ],
+      [
+        "stressed",
+        1
+      ],
+      [
+        "Jainism",
+        1
+      ],
+      [
+        "Sikhism",
+        1
+      ],
+      [
+        "rhetoric",
+        1
+      ],
+      [
+        "unspecified",
+        1
+      ],
+      [
+        "derived",
+        1
+      ],
+      [
+        "Shia",
+        1
+      ],
+      [
+        "gerund",
+        1
+      ],
+      [
+        "indeterminate",
+        1
+      ],
+      [
+        "previous",
+        1
+      ],
+      [
+        "completive",
+        1
+      ],
+      [
+        "hard",
+        1
+      ],
+      [
+        "determiner",
+        1
+      ],
+      [
+        "prefix",
+        1
+      ],
+      [
+        "including",
+        1
+      ],
+      [
+        "non-human",
+        1
+      ],
+      [
+        "metaphoric",
+        1
+      ],
+      [
+        "positive",
+        1
+      ],
+      [
+        "anaphoric",
+        1
+      ],
+      [
+        "Ardennes",
+        1
+      ],
+      [
+        "direct",
+        1
+      ],
+      [
+        "soft",
+        1
+      ],
+      [
+        "French",
+        1
+      ],
+      [
+        "numeral",
+        1
+      ],
+      [
+        "demonym",
+        1
+      ],
+      [
+        "North-America",
+        1
+      ],
+      [
+        "retronym",
+        1
+      ],
+      [
+        "uninflected",
+        1
+      ],
+      [
+        "historic",
+        1
+      ],
+      [
+        "Christian",
+        1
+      ],
+      [
+        "modern",
+        1
+      ],
+      [
+        "substantive",
+        1
+      ],
+      [
+        "UK",
+        1
+      ],
+      [
+        "Bosnian",
+        1
+      ],
+      [
+        "German",
+        1
+      ],
+      [
+        "impolite",
+        1
+      ],
+      [
+        "surname",
+        1
+      ],
+      [
+        "Aruba",
+        1
+      ],
+      [
+        "irregular",
+        1
+      ]
+    ],
+    "form_tags": [
+      [
+        "singular",
+        191792
+      ],
+      [
+        "plural",
+        111580
+      ],
+      [
+        "present",
+        109687
+      ],
+      [
+        "past",
+        88863
+      ],
+      [
+        "second-person",
+        82197
+      ],
+      [
+        "indefinite",
+        71684
+      ],
+      [
+        "archaic",
+        64012
+      ],
+      [
+        "neuter",
+        53378
+      ],
+      [
+        "positive",
+        44559
+      ],
+      [
+        "main-clause",
+        44556
+      ],
+      [
+        "superlative",
+        38792
+      ],
+      [
+        "formal",
+        37335
+      ],
+      [
+        "subjunctive",
+        36284
+      ],
+      [
+        "subordinate-clause",
+        34977
+      ],
+      [
+        "predicative",
+        34635
+      ],
+      [
+        "comparative",
+        33191
+      ],
+      [
+        "adverbial",
+        32061
+      ],
+      [
+        "feminine",
+        25856
+      ],
+      [
+        "masculine",
+        25052
+      ],
+      [
+        "definite",
+        23898
+      ],
+      [
+        "partitive",
+        23894
+      ],
+      [
+        "table-tags",
+        21879
+      ],
+      [
+        "inflection-template",
+        21879
+      ],
+      [
+        "diminutive",
+        21766
+      ],
+      [
+        "third-person",
+        20843
+      ],
+      [
+        "first-person",
+        19523
+      ],
+      [
+        "colloquial",
+        18198
+      ],
+      [
+        "Flanders",
+        18145
+      ],
+      [
+        "majestic",
+        18141
+      ],
+      [
+        "imperative",
+        14324
+      ],
+      [
+        "participle",
+        14252
+      ],
+      [
+        "personal",
+        7651
+      ],
+      [
+        "pronoun",
+        7620
+      ],
+      [
+        "alternative",
+        7408
+      ],
+      [
+        "infinitive",
+        7125
+      ],
+      [
+        "gerund",
+        7125
+      ],
+      [
+        "possessive",
+        3072
+      ],
+      [
+        "unstressed",
+        2582
+      ],
+      [
+        "stressed",
+        2460
+      ],
+      [
+        "error-unrecognized-form",
+        2000
+      ],
+      [
+        "objective",
+        1740
+      ],
+      [
+        "subjective",
+        1560
+      ],
+      [
+        "obsolete",
+        1481
+      ],
+      [
+        "class",
+        1340
+      ],
+      [
+        "genitive",
+        1268
+      ],
+      [
+        "dialectal",
+        1127
+      ],
+      [
+        "reflexive",
+        661
+      ],
+      [
+        "dated",
+        233
+      ],
+      [
+        "adverb",
+        200
+      ],
+      [
+        "postpositional",
+        200
+      ],
+      [
+        "prepositional",
+        183
+      ],
+      [
+        "uncommon",
+        149
+      ],
+      [
+        "demonym",
+        137
+      ],
+      [
+        "rare",
+        109
+      ],
+      [
+        "canonical",
+        93
+      ],
+      [
+        "adjective",
+        72
+      ],
+      [
+        "abbreviation",
+        56
+      ],
+      [
+        "informal",
+        54
+      ],
+      [
+        "nonstandard",
+        35
+      ],
+      [
+        "uppercase",
+        32
+      ],
+      [
+        "lowercase",
+        30
+      ],
+      [
+        "Belgium",
+        25
+      ],
+      [
+        "Brabant",
+        23
+      ],
+      [
+        "proscribed",
+        21
+      ],
+      [
+        "initialism",
+        19
+      ],
+      [
+        "circumposition",
+        17
+      ],
+      [
+        "pronunciation-spelling",
+        16
+      ],
+      [
+        "Internet",
+        15
+      ],
+      [
+        "Southern",
+        15
+      ],
+      [
+        "historical",
+        14
+      ],
+      [
+        "poetic",
+        14
+      ],
+      [
+        "Netherlands",
+        14
+      ],
+      [
+        "misspelling",
+        12
+      ],
+      [
+        "surname",
+        11
+      ],
+      [
+        "often",
+        10
+      ],
+      [
+        "independent",
+        9
+      ],
+      [
+        "Dutch",
+        9
+      ],
+      [
+        "contracted",
+        7
+      ],
+      [
+        "East",
+        6
+      ],
+      [
+        "West",
+        6
+      ],
+      [
+        "romanization",
+        6
+      ],
+      [
+        "common",
+        6
+      ],
+      [
+        "error-unknown-tag",
+        5
+      ],
+      [
+        "Northern",
+        5
+      ],
+      [
+        "clipping",
+        5
+      ],
+      [
+        "humorous",
+        4
+      ],
+      [
+        "childish",
+        3
+      ],
+      [
+        "inflected",
+        3
+      ],
+      [
+        "standard",
+        3
+      ],
+      [
+        "noun",
+        3
+      ],
+      [
+        "literary",
+        3
+      ],
+      [
+        "Eastern",
+        3
+      ],
+      [
+        "also",
+        3
+      ],
+      [
+        "contraction",
+        2
+      ],
+      [
+        "Suriname",
+        2
+      ],
+      [
+        "interjection",
+        2
+      ],
+      [
+        "slang",
+        2
+      ],
+      [
+        "Early",
+        2
+      ],
+      [
+        "Modern",
+        2
+      ],
+      [
+        "Flemish",
+        2
+      ],
+      [
+        "euphemistic",
+        2
+      ],
+      [
+        "calque",
+        2
+      ],
+      [
+        "with-definite-article",
+        1
+      ],
+      [
+        "mainly",
+        1
+      ],
+      [
+        "possibly",
+        1
+      ],
+      [
+        "name",
+        1
+      ],
+      [
+        "misconstruction",
+        1
+      ],
+      [
+        "sometimes",
+        1
+      ],
+      [
+        "deliberate",
+        1
+      ],
+      [
+        "usually",
+        1
+      ],
+      [
+        "invariable",
+        1
+      ],
+      [
+        "hypercorrect",
+        1
+      ],
+      [
+        "Latinate",
+        1
+      ],
+      [
+        "common-gender",
+        1
+      ],
+      [
+        "vocative",
+        1
+      ],
+      [
+        "Arabic",
+        1
+      ],
+      [
+        "Antilles",
+        1
+      ],
+      [
+        "Ardennes",
+        1
+      ],
+      [
+        "interrogative",
+        1
+      ],
+      [
+        "proper-noun",
+        1
+      ],
+      [
+        "especially",
+        1
+      ]
+    ],
+    "build_seconds": 6.612321249907836,
+    "index_bytes": 333844480,
+    "source_bytes": 222550596,
+    "source_sha256": "e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8",
+    "compact_record_bytes": 208465918,
+    "form_rows": 451309
+  },
+  "comparison": {
+    "identity": "original word, POS, etymology_number; record multiplicity retained",
+    "old_identities": 145589,
+    "raw_identities": 145589,
+    "only_old_count": 0,
+    "only_raw_count": 0,
+    "only_old_examples": [],
+    "only_raw_examples": [],
+    "changed_evidence_counts": {
+      "senses": 0,
+      "forms": 0,
+      "head_templates": 0,
+      "sounds": 0
+    },
+    "order_insensitive_changed_counts": {
+      "senses": 0,
+      "forms": 0,
+      "head_templates": 0,
+      "sounds": 0
+    },
+    "changed_evidence_examples": {
+      "senses": [],
+      "forms": [],
+      "head_templates": [],
+      "sounds": []
+    }
+  },
+  "schema": {
+    "record_fields": {
+      "senses": 146492,
+      "pos": 146492,
+      "head_templates": 146430,
+      "forms": 65067,
+      "derived": 16233,
+      "descendants": 9862,
+      "etymology_text": 64009,
+      "etymology_links": 59906,
+      "etymology_templates": 57843,
+      "sounds": 124903,
+      "hyphenations": 53990,
+      "word": 146492,
+      "lang": 146492,
+      "lang_code": 146492,
+      "inflection_templates": 22251,
+      "categories": 43108,
+      "related": 7957,
+      "etymology_number": 7771,
+      "synonyms": 4653,
+      "antonyms": 848,
+      "wikipedia": 216,
+      "hypernyms": 286,
+      "hyponyms": 229,
+      "holonyms": 21,
+      "coordinate_terms": 284,
+      "meronyms": 23,
+      "abbreviations": 8,
+      "original_title": 5,
+      "translations": 1,
+      "source": 1
+    },
+    "sense_fields": {
+      "links": 188958,
+      "synonyms": 13243,
+      "glosses": 190548,
+      "tags": 175870,
+      "categories": 126800,
+      "form_of": 99054,
+      "raw_glosses": 46415,
+      "raw_tags": 4089,
+      "examples": 8655,
+      "qualifier": 1217,
+      "alt_of": 3366,
+      "topics": 5348,
+      "attestations": 1788,
+      "antonyms": 1166,
+      "wikipedia": 649,
+      "coordinate_terms": 321,
+      "wikidata": 88,
+      "senseid": 194,
+      "hypernyms": 510,
+      "info_templates": 267,
+      "meronyms": 402,
+      "head_nr": 85,
+      "related": 17,
+      "holonyms": 25,
+      "hyponyms": 8
+    },
+    "form_fields": {
+      "form": 503208,
+      "tags": 503207,
+      "source": 418838,
+      "raw_tags": 19,
+      "head_nr": 17,
+      "links": 9
+    }
+  },
+  "evaluation": {
+    "vtt_bytes": 96431,
+    "vtt_sha256": "63adf80a9577d03bf24a9d48aae31873739def8abd9a2a5b56b158a7e5c5b041",
+    "cues": 667,
+    "sentences": 405,
+    "source_characters": 33066,
+    "token_occurrences": 5179,
+    "distinct_case_sensitive": 1531,
+    "metrics": {
+      "tokens": 1439,
+      "exact_headword": 1308,
+      "exact_lexical_entry": 860,
+      "resolved": 1345,
+      "pos": 1345,
+      "gloss": 1345,
+      "learner_gloss": 1340,
+      "ambiguous_lemma_pos": 489,
+      "multiple_records": 515,
+      "noun_tokens": 587,
+      "noun_article": 587,
+      "noun_plural": 539,
+      "noun_triple": 539,
+      "noun_preferred_triple": 526,
+      "noun_unambiguous_triple": 304
+    },
+    "exact_benchmark": {
+      "lookups": 14390,
+      "median_us": 22.333,
+      "p95_us": 118.625,
+      "max_us": 9781.125
+    },
+    "form_benchmark": {
+      "lookups": 14390,
+      "median_us": 94.729,
+      "p95_us": 485.042,
+      "max_us": 47440.208
+    },
+    "inflected_benchmark": {
+      "lookups": 5500,
+      "median_us": 188.95850000000002,
+      "p95_us": 467.75,
+      "max_us": 6535.459
+    },
+    "manual": {
+      "zolder": [
+        {
+          "surface": "zolder",
+          "lemma": "zolder",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "masculine"
+          ],
+          "plural": [
+            "zolders"
+          ],
+          "diminutive": [
+            "zoldertje"
+          ],
+          "glosses": [
+            "attic (space, often unfinished and with sloped walls, directly below the roof)"
+          ],
+          "learner_glosses": [
+            "attic (space, often unfinished and with sloped walls, directly below the roof)"
+          ]
+        }
+      ],
+      "huis": [
+        {
+          "surface": "huis",
+          "lemma": "huis",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "huizen"
+          ],
+          "diminutive": [
+            "huisje"
+          ],
+          "glosses": [
+            "a house, home; residence",
+            "an adjoining building with a separate function",
+            "a genealogical house, such as a dynasty",
+            "a house or chamber in a legislative assembly",
+            "a housing structure, casing"
+          ],
+          "learner_glosses": [
+            "a house, home; residence",
+            "an adjoining building with a separate function",
+            "a genealogical house, such as a dynasty",
+            "a house or chamber in a legislative assembly",
+            "a housing structure, casing"
+          ]
+        }
+      ],
+      "kind": [
+        {
+          "surface": "kind",
+          "lemma": "kind",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "kinderen",
+            "kinders"
+          ],
+          "diminutive": [
+            "kindje",
+            "kindertje",
+            "kindeken",
+            "kindelijn"
+          ],
+          "glosses": [
+            "child, kid, non-adult human",
+            "first-degree descendant, still a minor or irrespective of age",
+            "product of influence, breeding etc."
+          ],
+          "learner_glosses": [
+            "child, kid, non-adult human",
+            "first-degree descendant, still a minor or irrespective of age",
+            "product of influence, breeding etc."
+          ]
+        }
+      ],
+      "bevrijding": [
+        {
+          "surface": "bevrijding",
+          "lemma": "bevrijding",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "feminine"
+          ],
+          "plural": [
+            "bevrijdingen"
+          ],
+          "diminutive": [
+            "bevrijdinkje"
+          ],
+          "glosses": [
+            "liberation"
+          ],
+          "learner_glosses": [
+            "liberation"
+          ]
+        }
+      ],
+      "oorlog": [
+        {
+          "surface": "oorlog",
+          "lemma": "oorlog",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "masculine"
+          ],
+          "plural": [
+            "oorlogen"
+          ],
+          "diminutive": [
+            "oorlogje"
+          ],
+          "glosses": [
+            "war"
+          ],
+          "learner_glosses": [
+            "war"
+          ]
+        }
+      ],
+      "greep": [
+        {
+          "surface": "greep",
+          "lemma": "greep",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "masculine"
+          ],
+          "plural": [
+            "grepen"
+          ],
+          "diminutive": [
+            "greepje"
+          ],
+          "glosses": [
+            "grasp, clutches",
+            "fascination, obsession (in the phrase in de greep van)",
+            "guess",
+            "some samples that are reasonably representative for a larger collection"
+          ],
+          "learner_glosses": [
+            "grasp, clutches",
+            "fascination, obsession (in the phrase in de greep van)",
+            "guess",
+            "some samples that are reasonably representative for a larger collection"
+          ]
+        },
+        {
+          "surface": "greep",
+          "lemma": "greep",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "feminine"
+          ],
+          "plural": [
+            "grepen"
+          ],
+          "diminutive": [
+            "greepje"
+          ],
+          "glosses": [
+            "grip, handle"
+          ],
+          "learner_glosses": [
+            "grip, handle"
+          ]
+        }
+      ],
+      "jaar": [
+        {
+          "surface": "jaar",
+          "lemma": "jaar",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "jaren"
+          ],
+          "diminutive": [
+            "jaartje"
+          ],
+          "glosses": [
+            "year (the time it takes the Earth to circle the Sun; its equivalent on other planets)",
+            "year (the individuals associated with a year, notably the students in or graduates from an annual class at school)"
+          ],
+          "learner_glosses": [
+            "year (the time it takes the Earth to circle the Sun; its equivalent on other planets)",
+            "year (the individuals associated with a year, notably the students in or graduates from an annual class at school)"
+          ]
+        }
+      ],
+      "mens": [
+        {
+          "surface": "mens",
+          "lemma": "mens",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "masculine"
+          ],
+          "plural": [
+            "mensen"
+          ],
+          "diminutive": [
+            "mensje"
+          ],
+          "glosses": [
+            "human, any member of the species Homo sapiens",
+            "person"
+          ],
+          "learner_glosses": [
+            "human, any member of the species Homo sapiens",
+            "person"
+          ]
+        },
+        {
+          "surface": "mens",
+          "lemma": "mens",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "mensen"
+          ],
+          "diminutive": [
+            "mensje"
+          ],
+          "glosses": [
+            "woman"
+          ],
+          "learner_glosses": [
+            "woman"
+          ]
+        }
+      ],
+      "stad": [
+        {
+          "surface": "stad",
+          "lemma": "stad",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "feminine"
+          ],
+          "plural": [
+            "steden"
+          ],
+          "diminutive": [
+            "stadje"
+          ],
+          "glosses": [
+            "city, town",
+            "the town/city centre"
+          ],
+          "learner_glosses": [
+            "city, town",
+            "the town/city centre"
+          ]
+        }
+      ],
+      "schip": [
+        {
+          "surface": "schip",
+          "lemma": "schip",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "schepen"
+          ],
+          "diminutive": [
+            "scheepje"
+          ],
+          "glosses": [
+            "ship (a large, water borne vessel)",
+            "nave (the middle or body of a standard medieval church or cathedral, extending from the transepts to the principal entrances)"
+          ],
+          "learner_glosses": [
+            "ship (a large, water borne vessel)",
+            "nave (the middle or body of a standard medieval church or cathedral, extending from the transepts to the principal entrances)"
+          ]
+        }
+      ],
+      "museum": [
+        {
+          "surface": "museum",
+          "lemma": "museum",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "musea",
+            "museums"
+          ],
+          "diminutive": [
+            "museumpje"
+          ],
+          "glosses": [
+            "museum"
+          ],
+          "learner_glosses": [
+            "museum"
+          ]
+        }
+      ],
+      "water": [
+        {
+          "surface": "water",
+          "lemma": "water",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "waters",
+            "wateren"
+          ],
+          "diminutive": [
+            "watertje"
+          ],
+          "glosses": [
+            "water (H₂O)",
+            "body of water (such as a lake, ditch or stream)",
+            "bodily fluid (especially amniotic fluid)"
+          ],
+          "learner_glosses": [
+            "water (H₂O)",
+            "body of water (such as a lake, ditch or stream)",
+            "bodily fluid (especially amniotic fluid)"
+          ]
+        }
+      ],
+      "meisje": [
+        {
+          "surface": "meisje",
+          "lemma": "meisje",
+          "pos": "noun",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [
+            "meisjes"
+          ],
+          "diminutive": [],
+          "glosses": [],
+          "learner_glosses": []
+        },
+        {
+          "surface": "meisje",
+          "lemma": "meisje",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "meisjes"
+          ],
+          "diminutive": [],
+          "glosses": [
+            "girl (especially of a premature age)",
+            "girlfriend"
+          ],
+          "learner_glosses": [
+            "girl (especially of a premature age)",
+            "girlfriend"
+          ]
+        }
+      ],
+      "jongen": [
+        {
+          "surface": "jongen",
+          "lemma": "jongen",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "masculine"
+          ],
+          "plural": [
+            "jongens"
+          ],
+          "diminutive": [
+            "jongetje"
+          ],
+          "glosses": [
+            "a boy, any male child",
+            "members of a male 'peers' group, e.g. a military unit",
+            "Informal term used to address multiple children of masculine or mixed gender; kids, guys (may be considered insufficiently gender-inclusive)",
+            "Colloquial term used by men to address other familiar men; mate, dude, bro",
+            "a male servant, especially but not exclusively a younger one (using it for older men may be dated and offensive)",
+            "a male trainee or newcomer in a job"
+          ],
+          "learner_glosses": [
+            "a boy, any male child",
+            "members of a male 'peers' group, e.g. a military unit",
+            "Informal term used to address multiple children of masculine or mixed gender; kids, guys (may be considered insufficiently gender-inclusive)",
+            "Colloquial term used by men to address other familiar men; mate, dude, bro",
+            "a male servant, especially but not exclusively a younger one (using it for older men may be dated and offensive)",
+            "a male trainee or newcomer in a job"
+          ]
+        },
+        {
+          "surface": "jongen",
+          "lemma": "jongen",
+          "pos": "noun",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [],
+          "learner_glosses": []
+        }
+      ],
+      "politie": [
+        {
+          "surface": "politie",
+          "lemma": "politie",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "feminine"
+          ],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "police",
+            "policy, governance"
+          ],
+          "learner_glosses": [
+            "police"
+          ]
+        }
+      ],
+      "regering": [
+        {
+          "surface": "regering",
+          "lemma": "regering",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "feminine"
+          ],
+          "plural": [
+            "regeringen"
+          ],
+          "diminutive": [
+            "regerinkje"
+          ],
+          "glosses": [
+            "governing (act of; ruling a state or similar political entity)",
+            "government (a governing council: especially the executive branch of government)",
+            "rule, reign (of a prince etc.)"
+          ],
+          "learner_glosses": [
+            "governing (act of; ruling a state or similar political entity)",
+            "government (a governing council: especially the executive branch of government)",
+            "rule, reign (of a prince etc.)"
+          ]
+        }
+      ]
+    },
+    "inflected": {
+      "huizen": [
+        {
+          "surface": "huizen",
+          "lemma": "huis",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "huizen"
+          ],
+          "diminutive": [
+            "huisje"
+          ],
+          "glosses": [
+            "a house, home; residence",
+            "an adjoining building with a separate function",
+            "a genealogical house, such as a dynasty",
+            "a house or chamber in a legislative assembly",
+            "a housing structure, casing"
+          ],
+          "learner_glosses": [
+            "a house, home; residence",
+            "an adjoining building with a separate function",
+            "a genealogical house, such as a dynasty",
+            "a house or chamber in a legislative assembly",
+            "a housing structure, casing"
+          ]
+        },
+        {
+          "surface": "huizen",
+          "lemma": "huizen",
+          "pos": "verb",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "to live (have permanent residence)"
+          ],
+          "learner_glosses": [
+            "to live (have permanent residence)"
+          ]
+        },
+        {
+          "surface": "huizen",
+          "lemma": "Huizen",
+          "pos": "name",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "a village and municipality of North Holland, Netherlands"
+          ],
+          "learner_glosses": [
+            "a village and municipality of North Holland, Netherlands"
+          ]
+        }
+      ],
+      "kinderen": [
+        {
+          "surface": "kinderen",
+          "lemma": "kind",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "kinderen",
+            "kinders"
+          ],
+          "diminutive": [
+            "kindje",
+            "kindertje",
+            "kindeken",
+            "kindelijn"
+          ],
+          "glosses": [
+            "child, kid, non-adult human",
+            "first-degree descendant, still a minor or irrespective of age",
+            "product of influence, breeding etc."
+          ],
+          "learner_glosses": [
+            "child, kid, non-adult human",
+            "first-degree descendant, still a minor or irrespective of age",
+            "product of influence, breeding etc."
+          ]
+        }
+      ],
+      "steden": [
+        {
+          "surface": "steden",
+          "lemma": "stad",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "feminine"
+          ],
+          "plural": [
+            "steden"
+          ],
+          "diminutive": [
+            "stadje"
+          ],
+          "glosses": [
+            "city, town",
+            "the town/city centre"
+          ],
+          "learner_glosses": [
+            "city, town",
+            "the town/city centre"
+          ]
+        },
+        {
+          "surface": "steden",
+          "lemma": "steden",
+          "pos": "verb",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "to place",
+            "to hold in place"
+          ],
+          "learner_glosses": []
+        }
+      ],
+      "schepen": [
+        {
+          "surface": "schepen",
+          "lemma": "schip",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "schepen"
+          ],
+          "diminutive": [
+            "scheepje"
+          ],
+          "glosses": [
+            "ship (a large, water borne vessel)",
+            "nave (the middle or body of a standard medieval church or cathedral, extending from the transepts to the principal entrances)"
+          ],
+          "learner_glosses": [
+            "ship (a large, water borne vessel)",
+            "nave (the middle or body of a standard medieval church or cathedral, extending from the transepts to the principal entrances)"
+          ]
+        },
+        {
+          "surface": "schepen",
+          "lemma": "schepen",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "masculine"
+          ],
+          "plural": [
+            "schepenen"
+          ],
+          "diminutive": [
+            "schepentje"
+          ],
+          "glosses": [
+            "alderman"
+          ],
+          "learner_glosses": [
+            "alderman"
+          ]
+        },
+        {
+          "surface": "schepen",
+          "lemma": "schepen",
+          "pos": "verb",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "to embark, ship",
+            "to travel by ship"
+          ],
+          "learner_glosses": []
+        }
+      ],
+      "musea": [
+        {
+          "surface": "musea",
+          "lemma": "museum",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "musea",
+            "museums"
+          ],
+          "diminutive": [
+            "museumpje"
+          ],
+          "glosses": [
+            "museum"
+          ],
+          "learner_glosses": [
+            "museum"
+          ]
+        }
+      ],
+      "jaren": [
+        {
+          "surface": "jaren",
+          "lemma": "jaar",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "jaren"
+          ],
+          "diminutive": [
+            "jaartje"
+          ],
+          "glosses": [
+            "year (the time it takes the Earth to circle the Sun; its equivalent on other planets)",
+            "year (the individuals associated with a year, notably the students in or graduates from an annual class at school)"
+          ],
+          "learner_glosses": [
+            "year (the time it takes the Earth to circle the Sun; its equivalent on other planets)",
+            "year (the individuals associated with a year, notably the students in or graduates from an annual class at school)"
+          ]
+        }
+      ],
+      "jongens": [
+        {
+          "surface": "jongens",
+          "lemma": "jong",
+          "pos": "noun",
+          "article": "het",
+          "supported_articles": [
+            "het"
+          ],
+          "gender_tags": [
+            "neuter"
+          ],
+          "plural": [
+            "jongen"
+          ],
+          "diminutive": [
+            "jonkie",
+            "jongske"
+          ],
+          "glosses": [
+            "a young: a young being, especially an immature animal"
+          ],
+          "learner_glosses": [
+            "a young: a young being, especially an immature animal"
+          ]
+        },
+        {
+          "surface": "jongens",
+          "lemma": "jongen",
+          "pos": "noun",
+          "article": "de",
+          "supported_articles": [
+            "de"
+          ],
+          "gender_tags": [
+            "masculine"
+          ],
+          "plural": [
+            "jongens"
+          ],
+          "diminutive": [
+            "jongetje"
+          ],
+          "glosses": [
+            "a boy, any male child",
+            "members of a male 'peers' group, e.g. a military unit",
+            "Informal term used to address multiple children of masculine or mixed gender; kids, guys (may be considered insufficiently gender-inclusive)",
+            "Colloquial term used by men to address other familiar men; mate, dude, bro",
+            "a male servant, especially but not exclusively a younger one (using it for older men may be dated and offensive)",
+            "a male trainee or newcomer in a job"
+          ],
+          "learner_glosses": [
+            "a boy, any male child",
+            "members of a male 'peers' group, e.g. a military unit",
+            "Informal term used to address multiple children of masculine or mixed gender; kids, guys (may be considered insufficiently gender-inclusive)",
+            "Colloquial term used by men to address other familiar men; mate, dude, bro",
+            "a male servant, especially but not exclusively a younger one (using it for older men may be dated and offensive)",
+            "a male trainee or newcomer in a job"
+          ]
+        },
+        {
+          "surface": "jongens",
+          "lemma": "jongens",
+          "pos": "noun",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "guys, a form of address for a group of male persons or a group of mixed male and female persons"
+          ],
+          "learner_glosses": [
+            "guys, a form of address for a group of male persons or a group of mixed male and female persons"
+          ]
+        },
+        {
+          "surface": "jongens",
+          "lemma": "jongens",
+          "pos": "intj",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "boy!"
+          ],
+          "learner_glosses": [
+            "boy!"
+          ]
+        }
+      ],
+      "geschreven": [
+        {
+          "surface": "geschreven",
+          "lemma": "schrijven",
+          "pos": "verb",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "to write",
+            "to write (data)"
+          ],
+          "learner_glosses": [
+            "to write",
+            "to write (data)"
+          ]
+        }
+      ],
+      "liep": [
+        {
+          "surface": "liep",
+          "lemma": "lopen",
+          "pos": "verb",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "to run, go fast on one's own legs",
+            "to run, cover distance, follow a track etc.",
+            "to walk, go somewhere regardless of speed",
+            "to walk in general",
+            "to stretch, to run (to extend in space or through a range) (often of relatively elongated objects or constructs)",
+            "to be current, activated, in progress",
+            "to be doing or functioning (well or poorly), to progress",
+            "to lose liquid: drip, gush, leak",
+            "Forms a continuous aspect."
+          ],
+          "learner_glosses": [
+            "to run, go fast on one's own legs",
+            "to run, cover distance, follow a track etc.",
+            "to walk, go somewhere regardless of speed",
+            "to walk in general",
+            "to stretch, to run (to extend in space or through a range) (often of relatively elongated objects or constructs)",
+            "to be current, activated, in progress",
+            "to be doing or functioning (well or poorly), to progress",
+            "to lose liquid: drip, gush, leak",
+            "Forms a continuous aspect."
+          ]
+        }
+      ],
+      "kwam": [
+        {
+          "surface": "kwam",
+          "lemma": "komen",
+          "pos": "verb",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "to come",
+            "to happen, to arise, to come to be, to be caused",
+            "to become",
+            "synonym of klaarkomen (“to orgasm, come”)"
+          ],
+          "learner_glosses": [
+            "to come",
+            "to happen, to arise, to come to be, to be caused",
+            "to become",
+            "synonym of klaarkomen (“to orgasm, come”)"
+          ]
+        }
+      ],
+      "groter": [
+        {
+          "surface": "groter",
+          "lemma": "groot",
+          "pos": "adj",
+          "article": null,
+          "supported_articles": [],
+          "gender_tags": [],
+          "plural": [],
+          "diminutive": [],
+          "glosses": [
+            "big, large, great",
+            "great, important, eminent",
+            "tall",
+            "adult"
+          ],
+          "learner_glosses": [
+            "big, large, great",
+            "great, important, eminent",
+            "tall",
+            "adult"
+          ]
+        }
+      ]
+    }
+  },
+  "attribution": {
+    "authors": "Wiktionary contributors",
+    "source": "English Wiktionary via Kaikki/Wiktextract",
+    "entry_link_template": "https://en.wiktionary.org/wiki/{URL-encoded lemma} (page links provide contributor history)",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "modifications": "Dutch-only filtering, research indexing and extraction of comparison metrics and lexical examples",
+    "extractor_revision": "1a05e46f9efbccda6a2b2f8e21b30a9c0c46513a",
+    "processor_revision": "e3d6d4edb77618f4d6680edc66e3f774bea59820",
+    "spike_evaluator_sha256": "6cfbff0b22e1ebb17c63b9f992f34c3429ad6b82836517db28a9c291d111c43d"
+  }
+}

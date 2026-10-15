@@ -1,0 +1,3162 @@
+{
+  "metrics": {
+    "tokens": 1439,
+    "exact_headword": 1308,
+    "exact_lexical_entry": 860,
+    "resolved": 1345,
+    "pos": 1345,
+    "gloss": 1345,
+    "ambiguous_lemma_pos": 489,
+    "noun_tokens": 587,
+    "noun_article": 587,
+    "noun_plural": 539,
+    "noun_triple": 539,
+    "noun_unambiguous_triple": 304
+  },
+  "warm_lookup": {
+    "calls": 14390,
+    "median_us": 107.3335,
+    "p95_us": 303.459,
+    "max_us": 13484.125
+  },
+  "examples": {
+    "zolder": {
+      "surface": "zolder",
+      "normalized_surface": "zolder",
+      "available": true,
+      "candidates": [
+        {
+          "id": 16818,
+          "lemma": "zolder",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "attic (space, often unfinished and with sloped walls, directly below the roof)"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/zolder",
+          "forms": [
+            {
+              "surface": "zolders",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "zoldertje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "zolders"
+          ],
+          "diminutive": [
+            "zoldertje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "zolder",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "huis": {
+      "surface": "huis",
+      "normalized_surface": "huis",
+      "available": true,
+      "candidates": [
+        {
+          "id": 5188,
+          "lemma": "huis",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "a house, home; residence"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "an adjoining building with a separate function"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "a genealogical house, such as a dynasty"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "a house or chamber in a legislative assembly"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "a housing structure, casing"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/huis",
+          "forms": [
+            {
+              "surface": "huisje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "huizen",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "huizen"
+          ],
+          "diminutive": [
+            "huisje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "huis",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 9114,
+          "lemma": "huizen",
+          "pos": "verb",
+          "senses": [
+            {
+              "glosses": [
+                "to live (have permanent residence)"
+              ],
+              "labels": [],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/huizen",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "huis",
+              "features": [
+                "first-person",
+                "present",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "huis",
+              "features": [
+                "imperative",
+                "present",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "huis",
+              "features": [
+                "present",
+                "second-person",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "huis",
+              "via": "huis",
+              "features": [
+                "first-person",
+                "form-of",
+                "indicative",
+                "present",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "huis",
+              "via": "huis",
+              "features": [
+                "form-of",
+                "imperative"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "huis",
+              "via": "huis",
+              "features": [
+                "form-of",
+                "indicative",
+                "present",
+                "second-person",
+                "singular"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "huizen": {
+      "surface": "huizen",
+      "normalized_surface": "huizen",
+      "available": true,
+      "candidates": [
+        {
+          "id": 9114,
+          "lemma": "huizen",
+          "pos": "verb",
+          "senses": [
+            {
+              "glosses": [
+                "to live (have permanent residence)"
+              ],
+              "labels": [],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/huizen",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "huizen",
+              "features": []
+            },
+            {
+              "kind": "form",
+              "surface": "huizen",
+              "features": [
+                "archaic",
+                "plural",
+                "present",
+                "subjunctive"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "huizen",
+              "features": [
+                "gerund",
+                "neuter"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "huizen",
+              "features": [
+                "infinitive"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "huizen",
+              "features": [
+                "plural",
+                "present"
+              ]
+            }
+          ]
+        },
+        {
+          "id": 5188,
+          "lemma": "huis",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "a house, home; residence"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "an adjoining building with a separate function"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "a genealogical house, such as a dynasty"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "a house or chamber in a legislative assembly"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "a housing structure, casing"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/huis",
+          "forms": [
+            {
+              "surface": "huisje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "huizen",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "huizen"
+          ],
+          "diminutive": [
+            "huisje"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "huizen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "huizen",
+              "via": "huizen",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            }
+          ]
+        },
+        {
+          "id": 95438,
+          "lemma": "Huizen",
+          "pos": "name",
+          "senses": [
+            {
+              "glosses": [
+                "a village and municipality of North Holland, Netherlands"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/Huizen",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "huizen",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "kind": {
+      "surface": "kind",
+      "normalized_surface": "kind",
+      "available": true,
+      "candidates": [
+        {
+          "id": 558,
+          "lemma": "kind",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "child, kid, non-adult human"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "first-degree descendant, still a minor or irrespective of age"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "product of influence, breeding etc."
+              ],
+              "labels": [
+                "figuratively",
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/kind",
+          "forms": [
+            {
+              "surface": "kindeken",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "kindelijn",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "kinderen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "kinders",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "kindertje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "kindje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "kinderen",
+            "kinders"
+          ],
+          "diminutive": [
+            "kindeken",
+            "kindelijn",
+            "kindertje",
+            "kindje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "kind",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "kinderen": {
+      "surface": "kinderen",
+      "normalized_surface": "kinderen",
+      "available": true,
+      "candidates": [
+        {
+          "id": 558,
+          "lemma": "kind",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "child, kid, non-adult human"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "first-degree descendant, still a minor or irrespective of age"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "product of influence, breeding etc."
+              ],
+              "labels": [
+                "figuratively",
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/kind",
+          "forms": [
+            {
+              "surface": "kindeken",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "kindelijn",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "kinderen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "kinders",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "kindertje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "kindje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "kinderen",
+            "kinders"
+          ],
+          "diminutive": [
+            "kindeken",
+            "kindelijn",
+            "kindertje",
+            "kindje"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "kinderen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "kinderen",
+              "via": "kinderen",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "bevrijding": {
+      "surface": "bevrijding",
+      "normalized_surface": "bevrijding",
+      "available": true,
+      "candidates": [
+        {
+          "id": 11013,
+          "lemma": "bevrijding",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "liberation"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/bevrijding",
+          "forms": [
+            {
+              "surface": "bevrijdingen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "bevrijdinkje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "bevrijdingen"
+          ],
+          "diminutive": [
+            "bevrijdinkje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "bevrijding",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "oorlog": {
+      "surface": "oorlog",
+      "normalized_surface": "oorlog",
+      "available": true,
+      "candidates": [
+        {
+          "id": 6387,
+          "lemma": "oorlog",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "war"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/oorlog",
+          "forms": [
+            {
+              "surface": "oorlogen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "oorlogje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "oorlogen"
+          ],
+          "diminutive": [
+            "oorlogje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "oorlog",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "greep": {
+      "surface": "greep",
+      "normalized_surface": "greep",
+      "available": true,
+      "candidates": [
+        {
+          "id": 20549,
+          "lemma": "greep",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "grasp, clutches"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "fascination, obsession (in the phrase in de greep van)"
+              ],
+              "labels": [
+                "figuratively",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "guess"
+              ],
+              "labels": [
+                "figuratively",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "some samples that are reasonably representative for a larger collection"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/greep",
+          "forms": [
+            {
+              "surface": "greepje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "grepen",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "grepen"
+          ],
+          "diminutive": [
+            "greepje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "greep",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 20550,
+          "lemma": "greep",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "grip, handle"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/greep",
+          "forms": [
+            {
+              "surface": "greepje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "grepen",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "grepen"
+          ],
+          "diminutive": [
+            "greepje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "greep",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 13642,
+          "lemma": "grijpen",
+          "pos": "verb",
+          "senses": [
+            {
+              "glosses": [
+                "to grab"
+              ],
+              "labels": [
+                "transitive"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/grijpen",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "greep",
+              "features": [
+                "first-person",
+                "past",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "greep",
+              "features": [
+                "formal",
+                "past",
+                "second-person",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "greep",
+              "features": [
+                "past",
+                "second-person",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "greep",
+              "features": [
+                "past",
+                "singular",
+                "third-person"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "greep",
+              "via": "greep",
+              "features": [
+                "form-of",
+                "indicative",
+                "past",
+                "singular"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "jaar": {
+      "surface": "jaar",
+      "normalized_surface": "jaar",
+      "available": true,
+      "candidates": [
+        {
+          "id": 6795,
+          "lemma": "jaar",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "year (the time it takes the Earth to circle the Sun; its equivalent on other planets)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "year (the individuals associated with a year, notably the students in or graduates from an annual class at school)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jaar",
+          "forms": [
+            {
+              "surface": "jaartje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "jaren",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "jaren"
+          ],
+          "diminutive": [
+            "jaartje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "jaar",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "mens": {
+      "surface": "mens",
+      "normalized_surface": "mens",
+      "available": true,
+      "candidates": [
+        {
+          "id": 4339,
+          "lemma": "mens",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "human, any member of the species Homo sapiens"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "person"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/mens",
+          "forms": [
+            {
+              "surface": "mensen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "mensje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "mensen"
+          ],
+          "diminutive": [
+            "mensje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "mens",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 4340,
+          "lemma": "mens",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "woman"
+              ],
+              "labels": [
+                "derogatory",
+                "informal",
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/mens",
+          "forms": [
+            {
+              "surface": "mensen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "mensje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "mensen"
+          ],
+          "diminutive": [
+            "mensje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "mens",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "stad": {
+      "surface": "stad",
+      "normalized_surface": "stad",
+      "available": true,
+      "candidates": [
+        {
+          "id": 4219,
+          "lemma": "stad",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "city, town"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "the town/city centre"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/stad",
+          "forms": [
+            {
+              "surface": "stadje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "steden",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "steden"
+          ],
+          "diminutive": [
+            "stadje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "stad",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "steden": {
+      "surface": "steden",
+      "normalized_surface": "steden",
+      "available": true,
+      "candidates": [
+        {
+          "id": 4815,
+          "lemma": "steden",
+          "pos": "verb",
+          "senses": [
+            {
+              "glosses": [
+                "to place"
+              ],
+              "labels": [
+                "obsolete",
+                "transitive"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            },
+            {
+              "glosses": [
+                "to hold in place"
+              ],
+              "labels": [
+                "obsolete",
+                "transitive"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/steden",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "steden",
+              "features": []
+            },
+            {
+              "kind": "form",
+              "surface": "steden",
+              "features": [
+                "archaic",
+                "plural",
+                "present",
+                "subjunctive"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "steden",
+              "features": [
+                "gerund",
+                "neuter"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "steden",
+              "features": [
+                "infinitive"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "steden",
+              "features": [
+                "plural",
+                "present"
+              ]
+            }
+          ]
+        },
+        {
+          "id": 4219,
+          "lemma": "stad",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "city, town"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "the town/city centre"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/stad",
+          "forms": [
+            {
+              "surface": "stadje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "steden",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "steden"
+          ],
+          "diminutive": [
+            "stadje"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "steden",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "steden",
+              "via": "steden",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            },
+            {
+              "kind": "alt_of",
+              "surface": "steden",
+              "via": "stede",
+              "features": [
+                "alt-of",
+                "alternative",
+                "archaic",
+                "feminine",
+                "in-compounds"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "schip": {
+      "surface": "schip",
+      "normalized_surface": "schip",
+      "available": true,
+      "candidates": [
+        {
+          "id": 6368,
+          "lemma": "schip",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "ship (a large, water borne vessel)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "nave (the middle or body of a standard medieval church or cathedral, extending from the transepts to the principal entrances)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/schip",
+          "forms": [
+            {
+              "surface": "scheepje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "schepen",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "schepen"
+          ],
+          "diminutive": [
+            "scheepje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "schip",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "schepen": {
+      "surface": "schepen",
+      "normalized_surface": "schepen",
+      "available": true,
+      "candidates": [
+        {
+          "id": 11991,
+          "lemma": "schepen",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "alderman"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/schepen",
+          "forms": [
+            {
+              "surface": "schepenen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "schepentje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "schepenen"
+          ],
+          "diminutive": [
+            "schepentje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "schepen",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 11992,
+          "lemma": "schepen",
+          "pos": "verb",
+          "senses": [
+            {
+              "glosses": [
+                "to embark, ship"
+              ],
+              "labels": [
+                "ergative",
+                "obsolete"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            },
+            {
+              "glosses": [
+                "to travel by ship"
+              ],
+              "labels": [
+                "intransitive",
+                "obsolete"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/schepen",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "schepen",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 6368,
+          "lemma": "schip",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "ship (a large, water borne vessel)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "nave (the middle or body of a standard medieval church or cathedral, extending from the transepts to the principal entrances)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/schip",
+          "forms": [
+            {
+              "surface": "scheepje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "schepen",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "schepen"
+          ],
+          "diminutive": [
+            "scheepje"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "schepen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "schepen",
+              "via": "schepen",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "museum": {
+      "surface": "museum",
+      "normalized_surface": "museum",
+      "available": true,
+      "candidates": [
+        {
+          "id": 4381,
+          "lemma": "museum",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "museum"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/museum",
+          "forms": [
+            {
+              "surface": "musea",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "museumpje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "museums",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "musea",
+            "museums"
+          ],
+          "diminutive": [
+            "museumpje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "museum",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "musea": {
+      "surface": "musea",
+      "normalized_surface": "musea",
+      "available": true,
+      "candidates": [
+        {
+          "id": 4381,
+          "lemma": "museum",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "museum"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/museum",
+          "forms": [
+            {
+              "surface": "musea",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "museumpje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "museums",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "musea",
+            "museums"
+          ],
+          "diminutive": [
+            "museumpje"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "musea",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "musea",
+              "via": "musea",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "musea",
+              "via": "museums",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "water": {
+      "surface": "water",
+      "normalized_surface": "water",
+      "available": true,
+      "candidates": [
+        {
+          "id": 73567,
+          "lemma": "water",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "water (H₂O)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "body of water (such as a lake, ditch or stream)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "bodily fluid (especially amniotic fluid)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/water",
+          "forms": [
+            {
+              "surface": "wateren",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "waters",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "watertje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "wateren",
+            "waters"
+          ],
+          "diminutive": [
+            "watertje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "water",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 15750,
+          "lemma": "wateren",
+          "pos": "verb",
+          "senses": [
+            {
+              "glosses": [
+                "to water, to irrigate, to soak"
+              ],
+              "labels": [
+                "transitive"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            },
+            {
+              "glosses": [
+                "to urinate"
+              ],
+              "labels": [
+                "common",
+                "euphemistic",
+                "intransitive"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/wateren",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "water",
+              "features": [
+                "first-person",
+                "present",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "water",
+              "features": [
+                "imperative",
+                "present",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "water",
+              "features": [
+                "present",
+                "second-person",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "water",
+              "via": "water",
+              "features": [
+                "first-person",
+                "form-of",
+                "indicative",
+                "present",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "water",
+              "via": "water",
+              "features": [
+                "form-of",
+                "imperative"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "water",
+              "via": "water",
+              "features": [
+                "form-of",
+                "indicative",
+                "present",
+                "second-person",
+                "singular"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "meisje": {
+      "surface": "meisje",
+      "normalized_surface": "meisje",
+      "available": true,
+      "candidates": [
+        {
+          "id": 6928,
+          "lemma": "meisje",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "girl (especially of a premature age)"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            },
+            {
+              "glosses": [
+                "girlfriend"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/meisje",
+          "forms": [
+            {
+              "surface": "meisjes",
+              "features": [
+                "plural"
+              ]
+            }
+          ],
+          "plural": [
+            "meisjes"
+          ],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "meisje",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 15774,
+          "lemma": "meid",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "girl, lass"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "maid"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "Commonly used as an address for female pets, especially female dogs."
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/meid",
+          "forms": [
+            {
+              "surface": "meiden",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "meidje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "meisie",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "meisje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "meiske",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "meiden"
+          ],
+          "diminutive": [
+            "meidje",
+            "meisie",
+            "meisje",
+            "meiske"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "meisje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "meisje",
+              "via": "meisje",
+              "features": [
+                "diminutive",
+                "form-of",
+                "neuter"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "jongen": {
+      "surface": "jongen",
+      "normalized_surface": "jongen",
+      "available": true,
+      "candidates": [
+        {
+          "id": 7001,
+          "lemma": "jongen",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "a boy, any male child"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "members of a male 'peers' group, e.g. a military unit"
+              ],
+              "labels": [
+                "in-plural",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "Informal term used to address multiple children of masculine or mixed gender; kids, guys (may be considered insufficiently gender-inclusive)"
+              ],
+              "labels": [
+                "informal",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "Colloquial term used by men to address other familiar men; mate, dude, bro"
+              ],
+              "labels": [
+                "colloquial",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "a male servant, especially but not exclusively a younger one (using it for older men may be dated and offensive)"
+              ],
+              "labels": [
+                "familiar",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "a male trainee or newcomer in a job"
+              ],
+              "labels": [
+                "familiar",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jongen",
+          "forms": [
+            {
+              "surface": "jongens",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "jongetje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "jongens"
+          ],
+          "diminutive": [
+            "jongetje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "jongen",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 7002,
+          "lemma": "jongen",
+          "pos": "verb",
+          "senses": [
+            {
+              "glosses": [
+                "to give birth, to have offspring, i.e. to deliver one or more young"
+              ],
+              "labels": [
+                "intransitive"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            },
+            {
+              "glosses": [
+                "to multiply, grow"
+              ],
+              "labels": [
+                "figuratively",
+                "intransitive"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jongen",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "jongen",
+              "features": []
+            },
+            {
+              "kind": "form",
+              "surface": "jongen",
+              "features": [
+                "archaic",
+                "plural",
+                "present",
+                "subjunctive"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "jongen",
+              "features": [
+                "gerund",
+                "neuter"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "jongen",
+              "features": [
+                "infinitive"
+              ]
+            },
+            {
+              "kind": "form",
+              "surface": "jongen",
+              "features": [
+                "plural",
+                "present"
+              ]
+            }
+          ]
+        },
+        {
+          "id": 6891,
+          "lemma": "jong",
+          "pos": "adj",
+          "senses": [
+            {
+              "glosses": [
+                "young"
+              ],
+              "labels": [],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            },
+            {
+              "glosses": [
+                "new"
+              ],
+              "labels": [],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jong",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "form_of",
+              "surface": "jongen",
+              "via": "jongen",
+              "features": [
+                "attributive",
+                "definite",
+                "dialectal",
+                "form-of",
+                "neuter",
+                "obsolete",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "jongen",
+              "via": "jongen",
+              "features": [
+                "attributive",
+                "dialectal",
+                "feminine",
+                "form-of",
+                "masculine",
+                "obsolete",
+                "singular"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "jongen",
+              "via": "jongen",
+              "features": [
+                "attributive",
+                "dialectal",
+                "form-of",
+                "obsolete",
+                "plural"
+              ]
+            }
+          ]
+        },
+        {
+          "id": 6892,
+          "lemma": "jong",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "a young: a young being, especially an immature animal"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jong",
+          "forms": [
+            {
+              "surface": "jongen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "jongske",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "jonkie",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "jongen"
+          ],
+          "diminutive": [
+            "jongske",
+            "jonkie"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "jongen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "jongen",
+              "via": "jongen",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "jongens": {
+      "surface": "jongens",
+      "normalized_surface": "jongens",
+      "available": true,
+      "candidates": [
+        {
+          "id": 17608,
+          "lemma": "jongens",
+          "pos": "intj",
+          "senses": [
+            {
+              "glosses": [
+                "boy!"
+              ],
+              "labels": [],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jongens",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "jongens",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 17607,
+          "lemma": "jongens",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "guys, a form of address for a group of male persons or a group of mixed male and female persons"
+              ],
+              "labels": [
+                "colloquial"
+              ],
+              "gender_tags": [],
+              "articles": [],
+              "article": null
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jongens",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "jongens",
+              "features": []
+            }
+          ]
+        },
+        {
+          "id": 6892,
+          "lemma": "jong",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "a young: a young being, especially an immature animal"
+              ],
+              "labels": [
+                "neuter"
+              ],
+              "gender_tags": [
+                "neuter"
+              ],
+              "articles": [
+                "het"
+              ],
+              "article": "het"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jong",
+          "forms": [
+            {
+              "surface": "jongen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "jongske",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            },
+            {
+              "surface": "jonkie",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "jongen"
+          ],
+          "diminutive": [
+            "jongske",
+            "jonkie"
+          ],
+          "relationships": [
+            {
+              "kind": "form_of",
+              "surface": "jongens",
+              "via": "jongen",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            }
+          ]
+        },
+        {
+          "id": 7001,
+          "lemma": "jongen",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "a boy, any male child"
+              ],
+              "labels": [
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "members of a male 'peers' group, e.g. a military unit"
+              ],
+              "labels": [
+                "in-plural",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "Informal term used to address multiple children of masculine or mixed gender; kids, guys (may be considered insufficiently gender-inclusive)"
+              ],
+              "labels": [
+                "informal",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "Colloquial term used by men to address other familiar men; mate, dude, bro"
+              ],
+              "labels": [
+                "colloquial",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "a male servant, especially but not exclusively a younger one (using it for older men may be dated and offensive)"
+              ],
+              "labels": [
+                "familiar",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "a male trainee or newcomer in a job"
+              ],
+              "labels": [
+                "familiar",
+                "masculine"
+              ],
+              "gender_tags": [
+                "masculine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/jongen",
+          "forms": [
+            {
+              "surface": "jongens",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "jongetje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "jongens"
+          ],
+          "diminutive": [
+            "jongetje"
+          ],
+          "relationships": [
+            {
+              "kind": "form",
+              "surface": "jongens",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "kind": "form_of",
+              "surface": "jongens",
+              "via": "jongens",
+              "features": [
+                "form-of",
+                "plural"
+              ]
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": true
+    },
+    "politie": {
+      "surface": "politie",
+      "normalized_surface": "politie",
+      "available": true,
+      "candidates": [
+        {
+          "id": 7149,
+          "lemma": "politie",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "police"
+              ],
+              "labels": [
+                "feminine",
+                "no-diminutive",
+                "uncountable"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "policy, governance"
+              ],
+              "labels": [
+                "feminine",
+                "no-diminutive",
+                "obsolete",
+                "uncountable"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/politie",
+          "forms": [],
+          "plural": [],
+          "diminutive": [],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "politie",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    },
+    "regering": {
+      "surface": "regering",
+      "normalized_surface": "regering",
+      "available": true,
+      "candidates": [
+        {
+          "id": 8745,
+          "lemma": "regering",
+          "pos": "noun",
+          "senses": [
+            {
+              "glosses": [
+                "governing (act of; ruling a state or similar political entity)"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "government (a governing council: especially the executive branch of government)"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            },
+            {
+              "glosses": [
+                "rule, reign (of a prince etc.)"
+              ],
+              "labels": [
+                "feminine"
+              ],
+              "gender_tags": [
+                "feminine"
+              ],
+              "articles": [
+                "de"
+              ],
+              "article": "de"
+            }
+          ],
+          "source_url": "https://en.wiktionary.org/wiki/regering",
+          "forms": [
+            {
+              "surface": "regeringen",
+              "features": [
+                "plural"
+              ]
+            },
+            {
+              "surface": "regerinkje",
+              "features": [
+                "diminutive",
+                "neuter"
+              ]
+            }
+          ],
+          "plural": [
+            "regeringen"
+          ],
+          "diminutive": [
+            "regerinkje"
+          ],
+          "relationships": [
+            {
+              "kind": "direct",
+              "surface": "regering",
+              "features": []
+            }
+          ]
+        }
+      ],
+      "is_ambiguous": false
+    }
+  },
+  "build": {
+    "processed_records": 146492,
+    "entries": 146492,
+    "senses": 88140,
+    "glosses": 88655,
+    "surfaces": 200974,
+    "forms": 451347,
+    "relations": 102474,
+    "bytes": 46010368,
+    "seconds": 6.17131720809266,
+    "sha256": "d698f7098b5b44a7e32dbc0f01959899fe0467c6082ebb60b568fd3d8ff7248b"
+  },
+  "data_notice": {
+    "artifact": "dutch.sqlite3",
+    "schema_version": "1",
+    "builder_version": "1",
+    "sha256": "d698f7098b5b44a7e32dbc0f01959899fe0467c6082ebb60b568fd3d8ff7248b",
+    "bytes": 46010368,
+    "counts": {
+      "processed_records": 146492,
+      "entries": 146492,
+      "senses": 88140,
+      "glosses": 88655,
+      "surfaces": 200974,
+      "forms": 451347,
+      "relations": 102474
+    },
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "attribution": "Wiktionary contributors; English Wiktionary via Kaikki/Wiktextract",
+    "notice": "LICENSE-DUTCH.txt",
+    "distribution": "Separate release asset recommended; not published in this task"
+  },
+  "source_metadata": {
+    "attribution": "Wiktionary contributors; extracted by Wiktextract, provided by Kaikki",
+    "builder_version": "1",
+    "compressed_sha256": "3dac8a09e57827bef493e2e6b552fe917bf3b1fc55dee05c4e4a3702aff5dbdb",
+    "count_entries": "146492",
+    "count_forms": "451347",
+    "count_glosses": "88655",
+    "count_processed_records": "146492",
+    "count_relations": "102474",
+    "count_senses": "88140",
+    "count_surfaces": "200974",
+    "dump_date": "2026-09-02",
+    "extraction_date": "2026-10-03",
+    "input_kind": "subset",
+    "input_sha256": "e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8",
+    "language": "nl",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "schema_version": "1",
+    "source": "English Wiktionary via Kaikki/Wiktextract (raw)",
+    "source_url": "https://kaikki.org/dictionary/raw-wiktextract-data.jsonl.gz",
+    "subset_sha256": "e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8",
+    "transformation": "Dutch-only lexical senses, labels, explicit forms and references; no media, quotations, categories or raw JSON",
+    "wikitextprocessor_revision": "e3d6d4edb77618f4d6680edc66e3f774bea59820",
+    "wiktextract_revision": "1a05e46f9efbccda6a2b2f8e21b30a9c0c46513a"
+  }
+}

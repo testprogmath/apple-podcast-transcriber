@@ -11,13 +11,15 @@ The import UI does not introduce a new language selector.
 Dutch word boundaries are Unicode alphabetic runs with combining marks and
 internal apostrophes (`'`, `’`, `ʼ`) or hyphens. Tokens retain sentence-local Python
 code-point start/end offsets; punctuation/whitespace stays untouched. This is
-surface-form interaction, not morphology or a dictionary.
+surface-form interaction. A separate [local Dutch dictionary](dutch-local-dictionary.md)
+now provides explicit lexical/morphological evidence, independently of contextual generation.
+Dutch capabilities include `local_dictionary: "dutch"`; Chinese capabilities are unchanged.
 
 ## API and contextual meanings
 
 Authenticated document ownership is checked before every contextual/save request.
 
-- `POST /api/reader/{document_id}/lexical`
+- `POST /api/reader/{document_id}/lexical` (`mode: "dictionary"` for local Dutch evidence; omitted/`"contextual"` for generated meaning)
 - `POST /api/reader/{document_id}/saved-vocabulary`
 - `GET /api/reader/{document_id}/saved-vocabulary`
 

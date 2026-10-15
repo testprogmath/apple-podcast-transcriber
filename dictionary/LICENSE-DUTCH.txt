@@ -1,0 +1,28 @@
+Dutch dictionary text and morphology: Wiktionary contributors.
+Source: English Wiktionary, extracted using Wiktextract; provided by Kaikki.
+Licensed under Creative Commons Attribution-ShareAlike 4.0 International:
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Source entry and contributor-history access:
+https://en.wiktionary.org/wiki/{URL-encoded source title}
+Every lexical candidate includes its source page URL. Pages link to contributor
+histories. Preserve any supplied additional attribution notices when redistributing.
+
+Raw source: https://kaikki.org/dictionary/raw-wiktextract-data.jsonl.gz
+Source dump: enwiktionary 2026-09-02. Extraction: 2026-10-03.
+Wiktextract: 1a05e46f9efbccda6a2b2f8e21b30a9c0c46513a
+Wikitextprocessor: e3d6d4edb77618f4d6680edc66e3f774bea59820
+Compressed SHA-256:
+3dac8a09e57827bef493e2e6b552fe917bf3b1fc55dee05c4e4a3702aff5dbdb
+Dutch subset SHA-256:
+e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8
+
+Changes: streamed Dutch-only filtering and compact normalized SQLite projection
+of lexical senses/glosses, sense labels, explicit forms and references. No full
+raw JSON, audio, images, quotations or categories are distributed in the projection.
+Schema version 1; builder version 1. Metadata is also embedded in the artifact.
+
+Distribute adapted dictionary text under CC BY-SA 4.0 with this attribution,
+license notice/link, source information and an indication of further modifications.
+No endorsement by Wiktionary contributors, Kaikki or Wiktextract is implied.
+The dictionary data license is separate from the application code license.

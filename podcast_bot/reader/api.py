@@ -15,6 +15,7 @@ from .auth import telegram_user_id
 from .bkrs import RussianDictionary
 from .dictionary import Dictionary
 from .documents import MAX_FILE_BYTES, ReaderDocument, clean_title, from_file, from_text
+from .dutch import DutchDictionary
 from .enrich import enrich
 from .languages import capabilities
 from .lexical import ContextualLexical, normalized
@@ -82,12 +83,14 @@ class ReaderApi:
         russian=None,
         translations=None,
         lexical=None,
+        dutch_dictionary=None,
     ):
         self.config, self.storage, self.services = config, storage, services
         self.translations = translations or SentenceTranslations(storage)
         self.lexical = lexical or ContextualLexical(
             storage, self.translations.client, self.translations.model
         )
+        self.dutch_dictionary = DutchDictionary() if dutch_dictionary is None else dutch_dictionary
         self.dev_mode = dev_mode
         self.dictionary = Dictionary() if dictionary is None else dictionary
         self.russian = RussianDictionary() if russian is None else russian
@@ -309,7 +312,14 @@ class ReaderApi:
                 target = data.pop("target_language", "ru")
                 if not isinstance(target, str) or target not in {"ru", "en"}:
                     raise ApiError(400, "Choose ru or en for meaning.")
+                mode = data.pop("mode", "contextual") if parts[3:] == ["lexical"] else "contextual"
+                if not isinstance(mode, str) or mode not in {"dictionary", "contextual"}:
+                    raise ApiError(400, "Choose dictionary or contextual lookup.")
                 sentence, start, end, text = self.contextual_span(document, data)
+                if mode == "dictionary":
+                    if document.language != "nl":
+                        raise ApiError(400, "Dutch dictionary requires a Dutch document.")
+                    return json_response(200, {"dictionary": self.dutch_dictionary.lookup(text)})
                 if parts[3:] == ["lexical"]:
                     meaning = await self.lexical.resolve(document, sentence, text, target)
                     saved = any(
