@@ -534,7 +534,7 @@ function dictionarySense(sense, showArticle) {
   return li;
 }
 
-function dictionaryCandidate(candidate, detailsTarget = null) {
+function dictionaryCandidate(candidate, detailsTarget = null, showPrimaryGloss = true) {
   const box = document.createElement("div");
   box.className = "dictionary-candidate";
   const articles = [...new Set(candidate.senses.flatMap(s => s.articles || []))];
@@ -544,14 +544,17 @@ function dictionaryCandidate(candidate, detailsTarget = null) {
   heading.textContent = `${candidate.lemma !== state.lexeme.glyph ? "→ " : ""}${singleArticle}${candidate.lemma}`
     + (candidate.plural.length ? ` · ${candidate.plural.join(", ")}` : "") + ` [${candidate.pos}]`;
   box.appendChild(heading);
-  const senses = document.createElement("ul");
-  for (const sense of candidate.senses.slice(0, 2)) senses.appendChild(dictionarySense(sense, articles.length > 1));
-  box.appendChild(senses);
-  if (candidate.senses.length > 2 || candidate.diminutive.length) {
+  const primaryCount = showPrimaryGloss ? 2 : 0;
+  if (showPrimaryGloss) {
+    const senses = document.createElement("ul");
+    for (const sense of candidate.senses.slice(0, primaryCount)) senses.appendChild(dictionarySense(sense, articles.length > 1));
+    box.appendChild(senses);
+  }
+  if (candidate.senses.length > primaryCount || candidate.diminutive.length) {
     const more = document.createElement("details"), summary = document.createElement("summary");
     summary.textContent = "More senses and forms"; more.appendChild(summary);
     const rest = document.createElement("ul");
-    for (const sense of candidate.senses.slice(2)) rest.appendChild(dictionarySense(sense, articles.length > 1));
+    for (const sense of candidate.senses.slice(primaryCount)) rest.appendChild(dictionarySense(sense, articles.length > 1));
     more.appendChild(rest);
     if (candidate.diminutive.length) {
       const diminutive = document.createElement("p");
@@ -580,7 +583,9 @@ function renderDutchDictionary() {
       ? "Dictionary unavailable. Contextual meaning remains available." : "No local dictionary entry. Contextual meaning may help.";
     return;
   }
-  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate, additional));
+  const translated = Boolean(state.lexeme?.meanings?.[state.language]?.meaning?.trim());
+  const showPrimaryGloss = state.language === "en" || !translated;
+  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate, additional, showPrimaryGloss));
   if (result.candidates.length > 2) {
     const more = document.createElement("details"), summary = document.createElement("summary");
     summary.textContent = `Other analyses (${result.candidates.length - 2})`; more.appendChild(summary);
@@ -623,7 +628,8 @@ function renderLexemeBody(glyph) {
     item.textContent = entry?.meaning || "Loading meaning…";
     list.appendChild(item);
     el("lexeme-senses-label").hidden = false;
-    el("lexeme-senses-label").textContent = "Meaning in context";
+    el("lexeme-senses-label").textContent = state.capabilities?.local_dictionary === "dutch" && state.language === "ru"
+      ? "Значение в контексте" : "Meaning in context";
     const dutch = state.capabilities?.local_dictionary === "dutch";
     el("lexeme-source").textContent = !dutch && entry ? "Generated contextual meaning" : "";
     el("lexeme-note").textContent = dutch ? "" : entry?.context_note || "";

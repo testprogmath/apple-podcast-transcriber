@@ -211,7 +211,7 @@ test("sense-dependent articles remain attached to distinct meanings and historic
     {articles:["de"],labels:["obsolete"],glosses:["old fixture sense"]}];
   const e=start({respond:(p,b)=>b?.mode==="dictionary"?localResult(b.text,[candidate("mens",{senses})]):null});
   await settle();word(e,"bevrijding").click();await settle();
-  const content=e.nodes["lexeme-dictionary-content"].textContent;
+  const content=e.nodes["lexeme-dictionary-content"].textContent+e.nodes["lexeme-dictionary-more"].textContent;
   assert.match(e.nodes["lexeme-dictionary-label"].textContent,/sense-dependent articles/);
   assert(content.includes("de person"));assert(content.includes("het (derogatory, informal) woman"));
   assert(e.nodes["lexeme-dictionary-more"].textContent.includes("obsolete"));assert(!content.includes("de / het mens"));
@@ -303,6 +303,51 @@ test("unavailable contextual provider keeps dictionary and source disclosure vis
   assert.match(e.nodes["lexeme-senses"].textContent,/unavailable/);
   assert.match(e.nodes["lexeme-dictionary-content"].textContent,/de bevrijding/);
   assert.equal(e.nodes["lexeme-dictionary-sources"].hidden,false);
+  assert.equal(e.nodes["lexeme-retry"].hidden,false);
+});
+
+test("RU keeps English fallback while loading then moves every original gloss to details",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const original=candidate("oorlog",{article:"de",plural:["oorlogen"],senses:[
+    {articles:["de"],labels:[],glosses:["war"]},
+    {articles:["de"],labels:["historical"],glosses:["conflict"]},
+    {articles:["de"],labels:[],glosses:["third source sense"]},
+  ]});
+  const before=structuredClone(original);
+  const documentData={...doc,sentences:[makeSentence(0,"In de greep van oorlog.")],paragraphs:[[0]]};
+  const e=start({document:documentData,respond:(p,b)=>p.endsWith("/lexical")?(b.mode==="dictionary"
+    ?localResult(b.text,[original]):pending):null});
+  await settle();word(e,"oorlog").click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/war/);
+  assert.match(e.nodes["lexeme-senses"].textContent,/Loading/);
+  complete(ok({meaning:"война",context_note:""}));await settle();
+  const primary=e.nodes["lexeme-dictionary-content"];
+  assert.match(primary.textContent,/de oorlog · oorlogen/);
+  assert(!primary.querySelector("ul"));
+  assert.equal(e.nodes["lexeme-senses"].textContent,"война");
+  assert.equal(e.nodes["lexeme-senses-label"].textContent,"Значение в контексте");
+  const details=e.nodes["lexeme-dictionary-more"];
+  assert.equal(details.hidden,false);assert(details.querySelector("details"));
+  for (const gloss of ["war","conflict","third source sense"]) assert(details.textContent.includes(gloss));
+  assert.deepEqual(original,before,"source evidence is never mutated");
+});
+test("EN shows English gloss normally after contextual success; switching to RU hides it",async()=>{
+  const e=start({respond:(p,b)=>b?.mode==="dictionary"?localResult(b.text,[candidate("bevrijding")]):null});
+  await settle();e.nodes["language-toggle"].click();await settle();
+  word(e,"bevrijding").click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
+  assert.equal(e.nodes["lexeme-senses"].textContent,"liberation");
+  e.nodes["language-toggle"].click();await settle();
+  assert(!e.nodes["lexeme-dictionary-content"].textContent.includes("fixture meaning"));
+  assert(e.nodes["lexeme-dictionary-more"].textContent.includes("fixture meaning"));
+  e.nodes["language-toggle"].click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
+});
+for (const message of ["Contextual lookup failed","Contextual meaning is unavailable."]) test(`RU English fallback survives ${message}`,async()=>{
+  const e=start({respond:(p,b)=>p.endsWith("/lexical")?(b.mode==="dictionary"
+    ?localResult(b.text,[candidate("bevrijding")]):error(message)):null});
+  await settle();word(e,"bevrijding").click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
   assert.equal(e.nodes["lexeme-retry"].hidden,false);
 });
 (async()=>{let failed=0;for(const [name,fn]of tests){try{await fn();console.log(`✓ ${name}`);}catch(e){failed++;console.error(name,e);}}console.log(`${tests.length-failed}/${tests.length} Dutch frontend tests passed`);if(failed)process.exitCode=1;})();

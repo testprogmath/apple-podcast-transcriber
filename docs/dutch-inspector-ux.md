@@ -34,7 +34,13 @@ Other languages keep their exact prior prompt, response schema and cache identit
 ## Presentation and attribution
 
 The existing sheet/design remains. Dutch shows dictionary heading/morphology and
-initial senses, one “Meaning in context” value, then the source sentence. Additional
+initial senses as fallback, one contextual translation, then the source sentence.
+For non-English targets, successful contextual translation moves all original English
+glosses into “More senses and forms”; morphology remains in the primary card. Loading,
+unavailable or failed contextual lookup retains the immediate English fallback.
+English targets always show the primary gloss normally. RU labels the contextual
+section “Значение в контексте”. This changes rendering only, without mutating source
+glosses or the translation contract. Additional
 senses/forms and other analyses remain reachable below the sentence. All analyses,
 sense-dependent articles, labels and forms are preserved; their resolution is unchanged.
 The Dutch generated badge and context note are omitted, including legacy notes in
@@ -57,20 +63,25 @@ pronunciation or Save. Dictionary misses still allow contextual translation.
 
 15 new deterministic Python cases cover exact oorlog/vrijheid sentences, idiomatic
 greep and a selected phrase, RU/EN targets, response shape/verbosity failures,
-cache separation and unchanged non-Dutch behavior. Six additional DOM cases cover
+cache separation and unchanged non-Dutch behavior. Ten additional DOM cases cover
 one contextual result, hidden legacy prose, target selection, source disclosure,
-entry/license links, order and provider unavailability. Existing failure, timeout,
+entry/license links, order, provider unavailability, RU fallback-to-details transitions, source preservation
+and EN/RU switching. Existing failure, timeout,
 miss, ambiguous noun, Save and Chinese tests also pass.
 
 - Focused Dutch inspector/dictionary/Reader language tests: **96 passed**.
 - Full Python suite: **1126 passed**.
-- Full frontend/DOM: **205 passed** (125 core, 31 Dutch, 18 library, 22 selection,
+- Full frontend/DOM: **209 passed** (125 core, 35 Dutch, 18 library, 22 selection,
   9 Review).
 - Ruff lint/format, JS syntax and `git diff --check`: passed.
 
 Browser acceptance used the real existing local dictionary and mocked contextual
 responses for the two exact production sentences. oorlog shows `de oorlog · oorlogen`,
-`war`, `война`; vrijheid shows `de vrijheid · vrijheden`, `freedom`, `свобода`.
+`война` in the primary RU view and original `war` in details; vrijheid shows
+`de vrijheid · vrijheden`, `свобода` with `freedom` available in details. EN keeps
+its English primary gloss. The additional presentation-only pass reran all 209
+frontend tests and JS syntax/diff checks; Python code stayed unchanged since the
+1126-test full run.
 Native source disclosure expansion exposed the entry and license links. Preview
 server/tab were stopped after verification. No paid/live provider calls were made;
 these checks verify request semantics/parsing/presentation, not live model quality.
