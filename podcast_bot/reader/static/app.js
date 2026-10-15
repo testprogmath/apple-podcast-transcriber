@@ -534,7 +534,7 @@ function dictionarySense(sense, showArticle) {
   return li;
 }
 
-function dictionaryCandidate(candidate) {
+function dictionaryCandidate(candidate, detailsTarget = null) {
   const box = document.createElement("div");
   box.className = "dictionary-candidate";
   const articles = [...new Set(candidate.senses.flatMap(s => s.articles || []))];
@@ -557,18 +557,18 @@ function dictionaryCandidate(candidate) {
       const diminutive = document.createElement("p");
       diminutive.textContent = `Diminutive: ${candidate.diminutive.join(", ")}`; more.appendChild(diminutive);
     }
-    box.appendChild(more);
+    (detailsTarget || box).appendChild(more);
   }
-  const source = document.createElement("a");
-  source.textContent = "Wiktionary"; source.href = candidate.source_url;
-  source.target = "_blank"; source.rel = "noopener noreferrer";
-  box.appendChild(source);
   return box;
 }
 
 function renderDutchDictionary() {
   const visible = state.capabilities?.local_dictionary === "dutch";
   el("lexeme-dictionary").hidden = !visible;
+  const additional = el("lexeme-dictionary-more"); additional.textContent = "";
+  const sources = el("lexeme-dictionary-sources");
+  const links = el("lexeme-dictionary-links"); links.textContent = "";
+  additional.hidden = true; sources.hidden = true;
   if (!visible) return;
   const container = el("lexeme-dictionary-content"); container.textContent = "";
   const result = state.lexeme?.dictionary;
@@ -580,12 +580,20 @@ function renderDutchDictionary() {
       ? "Dictionary unavailable. Contextual meaning remains available." : "No local dictionary entry. Contextual meaning may help.";
     return;
   }
-  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate));
+  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate, additional));
   if (result.candidates.length > 2) {
     const more = document.createElement("details"), summary = document.createElement("summary");
     summary.textContent = `Other analyses (${result.candidates.length - 2})`; more.appendChild(summary);
     for (const candidate of result.candidates.slice(2)) more.appendChild(dictionaryCandidate(candidate));
-    container.appendChild(more);
+    additional.appendChild(more);
+  }
+  additional.hidden = !additional.children.length;
+  sources.hidden = false;
+  for (const candidate of result.candidates) {
+    const source = document.createElement("a");
+    source.textContent = `${candidate.lemma} [${candidate.pos}] · Wiktionary`;
+    source.href = candidate.source_url; source.target = "_blank"; source.rel = "noopener noreferrer";
+    const line = document.createElement("p"); line.appendChild(source); links.appendChild(line);
   }
 }
 
@@ -616,8 +624,9 @@ function renderLexemeBody(glyph) {
     list.appendChild(item);
     el("lexeme-senses-label").hidden = false;
     el("lexeme-senses-label").textContent = "Meaning in context";
-    el("lexeme-source").textContent = entry ? "Generated contextual meaning" : "";
-    el("lexeme-note").textContent = entry?.context_note || "";
+    const dutch = state.capabilities?.local_dictionary === "dutch";
+    el("lexeme-source").textContent = !dutch && entry ? "Generated contextual meaning" : "";
+    el("lexeme-note").textContent = dutch ? "" : entry?.context_note || "";
     el("lexeme-context-label").textContent = "In context";
     renderContext(glyph, state.lexeme.sentenceId);
     return;
