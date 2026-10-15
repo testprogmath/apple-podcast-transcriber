@@ -9,19 +9,19 @@ It is built for one person, a Mandarin learner whose native language is Russian,
 <table>
   <tr>
     <td width="25%"><img src="docs/images/01-reader.png" alt="Reader with interlinear pinyin, a sentence selected for Mandarin Mosaic, two words in the Hanly basket and a Russian sentence translation"></td>
-    <td width="25%"><img src="docs/images/02-word.png" alt="Word card for 坚持 with pinyin, pronunciation, CC-CEDICT meanings and the sentence it came from"></td>
+    <td width="25%"><img src="docs/images/02-word.png" alt="Word card for 坚持 with pinyin, pronunciation, Russian dictionary meanings and the sentence it came from"></td>
     <td width="25%"><img src="docs/images/03-selection.png" alt="Native text selection of 没有想象中那么难 with the Make expression and Add to Hanly actions"></td>
     <td width="25%"><img src="docs/images/04-library.png" alt="Reader library listing recent documents"></td>
   </tr>
   <tr>
     <td>Pinyin, sentence translation, Hanly and Mosaic baskets</td>
-    <td>Word card from CC-CEDICT, in context</td>
+    <td>Word card: pinyin, Russian meanings, the sentence it came from</td>
     <td>Select any phrase: make it one expression, or send it to Hanly</td>
     <td>Library of transcripts, pasted text and files</td>
   </tr>
 </table>
 
-Screenshots come from a local Reader with the real CC-CEDICT dictionary and an original sample text.
+Screenshots come from a local Reader with the real CC-CEDICT and 大БКРС dictionaries and an original sample text. The interface speaks Russian because its one user does.
 
 ## What it does
 
