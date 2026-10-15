@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .cedict import tone_marks
+from .pinyin import pinyin_for
 
 log = logging.getLogger(__name__)
 DEFAULT_PATH = Path(__file__).with_name("cedict.sqlite3")
@@ -106,16 +107,28 @@ class Dictionary:
 
 
 def _entry(rows: list[sqlite3.Row]) -> DictionaryEntry:
-    """Lowest source id is the primary entry; definitions merge across homographs."""
-    primary = rows[0]
+    """Pick the reading a learner expects; definitions merge across homographs.
+
+    CC-CEDICT capitalises the pinyin of proper nouns and often lists them first, and it
+    lists rare readings before common ones (比 bī before bǐ). Among common-word entries
+    the one pypinyin also reads wins, then the lowest source id. A glyph with only
+    proper-noun entries, such as 中国, keeps its capitalised reading.
+    """
+    common = [row for row in rows if row["numeric_pinyin"][:1].islower()] or rows
+    expected = pinyin_for(common[0]["simplified"])
+    primary = next(
+        (row for row in common if tone_marks(row["numeric_pinyin"]).lower() == expected),
+        common[0],
+    )
+    ordered = [primary, *(row for row in rows if row is not primary)]
     definitions: list[str] = []
-    for row in rows:
+    for row in ordered:
         for definition in row["definitions"].split("\x1f"):
             if definition and definition not in definitions:
                 definitions.append(definition)
     alternatives = tuple(
         (tone_marks(row["numeric_pinyin"]), tuple(row["definitions"].split("\x1f")))
-        for row in rows[1:]
+        for row in ordered[1:]
     )
     return DictionaryEntry(
         simplified=primary["simplified"],

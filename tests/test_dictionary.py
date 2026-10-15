@@ -9,7 +9,7 @@ from podcast_bot.reader.enrich import CONTEXTUAL, enrich
 
 SAMPLE = """# CC-CEDICT sample used only by these tests
 #! version=1
-#! entries=9
+#! entries=15
 #! date=2026-09-14T05:30:59Z
 學習 学习 [xue2 xi2] /to learn; to study/
 銀行 银行 [yin2 hang2] /bank/CL:家[jia1]/
@@ -20,6 +20,12 @@ SAMPLE = """# CC-CEDICT sample used only by these tests
 辛苦 辛苦 [xin1 ku3] /exhausting; hard/
 3D打印 3D打印 [san1 D da3 yin4] /to 3D print/
 武漢 武汉 [Wu3 han4] /Wuhan, capital of Hubei/
+都 都 [Du1] /surname Du/
+都 都 [dou1] /all; both/entirely/
+都 都 [du1] /capital city/
+中 中 [Zhong1] /China; Chinese/surname Zhong/
+中 中 [zhong1] /within; among/middle/
+中國 中国 [Zhong1 guo2] /China/
 malformed line without brackets
 """
 
@@ -29,7 +35,7 @@ def database(tmp_path):
     source = tmp_path / "cedict_ts.u8"
     source.write_text(SAMPLE, encoding="utf-8")
     target = tmp_path / "cedict.sqlite3"
-    assert build(source, target) == 9
+    assert build(source, target) == 15
     return target
 
 
@@ -64,7 +70,7 @@ def test_parser_reads_the_snapshot_version_header(tmp_path):
     source = tmp_path / "cedict_ts.u8"
     source.write_text(SAMPLE, encoding="utf-8")
     assert source_version(source)["date"] == "2026-09-14T05:30:59Z"
-    assert source_version(source)["entries"] == "9"
+    assert source_version(source)["entries"] == "15"
 
 
 @pytest.mark.parametrize(
@@ -116,14 +122,27 @@ def test_unknown_entry_is_clean(dictionary):
 
 def test_multiple_entries_pick_a_deterministic_primary_and_keep_alternatives(dictionary):
     entry = dictionary.lookup("行")
-    assert entry.pinyin == "háng", "lowest source id wins"
-    assert [alternative[0] for alternative in entry.alternatives] == ["xíng"]
+    assert entry.pinyin == "xíng", "the reading pypinyin also gives wins over the lower id"
+    assert [alternative[0] for alternative in entry.alternatives] == ["háng"]
     assert dictionary.lookup("行").pinyin == dictionary.lookup("行").pinyin
+
+
+def test_a_common_word_reading_outranks_an_earlier_proper_noun(dictionary):
+    entry = dictionary.lookup("都")
+    assert entry.pinyin == "dōu"
+    assert entry.definitions[:2] == ("all; both", "entirely")
+    assert [alternative[0] for alternative in entry.alternatives] == ["Dū", "dū"]
+    assert dictionary.lookup("中").pinyin == "zhōng"
+
+
+def test_a_proper_noun_without_a_common_reading_keeps_its_capitals(dictionary):
+    assert dictionary.lookup("中国").pinyin == "Zhōng guó"
+    assert dictionary.lookup("武汉").pinyin == "Wǔ hàn"
 
 
 def test_definitions_merge_across_homographs_without_duplicates(dictionary):
     definitions = dictionary.lookup("行").definitions
-    assert definitions == ("row; line", "line of business", "to walk; to go", "OK!")
+    assert definitions == ("to walk; to go", "OK!", "row; line", "line of business")
     assert len(definitions) == len(set(definitions))
 
 
@@ -210,7 +229,8 @@ def test_pinyin_precedence_prefers_study_then_dictionary_then_fallback(dictionar
 
 def test_the_dictionary_resolves_polyphonic_readings_the_fallback_would_miss(dictionary):
     assert enrich(["银行"], {}, {}, dictionary)["银行"].pinyin == "yín háng"
-    assert enrich(["行"], {}, {}, dictionary)["行"].pinyin == "háng"
+    # On its own, 行 takes its common reading; háng stays available as an alternative.
+    assert enrich(["行"], {}, {}, dictionary)["行"].pinyin == "xíng"
 
 
 def test_enrichment_looks_each_distinct_glyph_up_once(dictionary, monkeypatch):
