@@ -30,6 +30,20 @@ def unit(text, start, end):
         ("你好。", [unit("你好", 0, float("nan"))], []),
         ("你好。", [unit("你好", 0, 4)], []),
         ("你好。", [unit("你", 0, 2), unit("好", 1, 3)], []),
+        ("你好。", [unit("你", 1, 1.5), unit("好", 1.5, 1.5)], [(880, 1700)]),
+        (
+            "你好。再见。",
+            [unit("你好", 0, 1), unit("。", 1, 1), unit("再见", 1.2, 2)],
+            [(0, 1200), (1080, 2200)],
+        ),
+        ("你好。", [unit("", 0, 0.5), unit("你好", 0.5, 1)], [(380, 1200)]),
+        ("你好。", [unit("·", 1, 0.5), unit("你好", 1, 2)], []),
+        ("你好。", [unit("你", 1, 1), unit("好", 0.5, 0.6)], []),
+        (
+            "好。你。好。",
+            [unit("好", 0, 1), unit("你", 1, 1), unit("好", 1, 2)],
+            [(0, 1000), (1000, 2200)],
+        ),
     ],
 )
 def test_conservative_alignment(text, units, expected):
@@ -163,3 +177,16 @@ def test_word_cache_roundtrip_and_legacy_cache(store):
     combined = combine([(0, transcript), (100, transcript)])
     assert combined.words[1].start == 100.1
     assert combined.words[1].end == 100.5
+
+
+def test_instant_and_punctuation_words_keep_word_level_timing(tmp_path):
+    """Whisper's collapsed and punctuation-only words must not demote a document to segments."""
+    document = replace(
+        from_text(42, "你好。再见。"), source_type="podcast", source_reference=str(tmp_path)
+    )
+    words = [unit("你", 1, 1.4), unit("好", 1.4, 1.4), unit("，", 1.4, 1.4), unit("再见", 3, 4)]
+    atomic_json(tmp_path / "audio-timing.json", timing(document, words=words))
+    source, ranges, status = document_audio(document, document.sentences())
+    assert status == ""
+    assert source["granularity"] == "word"
+    assert [(r["start_ms"], r["end_ms"]) for r in ranges.values()] == [(880, 1600), (2880, 4200)]
