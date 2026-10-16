@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("assert");
-const {setup,loadApp,speechStub,markup}=require("./dom.js");
+const {setup,loadApp,speechStub,markup,memoryStorage}=require("./dom.js");
 const ID="a".repeat(32);
 const caps={lexical_inspector:"contextual",local_dictionary:"dutch",speech_language:"nl-NL",pinyin:false,hanly:false,mosaic:false,internal_save:true};
 function makeSentence(id,text) {
@@ -20,8 +20,8 @@ const doc={id:ID,title:"Dutch",language:"nl",source_type:"pasted_text",capabilit
     makeSentence(1,"🙂 Het land was in de greep van oorlog; naïef en cafés.")],saved_vocabulary:[]};
 const ok=(data)=>({ok:true,json:async()=>data});
 const error=(message="Contextual lookup failed")=>({ok:false,json:async()=>({error:message})});
-function start({speech,respond,document:documentData=doc}={}) {
-  const e=setup({search:`?doc=${ID}`});if(speech) Object.assign(window,speech.window);
+function start({speech,respond,storage,document:documentData=doc}={}) {
+  const e=setup({search:`?doc=${ID}`,storage});if(speech) Object.assign(window,speech.window);
   const selection={range:null};
   window.getSelection=()=>({get rangeCount(){return selection.range?1:0;},get isCollapsed(){return !selection.range;},getRangeAt:()=>selection.range,removeAllRanges:()=>{selection.range=null;}});
   const calls=[];
@@ -423,5 +423,36 @@ test("late previous-sentence translation cannot replace current example",async()
   await settle();word(e,"bevrijding").click();await settle();word(e,"greep",1).click();await settle();
   complete(translatedSentence(0,"Старое предложение."));await settle();
   assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Новое предложение.");
+});
+
+test("Dutch does not inherit Chinese pinyin leading or overwrite the saved preference",async()=>{
+  const storage=memoryStorage();storage.setItem("reader.pinyin","on");
+  const e=start({storage});await settle();
+  assert(!e.nodes.text.classes.has("pinyin"));
+  assert.equal(storage.getItem("reader.pinyin"),"on");
+  assert.equal(holder(e,0).querySelector(".sentence-source").textContent,doc.sentences[0].text);
+});
+
+test("NPO mobile sample preserves exact lines and distinct repeated-cue button actions",async()=>{
+  const lines=require("./fixtures/dutch-mobile-lines.json");
+  const sentences=lines.map((text,id)=>makeSentence(id,text));
+  const documentData={...doc,title:"Ontmenselijking | NPO Start",source_type:"npo",sentences,paragraphs:sentences.map(s=>[s.id])};
+  const speech=speechStub({voices:[{lang:"nl-NL"}]});
+  const e=start({document:documentData,speech,respond:p=>p.endsWith("/saved-sentences")?ok({saved:true}):null});
+  await settle();
+  for(const sentence of sentences) {
+    const row=holder(e,sentence.id), controls=row.querySelector(".sentence-controls");
+    assert.equal(row.querySelector(".sentence-source").textContent,sentence.text);
+    assert.equal(controls.querySelectorAll("button").length,3);
+    assert(controls.querySelector(".audio-action"));
+    assert(controls.querySelector(".sentence-save").querySelector("svg"));
+    assert(controls.querySelector(".translation-action"));
+    controls.querySelector(".audio-action").click();
+    assert.equal(speech.last().text,sentence.text);
+    controls.querySelector(".translation-action").click();await settle();
+    assert(e.calls.some(c=>c.path.endsWith(`/sentences/${sentence.id}/translation`)));
+  }
+  for(const id of [2,3]) {holder(e,id).querySelector(".sentence-save").click();await settle();}
+  assert.deepEqual(e.calls.filter(c=>c.path.endsWith("/saved-sentences")).map(c=>c.body.sentence_id),[2,3]);
 });
 (async()=>{let failed=0;for(const [name,fn]of tests){try{await fn();console.log(`✓ ${name}`);}catch(e){failed++;console.error(name,e);}}console.log(`${tests.length-failed}/${tests.length} Dutch frontend tests passed`);if(failed)process.exitCode=1;})();
