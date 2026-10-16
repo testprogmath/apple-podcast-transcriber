@@ -18,6 +18,12 @@ class Node {
     this.focused = false;
     this._text = "";
     this.parentNode = null;
+    const styles = new Map();
+    this.style = {
+      setProperty: (key, value) => styles.set(key, value),
+      getPropertyValue: key => styles.get(key) || "",
+      removeProperty: key => styles.delete(key),
+    };
   }
 
   get nodeType() {
@@ -190,6 +196,7 @@ function memoryStorage(initial = {}) {
     setItem: (k, v) => {
       store[k] = String(v);
     },
+    removeItem: k => { delete store[k]; },
     _store: store,
   };
 }

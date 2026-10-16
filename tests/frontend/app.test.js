@@ -1629,6 +1629,88 @@ test("normal transcripts have no approximate-boundaries notice", async () => {
   assert.strictEqual(nodes["sentence-quality"].hidden, true);
 });
 
+
+async function readingEnvironment(storage = memoryStorage(), id = "a".repeat(32), documentData = DOCUMENT) {
+  const events = {}, frames = [];
+  const e = start({storage, search:`?doc=${id}`, document:documentData, speech:{
+    scrollY:0,
+    scrollTo:({top})=>{window.scrollY=top;},
+    requestAnimationFrame:fn=>frames.push(fn),
+    addEventListener:(name,fn)=>(events[name] ||= []).push(fn),
+  }});
+  await settle();
+  e.nodes.bar.getBoundingClientRect=()=>({bottom:100});
+  e.nodes.text.querySelectorAll(".sentence").forEach((node,index)=>{
+    node.getBoundingClientRect=()=>({top:140+index*220-window.scrollY,bottom:340+index*220-window.scrollY,height:200});
+  });
+  frames.splice(0).forEach(fn=>fn());
+  return {...e, fire:name=>(events[name] || []).forEach(fn=>fn())};
+}
+test("reading position survives reopening and is scoped to the document", async () => {
+  const storage=memoryStorage();const a=await readingEnvironment(storage);
+  window.scrollY=300;a.fire("pagehide");
+  const anchor=JSON.parse(storage.getItem("reader.position."+"a".repeat(32)));
+  assert.equal(anchor.id,1);assert.equal(anchor.offset,.2);
+  await readingEnvironment(storage);assert.equal(window.scrollY,300);
+  await readingEnvironment(storage,"b".repeat(32));assert.equal(window.scrollY,0);
+});
+test("scroll updates automatic progress after the debounce", async () => {
+  const storage=memoryStorage();const e=await readingEnvironment(storage);
+  let save;global.setTimeout=(fn,ms)=>{if(ms===250)save=fn;return 1;};
+  window.scrollY=300;e.fire("scroll");
+  assert.equal(storage.getItem("reader.position."+"a".repeat(32)),null);
+  assert.equal(typeof save,"function");save();
+  assert.equal(JSON.parse(storage.getItem("reader.position."+"a".repeat(32))).id,1);
+});
+test("manual bookmark remains separate from automatic progress and can be removed", async () => {
+  const storage=memoryStorage();const e=await readingEnvironment(storage);
+  window.scrollY=300;e.nodes["reading-bookmark-save"].click();
+  window.scrollY=400;e.fire("pagehide");
+  e.nodes["reading-bookmark-go"].click();assert.equal(window.scrollY,300);
+  assert.equal(JSON.parse(storage.getItem("reader.position."+"a".repeat(32))).offset,.7);
+  e.nodes["reading-bookmark-delete"].click();
+  assert.equal(storage.getItem("reader.bookmark."+"a".repeat(32)),null);
+  assert(e.nodes["reading-bookmark-go"].disabled);
+});
+test("invalid or stale reading anchors do not jump to changed source text", async () => {
+  const key="reader.position."+"a".repeat(32);
+  for(const value of ["invalid JSON",JSON.stringify({id:1,text:"old source",offset:.2}),JSON.stringify({id:1,text:DOCUMENT.sentences[1].text,offset:20})]) {
+    await readingEnvironment(memoryStorage({[key]:value}));assert.equal(window.scrollY,0);
+  }
+});
+test("blocked browser storage leaves Reader usable and reports bookmark failure", async () => {
+  const e=await readingEnvironment(failingStorage());
+  window.scrollY=300;e.fire("pagehide");
+  e.nodes["reading-bookmark-save"].click();
+  assert.match(e.nodes.toast.textContent,/Не удалось|Cannot save/);
+  assert.equal(e.nodes.text.hidden,false);
+});
+test("word sheet locks background scroll and restores the same position on close", async () => {
+  const storage=memoryStorage();const e=await readingEnvironment(storage);
+  window.scrollY=300;word(e.body,"获得").click();await settle();
+  assert(e.body.classes.has("reader-sheet-open"));
+  assert.equal(e.body.style.getPropertyValue("--reader-scroll-top"),"-300px");
+  const saved=storage.getItem("reader.position."+"a".repeat(32));
+  window.scrollY=0;e.fire("pagehide");
+  assert.equal(storage.getItem("reader.position."+"a".repeat(32)),saved,"fixed body must not overwrite progress with zero");
+  e.nodes["lexeme-close"].click();
+  assert(!e.body.classes.has("reader-sheet-open"));assert.equal(window.scrollY,300);
+});
+test("nested sheets keep scroll locked until the final sheet closes", async () => {
+  const e=await readingEnvironment();window.scrollY=300;
+  word(e.body,"获得").click();await settle();e.nodes["hanly-counter"].click();
+  e.nodes["lexeme-close"].click();assert(e.body.classes.has("reader-sheet-open"));
+  e.nodes["basket-close"].click();assert(!e.body.classes.has("reader-sheet-open"));
+  assert.equal(window.scrollY,300);
+});
+test("hidden document and visibility changes preserve the last reading position", async () => {
+  const storage=memoryStorage();const e=await readingEnvironment(storage);
+  window.scrollY=300;document.hidden=true;document.fire("visibilitychange");
+  const key="reader.position."+"a".repeat(32), saved=storage.getItem(key);
+  e.nodes.text.hidden=true;window.scrollY=0;e.fire("pagehide");
+  assert.equal(storage.getItem(key),saved);
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of Object.entries(tests)) {
