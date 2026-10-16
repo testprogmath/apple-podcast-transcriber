@@ -10,7 +10,7 @@ from test_reader import reader as reader
 
 from podcast_bot.reader.documents import from_text
 from podcast_bot.reader.languages import dutch_tokens
-from podcast_bot.reader.lexical import ContextualLexical, LexicalResult
+from podcast_bot.reader.lexical import ContextualLexical, DutchTranslation, LexicalResult
 from podcast_bot.reader.translations import SentenceTranslations, TranslationResult
 from podcast_bot.storage import Storage
 
@@ -25,7 +25,7 @@ def dutch(reader):
     client = SimpleNamespace(
         request=AsyncMock(
             return_value=(
-                LexicalResult(meaning="освобождение", context_note="Здесь: освобождение страны."),
+                DutchTranslation(translation="освобождение"),
                 {},
             )
         )
@@ -102,7 +102,7 @@ async def test_lookup_contract_cache_and_context(dutch):
     assert a == b and a[0] == 200
     assert d.client.request.await_count == 1
     schema, instructions, data, model, budget = d.client.request.call_args.args
-    assert schema is LexicalResult and "entire sentence" in instructions
+    assert schema is DutchTranslation and "entire sentence" in instructions
     assert data == {
         "selected_text": "bevrijding",
         "source_sentence": d.document.sentences()[0].text,
@@ -142,8 +142,8 @@ def test_model_schema_rejects_malformed(bad):
     "failure",
     [
         RuntimeError("private secret"),
-        LexicalResult(meaning="  "),
-        LexicalResult(meaning="English only"),
+        DutchTranslation(translation="  "),
+        DutchTranslation(translation="English only"),
     ],
 )
 async def test_lookup_failure_safe_and_retryable(dutch, failure):
@@ -160,7 +160,7 @@ async def test_lookup_failure_safe_and_retryable(dutch, failure):
         await call(dutch.reader, "POST", route(dutch, "saved-vocabulary"), request(dutch.document))
     )[0] == 200
     dutch.client.request.side_effect = None
-    dutch.client.request.return_value = (LexicalResult(meaning="освобождение"), {})
+    dutch.client.request.return_value = (DutchTranslation(translation="освобождение"), {})
     assert (await call(dutch.reader, "POST", route(dutch, "lexical"), request(dutch.document)))[
         0
     ] == 200
@@ -178,7 +178,7 @@ async def test_saved_word_provenance_idempotency_and_reopen(dutch):
     )
     assert item["source_sentence"] == d.document.sentences()[0].text
     assert item["text"] == item["normalized_text"] == "bevrijding"
-    assert item["meaning"] == "освобождение" and item["context_note"]
+    assert item["meaning"] == "освобождение" and item["context_note"] == ""
     assert item["created"] == b["item"]["created"]
     _, lookup = await call(d.reader, "POST", route(d, "lexical"), request(d.document))
     assert lookup["saved"]
@@ -352,7 +352,7 @@ async def test_target_specific_cache_and_saved_state(dutch):
     d = dutch
     await call(d.reader, "POST", route(d, "lexical"), request(d.document))
     d.client.request.return_value = (
-        LexicalResult(meaning="liberation", context_note="Liberation of the country."),
+        DutchTranslation(translation="liberation"),
         {},
     )
     english = request(d.document, target="en")

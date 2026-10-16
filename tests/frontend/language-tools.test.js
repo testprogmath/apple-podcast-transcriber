@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("assert");
-const {setup,loadApp,speechStub}=require("./dom.js");
+const {setup,loadApp,speechStub,markup}=require("./dom.js");
 const ID="a".repeat(32);
 const caps={lexical_inspector:"contextual",local_dictionary:"dutch",speech_language:"nl-NL",pinyin:false,hanly:false,mosaic:false,internal_save:true};
 function makeSentence(id,text) {
@@ -176,7 +176,7 @@ test("local noun renders before blocked contextual provider and survives languag
   assert.match(e.nodes["lexeme-dictionary-content"].textContent,/de bevrijding · bevrijdingen/);
   assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
   assert.match(e.nodes["lexeme-senses"].textContent,/Loading/);
-  assert(e.nodes["lexeme-dictionary-content"].querySelector("details"));
+  assert(e.nodes["lexeme-dictionary-more"].querySelector("details"));
   e.nodes["language-toggle"].click();await settle();
   assert.match(e.nodes["lexeme-dictionary-content"].textContent,/bevrijdingen/);
   assert.equal(e.calls.filter(c=>c.body?.mode==="dictionary").length,1);
@@ -192,8 +192,8 @@ test("inflected surface preserves multiple analyses with disclosure and sense la
   assert.equal(e.nodes["lexeme-glyph"].textContent,"huizen");
   assert.match(e.nodes["lexeme-dictionary-label"].textContent,/multiple analyses \(3\)/);
   assert.match(e.nodes["lexeme-dictionary-content"].textContent,/→ het huis · huizen/);
-  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/Other analyses \(1\)/);
-  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/Huizen/);
+  assert.match(e.nodes["lexeme-dictionary-more"].textContent,/Other analyses \(1\)/);
+  assert.match(e.nodes["lexeme-dictionary-more"].textContent,/Huizen/);
 });
 for (const [article,plural] of [[null,[]],["het",[]],["het",["musea","museums"]]]) {
   test(`missing evidence is not guessed, multiple plurals retained ${article}/${plural}`,async()=>{
@@ -211,10 +211,10 @@ test("sense-dependent articles remain attached to distinct meanings and historic
     {articles:["de"],labels:["obsolete"],glosses:["old fixture sense"]}];
   const e=start({respond:(p,b)=>b?.mode==="dictionary"?localResult(b.text,[candidate("mens",{senses})]):null});
   await settle();word(e,"bevrijding").click();await settle();
-  const content=e.nodes["lexeme-dictionary-content"].textContent;
+  const content=e.nodes["lexeme-dictionary-content"].textContent+e.nodes["lexeme-dictionary-more"].textContent;
   assert.match(e.nodes["lexeme-dictionary-label"].textContent,/sense-dependent articles/);
   assert(content.includes("de person"));assert(content.includes("het (derogatory, informal) woman"));
-  assert(content.includes("obsolete"));assert(!content.includes("de / het mens"));
+  assert(e.nodes["lexeme-dictionary-more"].textContent.includes("obsolete"));assert(!content.includes("de / het mens"));
 });
 test("contextual failure, retry and timeout preserve local information and TTS",async()=>{
   const speech=speechStub({voices:[{lang:"nl-NL"}]});let failed=true;
@@ -254,5 +254,174 @@ test("late dictionary response cannot replace a different selected word",async()
   complete(localResult("bevrijding",[candidate("bevrijding")]));await settle();
   assert.match(e.nodes["lexeme-dictionary-content"].textContent,/Nederland/);
   assert(!e.nodes["lexeme-dictionary-content"].textContent.includes("bevrijding"));
+});
+
+for (const [text,sentence,translation,target] of [
+  ["oorlog","Dit is het verhaal over ons land in de greep van oorlog en onderdrukking.","война","ru"],
+  ["vrijheid","Over mensen, zoals jij en ik, die hun vrijheid verliezen.","свобода","ru"],
+  ["greep","Het land was in de greep van oorlog.","во власти","ru"],
+  ["oorlog","De oorlog eindigde.","war","en"],
+]) test(`one Dutch contextual result for ${text}/${target}; old notes stay hidden`,async()=>{
+  const documentData={...doc,sentences:[makeSentence(0,sentence)],paragraphs:[[0]]};
+  const e=start({document:documentData,respond:(p,b)=>p.endsWith("/lexical")?(b.mode==="dictionary"
+    ?localResult(b.text,[candidate(text)])
+    :ok({meaning:translation,context_note:"legacy explanation that must not render"})):null});
+  await settle();
+  if (target==="en") { e.nodes["language-toggle"].click();await settle(); }
+  word(e,text).click();await settle();
+  assert.equal(e.nodes["lexeme-senses"].textContent,translation);
+  assert.equal(e.nodes["lexeme-source"].textContent,"");
+  assert.equal(e.nodes["lexeme-note"].textContent,"");
+  assert.match(e.nodes["lexeme-context"].textContent,new RegExp(text));
+  assert.equal(e.calls.find(c=>c.body&&c.body.mode!=="dictionary"&&c.path.endsWith("/lexical")).body.target_language,target);
+});
+test("dictionary sources and all entry links remain in a secondary native disclosure after context",async()=>{
+  const e=start({respond:(p,b)=>b?.mode==="dictionary"?localResult(b.text,[
+    candidate("mens",{article:"de",diminutive:["mensje"]}),candidate("mens",{article:"het"})]):null});
+  await settle();word(e,"bevrijding").click();await settle();
+  assert.equal(e.nodes["lexeme-dictionary-sources"].hidden,false);
+  assert.equal(e.nodes["lexeme-dictionary-more"].hidden,false);
+  assert(!e.nodes["lexeme-dictionary-content"].querySelector("a"));
+  const links=e.nodes["lexeme-dictionary-links"].querySelectorAll("a");
+  assert.equal(links.length,2);
+  for (const link of links) {
+    assert.equal(link.href,"https://en.wiktionary.org/wiki/mens");
+    assert.equal(link.rel,"noopener noreferrer");
+  }
+  const sourceMarkup=markup();
+  const disclosure=sourceMarkup.slice(sourceMarkup.indexOf('<details id="lexeme-dictionary-sources"'),sourceMarkup.indexOf('<button id="lexeme-retry"'));
+  for (const credit of ["Dictionary source: Wiktionary","Wiktionary contributors","Kaikki/Wiktextract","CC BY-SA 4.0","raw snapshot 2026-10-03","compact projection","https://creativecommons.org/licenses/by-sa/4.0/"]) assert(disclosure.includes(credit));
+  assert(sourceMarkup.indexOf('id="lexeme-context"')<sourceMarkup.indexOf('id="lexeme-dictionary-more"'));
+  assert(sourceMarkup.indexOf('id="lexeme-dictionary-more"')<sourceMarkup.indexOf('id="lexeme-dictionary-sources"'));
+  assert(!disclosure.includes("open="),"native closed disclosure remains keyboard/touch accessible");
+});
+test("unavailable contextual provider keeps dictionary and source disclosure visible",async()=>{
+  const e=start({respond:(p,b)=>p.endsWith("/lexical")?(b.mode==="dictionary"
+    ?localResult(b.text,[candidate("bevrijding",{article:"de"})])
+    :error("Contextual meaning is unavailable.")):null});
+  await settle();word(e,"bevrijding").click();await settle();
+  assert.match(e.nodes["lexeme-senses"].textContent,/unavailable/);
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/de bevrijding/);
+  assert.equal(e.nodes["lexeme-dictionary-sources"].hidden,false);
+  assert.equal(e.nodes["lexeme-retry"].hidden,false);
+});
+
+test("RU keeps English fallback while loading then moves every original gloss to details",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const original=candidate("oorlog",{article:"de",plural:["oorlogen"],senses:[
+    {articles:["de"],labels:[],glosses:["war"]},
+    {articles:["de"],labels:["historical"],glosses:["conflict"]},
+    {articles:["de"],labels:[],glosses:["third source sense"]},
+  ]});
+  const before=structuredClone(original);
+  const documentData={...doc,sentences:[makeSentence(0,"In de greep van oorlog.")],paragraphs:[[0]]};
+  const e=start({document:documentData,respond:(p,b)=>p.endsWith("/lexical")?(b.mode==="dictionary"
+    ?localResult(b.text,[original]):pending):null});
+  await settle();word(e,"oorlog").click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/war/);
+  assert.match(e.nodes["lexeme-senses"].textContent,/Loading/);
+  complete(ok({meaning:"война",context_note:""}));await settle();
+  const primary=e.nodes["lexeme-dictionary-content"];
+  assert.match(primary.textContent,/de oorlog · oorlogen/);
+  assert(!primary.querySelector("ul"));
+  assert.equal(e.nodes["lexeme-senses"].textContent,"война");
+  assert.equal(e.nodes["lexeme-senses-label"].textContent,"Значение в контексте");
+  const details=e.nodes["lexeme-dictionary-more"];
+  assert.equal(details.hidden,false);assert(details.querySelector("details"));
+  for (const gloss of ["war","conflict","third source sense"]) assert(details.textContent.includes(gloss));
+  assert.deepEqual(original,before,"source evidence is never mutated");
+});
+test("EN shows English gloss normally after contextual success; switching to RU hides it",async()=>{
+  const e=start({respond:(p,b)=>b?.mode==="dictionary"?localResult(b.text,[candidate("bevrijding")]):null});
+  await settle();e.nodes["language-toggle"].click();await settle();
+  word(e,"bevrijding").click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
+  assert.equal(e.nodes["lexeme-senses"].textContent,"liberation");
+  e.nodes["language-toggle"].click();await settle();
+  assert(!e.nodes["lexeme-dictionary-content"].textContent.includes("fixture meaning"));
+  assert(e.nodes["lexeme-dictionary-more"].textContent.includes("fixture meaning"));
+  e.nodes["language-toggle"].click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
+});
+for (const message of ["Contextual lookup failed","Contextual meaning is unavailable."]) test(`RU English fallback survives ${message}`,async()=>{
+  const e=start({respond:(p,b)=>p.endsWith("/lexical")?(b.mode==="dictionary"
+    ?localResult(b.text,[candidate("bevrijding")]):error(message)):null});
+  await settle();word(e,"bevrijding").click();await settle();
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/fixture meaning/);
+  assert.equal(e.nodes["lexeme-retry"].hidden,false);
+});
+
+const sentenceRequests = e => e.calls.filter(c=>c.path.endsWith("/translation"));
+const translatedSentence = (id,translation) => ok({sentence_id:id,translation});
+for (const [language,value,label] of [["ru","Это перевод полного предложения.","Пример"],["en","This is the complete sentence translation.","Example"]]) test(`inspector reuses full-sentence translation endpoint for ${language}`,async()=>{
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?translatedSentence(0,value):null});
+  await settle();if(language==="en"){e.nodes["language-toggle"].click();await settle();}
+  word(e,"bevrijding").click();await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,value);
+  assert.equal(e.nodes["lexeme-sentence-translation"].getAttribute("lang"),language);
+  assert.equal(e.nodes["lexeme-context-label"].textContent,label);
+  assert.equal(e.nodes["lexeme-sentence-translation"].querySelectorAll(".hit").length,0);
+  assert(e.nodes["lexeme-context"].querySelector(".hit"));
+  assert.deepEqual(sentenceRequests(e).map(c=>c.body),[{language}]);
+  assert(e.calls.findIndex(c=>c.body?.mode==="dictionary")<e.calls.findIndex(c=>c.path.endsWith("/translation")),"local dictionary request starts first");
+});
+test("Reader cached sentence appears synchronously in inspector without duplicate request",async()=>{
+  const value="Уже переведённое предложение.";
+  const e=start({respond:p=>p.endsWith("/translation")?translatedSentence(0,value):null});
+  await settle();holder(e,0).querySelector(".translation-action").click();await settle();
+  assert.equal(sentenceRequests(e).length,1);
+  word(e,"bevrijding").click();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,value,"no loading frame for a cache hit");
+  await settle();assert.equal(sentenceRequests(e).length,1);
+  e.nodes["lexeme-close"].click();word(e,"Nederland").click();await settle();
+  assert.equal(sentenceRequests(e).length,1,"same sentence shared by different inspected words");
+});
+test("pending sentence request is shared with Reader; lexical channels render independently",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?pending:b?.mode==="dictionary"?localResult(b.text,[candidate("bevrijding",{article:"de"})]):null});
+  await settle();holder(e,0).querySelector(".translation-action").click();
+  word(e,"bevrijding").click();await settle();
+  assert.equal(sentenceRequests(e).length,1);
+  assert.match(e.nodes["lexeme-sentence-translation"].textContent,/Перевод предложения…/);
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/de bevrijding/);
+  assert.equal(e.nodes["lexeme-senses"].textContent,"освобождение");
+  assert.match(e.nodes["lexeme-context"].textContent,/Met de bevrijding/);
+  complete(translatedSentence(0,"Перевод готов."));await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Перевод готов.");
+  assert.equal(holder(e,0).querySelector(".translation-text").textContent,"Перевод готов.");
+});
+test("sentence failure leaves dictionary, lexical result, Dutch example and Save functional",async()=>{
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?error("private provider error"):b?.mode==="dictionary"?localResult(b.text,[candidate("bevrijding",{article:"de"})]):null});
+  await settle();word(e,"bevrijding").click();await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Перевод предложения недоступен.");
+  assert.match(e.nodes["lexeme-dictionary-content"].textContent,/de bevrijding/);
+  assert.equal(e.nodes["lexeme-senses"].textContent,"освобождение");
+  assert.match(e.nodes["lexeme-context"].textContent,/Met de bevrijding/);
+  e.nodes["lexeme-action"].click();await settle();assert.equal(e.nodes["lexeme-action"].textContent,"✓ Saved");
+});
+test("inspector sentence cache is reused by the normal Reader translation control",async()=>{
+  const e=start();await settle();word(e,"bevrijding").click();await settle();
+  const value=e.nodes["lexeme-sentence-translation"].textContent;
+  e.nodes["lexeme-close"].click();holder(e,0).querySelector(".translation-action").click();await settle();
+  assert.equal(holder(e,0).querySelector(".translation-text").textContent,value);
+  assert.equal(sentenceRequests(e).length,1);
+});
+test("language switch ignores stale sentence translation and uses per-target cache",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const e=start({respond:(p,b)=>p.endsWith("/translation")?(b.language==="ru"?pending:translatedSentence(0,"English sentence.")):null});
+  await settle();word(e,"bevrijding").click();await settle();e.nodes["language-toggle"].click();await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"English sentence.");
+  complete(translatedSentence(0,"Русское предложение."));await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"English sentence.");
+  e.nodes["language-toggle"].click();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Русское предложение.");
+  await settle();assert.equal(sentenceRequests(e).length,2);
+});
+test("late previous-sentence translation cannot replace current example",async()=>{
+  let complete;const pending=new Promise(r=>complete=r);
+  const e=start({respond:p=>p.endsWith("/sentences/0/translation")?pending:p.endsWith("/sentences/1/translation")?translatedSentence(1,"Новое предложение."):null});
+  await settle();word(e,"bevrijding").click();await settle();word(e,"greep",1).click();await settle();
+  complete(translatedSentence(0,"Старое предложение."));await settle();
+  assert.equal(e.nodes["lexeme-sentence-translation"].textContent,"Новое предложение.");
 });
 (async()=>{let failed=0;for(const [name,fn]of tests){try{await fn();console.log(`✓ ${name}`);}catch(e){failed++;console.error(name,e);}}console.log(`${tests.length-failed}/${tests.length} Dutch frontend tests passed`);if(failed)process.exitCode=1;})();

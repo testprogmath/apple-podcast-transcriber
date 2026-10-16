@@ -547,6 +547,12 @@ ruby { ruby-align: center; }
 .dictionary-candidate { margin: .65rem 0; overflow-wrap: anywhere; }
 .dictionary-candidate .dictionary-lemma { font-weight: 600; margin: .4rem 0; }
 .dictionary-candidate ul { padding-left: 1.2rem; margin: .35rem 0; }
-.dictionary-candidate details, #lexeme-dictionary-content > details { margin-top: .5rem; }
-.dictionary-candidate a, .dictionary-credit { font-size: .75rem; color: var(--muted); }
+.dictionary-candidate details, #lexeme-dictionary-more > details { margin-top: .5rem; }
+.dictionary-credit { font-size: .75rem; color: var(--muted); }
 .dictionary-credit { margin: .75rem 0; }
+
+#lexeme-dictionary-more { margin-top: 1rem; }
+.dictionary-credit summary { cursor: pointer; }
+.dictionary-credit a { color: inherit; }
+
+#lexeme-sentence-translation { margin: .4rem 0 0; color: var(--muted); line-height: 1.6; }

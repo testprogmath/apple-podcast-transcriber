@@ -21,6 +21,7 @@ const state = {
   audioStatus: "",
   audioNotice: false,
   translationViews: [],
+  sentenceTranslationEntries: new Map(),
   vocabularyPending: new Set(),
   hanlyUploading: false,
   selection: null,
@@ -133,6 +134,7 @@ function applyLanguage(language) {
   if (state.lexeme) {
     renderLexemeBody(state.lexeme.glyph);
     if (state.capabilities?.internal_save) loadContextualMeaning();
+    loadInspectorSentenceTranslation();
   }
   state.translationViews.forEach((refresh) => refresh());
 }
@@ -534,7 +536,7 @@ function dictionarySense(sense, showArticle) {
   return li;
 }
 
-function dictionaryCandidate(candidate) {
+function dictionaryCandidate(candidate, detailsTarget = null, showPrimaryGloss = true) {
   const box = document.createElement("div");
   box.className = "dictionary-candidate";
   const articles = [...new Set(candidate.senses.flatMap(s => s.articles || []))];
@@ -544,31 +546,34 @@ function dictionaryCandidate(candidate) {
   heading.textContent = `${candidate.lemma !== state.lexeme.glyph ? "→ " : ""}${singleArticle}${candidate.lemma}`
     + (candidate.plural.length ? ` · ${candidate.plural.join(", ")}` : "") + ` [${candidate.pos}]`;
   box.appendChild(heading);
-  const senses = document.createElement("ul");
-  for (const sense of candidate.senses.slice(0, 2)) senses.appendChild(dictionarySense(sense, articles.length > 1));
-  box.appendChild(senses);
-  if (candidate.senses.length > 2 || candidate.diminutive.length) {
+  const primaryCount = showPrimaryGloss ? 2 : 0;
+  if (showPrimaryGloss) {
+    const senses = document.createElement("ul");
+    for (const sense of candidate.senses.slice(0, primaryCount)) senses.appendChild(dictionarySense(sense, articles.length > 1));
+    box.appendChild(senses);
+  }
+  if (candidate.senses.length > primaryCount || candidate.diminutive.length) {
     const more = document.createElement("details"), summary = document.createElement("summary");
     summary.textContent = "More senses and forms"; more.appendChild(summary);
     const rest = document.createElement("ul");
-    for (const sense of candidate.senses.slice(2)) rest.appendChild(dictionarySense(sense, articles.length > 1));
+    for (const sense of candidate.senses.slice(primaryCount)) rest.appendChild(dictionarySense(sense, articles.length > 1));
     more.appendChild(rest);
     if (candidate.diminutive.length) {
       const diminutive = document.createElement("p");
       diminutive.textContent = `Diminutive: ${candidate.diminutive.join(", ")}`; more.appendChild(diminutive);
     }
-    box.appendChild(more);
+    (detailsTarget || box).appendChild(more);
   }
-  const source = document.createElement("a");
-  source.textContent = "Wiktionary"; source.href = candidate.source_url;
-  source.target = "_blank"; source.rel = "noopener noreferrer";
-  box.appendChild(source);
   return box;
 }
 
 function renderDutchDictionary() {
   const visible = state.capabilities?.local_dictionary === "dutch";
   el("lexeme-dictionary").hidden = !visible;
+  const additional = el("lexeme-dictionary-more"); additional.textContent = "";
+  const sources = el("lexeme-dictionary-sources");
+  const links = el("lexeme-dictionary-links"); links.textContent = "";
+  additional.hidden = true; sources.hidden = true;
   if (!visible) return;
   const container = el("lexeme-dictionary-content"); container.textContent = "";
   const result = state.lexeme?.dictionary;
@@ -580,12 +585,22 @@ function renderDutchDictionary() {
       ? "Dictionary unavailable. Contextual meaning remains available." : "No local dictionary entry. Contextual meaning may help.";
     return;
   }
-  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate));
+  const translated = Boolean(state.lexeme?.meanings?.[state.language]?.meaning?.trim());
+  const showPrimaryGloss = state.language === "en" || !translated;
+  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate, additional, showPrimaryGloss));
   if (result.candidates.length > 2) {
     const more = document.createElement("details"), summary = document.createElement("summary");
     summary.textContent = `Other analyses (${result.candidates.length - 2})`; more.appendChild(summary);
     for (const candidate of result.candidates.slice(2)) more.appendChild(dictionaryCandidate(candidate));
-    container.appendChild(more);
+    additional.appendChild(more);
+  }
+  additional.hidden = !additional.children.length;
+  sources.hidden = false;
+  for (const candidate of result.candidates) {
+    const source = document.createElement("a");
+    source.textContent = `${candidate.lemma} [${candidate.pos}] · Wiktionary`;
+    source.href = candidate.source_url; source.target = "_blank"; source.rel = "noopener noreferrer";
+    const line = document.createElement("p"); line.appendChild(source); links.appendChild(line);
   }
 }
 
@@ -602,6 +617,7 @@ async function loadDutchDictionary() {
 
 function renderLexemeBody(glyph) {
   renderDutchDictionary();
+  renderInspectorSentenceTranslation();
   el("lexeme-retry").hidden = true;
   el("lexeme-note").textContent = "";
   el("lexeme-pinyin").hidden = !state.capabilities?.pinyin && Boolean(state.capabilities);
@@ -615,10 +631,13 @@ function renderLexemeBody(glyph) {
     item.textContent = entry?.meaning || "Loading meaning…";
     list.appendChild(item);
     el("lexeme-senses-label").hidden = false;
-    el("lexeme-senses-label").textContent = "Meaning in context";
-    el("lexeme-source").textContent = entry ? "Generated contextual meaning" : "";
-    el("lexeme-note").textContent = entry?.context_note || "";
-    el("lexeme-context-label").textContent = "In context";
+    el("lexeme-senses-label").textContent = state.capabilities?.local_dictionary === "dutch" && state.language === "ru"
+      ? "Значение в контексте" : "Meaning in context";
+    const dutch = state.capabilities?.local_dictionary === "dutch";
+    el("lexeme-source").textContent = !dutch && entry ? "Generated contextual meaning" : "";
+    el("lexeme-note").textContent = dutch ? "" : entry?.context_note || "";
+    el("lexeme-context-label").textContent = state.capabilities?.local_dictionary === "dutch"
+      ? state.language === "ru" ? "Пример" : "Example" : "In context";
     renderContext(glyph, state.lexeme.sentenceId);
     return;
   }
@@ -666,6 +685,44 @@ function openLexeme(token, sentenceId, node) {
   el("lexeme-action").focus();
   loadDutchDictionary();
   if (state.capabilities?.internal_save) loadContextualMeaning();
+  loadInspectorSentenceTranslation();
+}
+
+/** Shares the sentence control's cache/pending request, never the lexical provider. */
+function renderInspectorSentenceTranslation() {
+  const node = el("lexeme-sentence-translation");
+  const lexeme = state.lexeme;
+  const entry = state.sentenceTranslationEntries.get(lexeme?.sentenceId);
+  node.hidden = state.capabilities?.local_dictionary !== "dutch" || !lexeme || !entry;
+  if (node.hidden) { node.textContent = ""; return; }
+  const language = state.language;
+  node.setAttribute("lang", language);
+  node.textContent = entry.cache[language] || (lexeme.sentenceTranslationErrors?.[language]
+    ? language === "ru" ? "Перевод предложения недоступен." : "Sentence translation unavailable."
+    : language === "ru" ? "Перевод предложения…" : "Translating sentence…");
+}
+
+async function loadInspectorSentenceTranslation() {
+  const lexeme = state.lexeme;
+  if (!lexeme || state.capabilities?.local_dictionary !== "dutch") return;
+  const entry = state.sentenceTranslationEntries.get(lexeme.sentenceId);
+  if (!entry) return;
+  const language = state.language;
+  renderInspectorSentenceTranslation();
+  if (entry.cache[language] || lexeme.sentenceTranslationRequests?.[language]) return;
+  lexeme.sentenceTranslationRequests ||= {};
+  lexeme.sentenceTranslationErrors ||= {};
+  lexeme.sentenceTranslationRequests[language] = true;
+  delete lexeme.sentenceTranslationErrors[language];
+  renderInspectorSentenceTranslation();
+  try {
+    await entry.load(language);
+  } catch (error) {
+    lexeme.sentenceTranslationErrors[language] = true;
+  } finally {
+    delete lexeme.sentenceTranslationRequests[language];
+    if (state.lexeme === lexeme && state.language === language) renderInspectorSentenceTranslation();
+  }
 }
 
 /** Lookup is occurrence/context-owned: never put Dutch senses in the glyph glossary. */
@@ -754,6 +811,21 @@ function translationControl(sentence) {
   content.hidden = true;
   const cache = {};
   const pending = {};
+  function load(language) {
+    if (cache[language]) return Promise.resolve(cache[language]);
+    if (!pending[language]) {
+      pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
+        method: "POST", body: JSON.stringify({ language }),
+      }).then((result) => {
+        if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
+          throw new Error("Invalid translation");
+        }
+        cache[language] = result.translation;
+      }).finally(() => { delete pending[language]; });
+    }
+    return pending[language];
+  }
+  state.sentenceTranslationEntries.set(sentence.id, {cache, load});
   let visible = false;
   let revision = 0;
   box.addEventListener("click", (event) => event.stopPropagation());
@@ -776,17 +848,7 @@ function translationControl(sentence) {
       label("Translating…");
       action.setAttribute("aria-busy", "true");
       try {
-        if (!pending[language]) {
-          pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
-            method: "POST", body: JSON.stringify({ language }),
-          }).then((result) => {
-            if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
-              throw new Error("Invalid translation");
-            }
-            cache[language] = result.translation;
-          }).finally(() => { delete pending[language]; });
-        }
-        await pending[language];
+        await load(language);
       } catch (error) {
         if (requestRevision !== revision) return;
         visible = false;
