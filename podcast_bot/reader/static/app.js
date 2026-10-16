@@ -20,6 +20,8 @@ const state = {
   audio: null,
   audioStatus: "",
   audioNotice: false,
+  readingReady: false,
+  scrollLock: null,
   translationViews: [],
   sentenceTranslationEntries: new Map(),
   vocabularyPending: new Set(),
@@ -118,9 +120,105 @@ function toggleSentence(id) {
   if (telegram && telegram.HapticFeedback) telegram.HapticFeedback.selectionChanged();
 }
 
+/** Local reading state is separate from saved sentences used by Review. */
+function readingKey(kind) { return `reader.${kind}.${documentId}`; }
+function readAnchor(kind) {
+  try {
+    const value = JSON.parse(localStorage.getItem(readingKey(kind)) || "null");
+    if (value?.start === true) return value;
+    if (Number.isInteger(value?.id) && typeof value.text === "string"
+      && Number.isFinite(value.offset) && value.offset >= 0 && value.offset <= 1) return value;
+  } catch (error) { /* Corrupt/blocked browser storage must not stop reading. */ }
+  return null;
+}
+function validAnchor(anchor) {
+  return anchor?.start === true || Boolean(anchor && state.sentences.some(s=>s.id === anchor.id && s.text === anchor.text));
+}
+function readingAnchor() {
+  if (!documentId || !state.readingReady || state.scrollLock || el("text").hidden) return null;
+  if ((window.scrollY || 0) <= 0) return {start:true};
+  const nodes = el("text").querySelectorAll(".sentence");
+  if (!nodes.length || !nodes[0].getBoundingClientRect) return null;
+  const line = Math.max(0, el("bar").getBoundingClientRect().bottom);
+  let low = 0, high = nodes.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (nodes[middle].getBoundingClientRect().bottom <= line) low = middle + 1;
+    else high = middle;
+  }
+  const node = nodes[low], rect = node.getBoundingClientRect();
+  const sentence = state.sentences.find(s=>String(s.id) === node.dataset.sentence);
+  if (!sentence) return null;
+  return {id:sentence.id,text:sentence.text,offset:Math.max(0,Math.min(1,(line-rect.top)/Math.max(1,rect.height)))};
+}
+function storeAnchor(kind, anchor) {
+  if (!anchor) return false;
+  try { localStorage.setItem(readingKey(kind), JSON.stringify(anchor)); return true; }
+  catch (error) { return false; }
+}
+function saveReadingPosition() { storeAnchor("position", readingAnchor()); }
+function restoreAnchor(anchor) {
+  if (!validAnchor(anchor)) return false;
+  if (anchor.start) { window.scrollTo?.({top:0,behavior:"instant"}); return true; }
+  const node = el("text").querySelector(`[data-sentence="${anchor.id}"]`);
+  if (!node?.getBoundingClientRect) return false;
+  const rect = node.getBoundingClientRect();
+  const line = Math.max(0, el("bar").getBoundingClientRect().bottom);
+  window.scrollTo?.({top:Math.max(0,(window.scrollY || 0)+rect.top-line+anchor.offset*rect.height),behavior:"instant"});
+  return true;
+}
+function renderBookmark() {
+  const russian = state.language === "ru";
+  const present = validAnchor(readAnchor("bookmark"));
+  el("reading-bookmark-label").textContent = (russian ? "Закладка" : "Bookmark") + (present ? " •" : "");
+  el("reading-bookmark-save").textContent = russian ? "Сохранить здесь" : "Save this place";
+  el("reading-bookmark-go").textContent = russian ? "Перейти к закладке" : "Go to bookmark";
+  el("reading-bookmark-delete").textContent = russian ? "Удалить закладку" : "Remove bookmark";
+  el("reading-bookmark-go").disabled = !present;
+  el("reading-bookmark-delete").disabled = !readAnchor("bookmark");
+}
+el("reading-bookmark-save").addEventListener("click", () => {
+  const saved = storeAnchor("bookmark", readingAnchor());
+  renderBookmark(); el("reading-bookmark").open = false;
+  toast(saved ? state.language === "ru" ? "Закладка сохранена" : "Bookmark saved"
+    : state.language === "ru" ? "Не удалось сохранить закладку в браузере" : "Cannot save bookmark in this browser", !saved);
+});
+el("reading-bookmark-go").addEventListener("click", () => {
+  el("reading-bookmark").open = false;
+  restoreAnchor(readAnchor("bookmark"));
+});
+el("reading-bookmark-delete").addEventListener("click", () => {
+  try { localStorage.removeItem(readingKey("bookmark")); } catch (error) { /* Storage unavailable. */ }
+  renderBookmark(); el("reading-bookmark").open = false;
+});
+let readingTimer;
+window.addEventListener?.("scroll", () => {
+  if (!state.readingReady || state.scrollLock) return;
+  clearTimeout(readingTimer); readingTimer = setTimeout(saveReadingPosition, 250);
+}, {passive:true});
+window.addEventListener?.("pagehide", saveReadingPosition);
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveReadingPosition(); });
+
+/** Fixed-body locking works in mobile WebViews; the sheet retains its own scroll. */
+function syncSheetScroll() {
+  const open = Boolean(state.lexeme || state.open);
+  if (open && state.scrollLock === null) {
+    saveReadingPosition();
+    state.scrollLock = {y:window.scrollY || 0};
+    document.body.style.setProperty("--reader-scroll-top", `${-state.scrollLock.y}px`);
+    document.body.classList.add("reader-sheet-open");
+  } else if (!open && state.scrollLock !== null) {
+    const {y} = state.scrollLock;
+    document.body.classList.remove("reader-sheet-open");
+    document.body.style.removeProperty("--reader-scroll-top");
+    state.scrollLock = null;
+    window.scrollTo?.({top:y,behavior:"instant"});
+  }
+}
+
 function applyPinyin(on) {
   state.pinyin = on;
-  el("text").classList.toggle("pinyin", on);
+  el("text").classList.toggle("pinyin", on && state.capabilities?.pinyin !== false);
   const toggle = el("pinyin-toggle");
   toggle.setAttribute("aria-pressed", on ? "true" : "false");
   toggle.textContent = on ? "拼音 ON" : "拼音 OFF";
@@ -128,6 +226,7 @@ function applyPinyin(on) {
 
 function applyLanguage(language) {
   state.language = language;
+  renderBookmark();
   const toggle = el("language-toggle");
   toggle.setAttribute("aria-pressed", language === "ru" ? "true" : "false");
   toggle.textContent = language.toUpperCase();
@@ -402,8 +501,9 @@ function closeLexeme() {
   el("lexeme").hidden = true;
   markInspecting(null);
   if (!state.open) el("scrim").hidden = true;
-  if (closeLexeme.origin && closeLexeme.origin.focus) closeLexeme.origin.focus();
+  if (closeLexeme.origin && closeLexeme.origin.focus) closeLexeme.origin.focus({preventScroll:true});
   closeLexeme.origin = null;
+  syncSheetScroll();
 }
 
 // Current Hanly selection > persisted learning/known > unknown (absence).
@@ -682,7 +782,8 @@ function openLexeme(token, sentenceId, node) {
   markInspecting(node);
   el("lexeme").hidden = false;
   el("scrim").hidden = false;
-  el("lexeme-action").focus();
+  syncSheetScroll();
+  el("lexeme-action").focus({preventScroll:true});
   loadDutchDictionary();
   if (state.capabilities?.internal_save) loadContextualMeaning();
   loadInspectorSentenceTranslation();
@@ -1328,12 +1429,18 @@ function render(data) {
   main.setAttribute("aria-busy", "false");
   applyPinyin(state.pinyin);
   refreshCounters();
+  renderBookmark();
+  (window.requestAnimationFrame || (fn=>fn()))(() => {
+    restoreAnchor(readAnchor("position"));
+    state.readingReady = true;
+  });
 }
 
 function closeBasket() {
   state.open = null;
   el("basket").hidden = true;
   if (!state.lexeme) el("scrim").hidden = true;
+  syncSheetScroll();
 }
 
 function openBasket(kind) {
@@ -1406,6 +1513,7 @@ function openBasket(kind) {
   upload.disabled = entries.length === 0 || !available;
   el("basket").hidden = false;
   el("scrim").hidden = false;
+  syncSheetScroll();
 }
 
 function noteSummary(notes) {
@@ -1574,6 +1682,7 @@ if (documentId) {
 
 
 function showView(view) {
+  if (view !== "document") saveReadingPosition();
   stopOriginal();
   stopSpeaking();
   el("review").hidden = view !== "review";

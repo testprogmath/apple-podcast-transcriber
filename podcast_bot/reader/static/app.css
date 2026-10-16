@@ -556,3 +556,25 @@ ruby { ruby-align: center; }
 .dictionary-credit a { color: inherit; }
 
 #lexeme-sentence-translation { margin: .4rem 0 0; color: var(--muted); line-height: 1.6; }
+
+/* Dutch prose needs normal leading, without the space reserved for Chinese ruby. */
+#text[lang="nl"] { font-size: 20px; line-height: 1.55; }
+#text[lang="nl"] p { margin-bottom: 12px; }
+#text[lang="nl"] .sentence { margin: 8px 0; }
+#text[lang="nl"] .word { padding: 0; }
+#text[lang="nl"] .sentence-controls { line-height: 1; }
+@media (max-width: 520px) {
+  #text[lang="nl"] { font-size: 19px; }
+  #text[lang="nl"] .sentence { row-gap: 2px; }
+  #text[lang="nl"] .sentence-controls button { width: 44px; height: 44px; flex-basis: 44px; }
+}
+
+body.reader-sheet-open { position: fixed; top: var(--reader-scroll-top); width: 100%; overflow: hidden; }
+#lexeme, #basket { overscroll-behavior-y: contain; }
+#scrim { touch-action: none; }
+#reading-bookmark { position: relative; margin-left: auto; color: var(--muted); font-size: 13px; }
+#reading-bookmark summary { cursor: pointer; padding: 8px 4px; }
+.reading-bookmark-menu { position: absolute; right: 0; top: 100%; z-index: 4; width: 220px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.reading-bookmark-menu button { display: block; width: 100%; border: 0; background: none; color: var(--fg); padding: 10px; text-align: left; cursor: pointer; }
+.reading-bookmark-menu button:disabled { opacity: .45; cursor: default; }
