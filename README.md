@@ -95,6 +95,12 @@ Public HTTP and redirect checks, bounded downloads, local-only ffmpeg protocols,
 
 Apple may omit episodes outside the latest 200, and RSS feeds may drop entries. Subscriber-only and DRM content is unsupported. Pinyin, translation quality and pedagogical usefulness remain model or dictionary judgements, even though schema, source and order checks are enforced.
 
+## Licence
+
+The application code is available under the [PolyForm Strict License 1.0.0](LICENSE). You may read it and run it for any noncommercial purpose, such as personal study or a hobby project. You may not change it, build new work on it or redistribute it.
+
+Dictionary data keeps its own licences. CC-CEDICT and the Dutch Wiktionary extract are CC BY-SA 4.0, with attribution in [`dictionary/`](dictionary/). The 大БКРС Russian dictionary is third-party data and is not part of this repository.
+
 ## Documentation
 
 | Topic | File |
