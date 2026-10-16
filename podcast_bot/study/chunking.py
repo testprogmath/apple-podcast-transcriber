@@ -102,7 +102,24 @@ def validate_chunk(
         )
     material.passages = aligned
     for passage, block in zip(material.passages, blocks, strict=True):
-        if normalized("".join(x.source for x in passage.lines)) != normalized(block.text):
+        source = normalized(block.text)
+        joined = normalized("".join(x.source for x in passage.lines))
+        if joined != source:
+            at = next(
+                (i for i, (a, b) in enumerate(zip(source, joined, strict=False)) if a != b),
+                min(len(source), len(joined)),
+            )
+            log.warning(
+                "study-lines block=%d lines=%d source_chars=%d line_chars=%d "
+                "first_difference=%d source_excerpt=%r line_excerpt=%r",
+                block.id,
+                len(passage.lines),
+                len(source),
+                len(joined),
+                at,
+                source[max(0, at - 20) : at + 20],
+                joined[max(0, at - 20) : at + 20],
+            )
             raise UserError(
                 "Study output changed the source text. Canonical transcript preserved; use /retry."
             )

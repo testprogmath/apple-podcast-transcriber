@@ -736,6 +736,21 @@ def test_reading_lines_must_still_reconstruct_the_block():
         validate_chunk(result, blocks, "zh")
 
 
+def test_a_reading_line_mismatch_logs_where_it_diverges(caplog):
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(3, "今天是2026年10月16日。")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[0].lines[0].source = "今天是二〇二六年10月16日。"
+    with pytest.raises(UserError, match="changed the source text"):
+        validate_chunk(result, blocks, "zh")
+    record = next(r for r in caplog.records if r.getMessage().startswith("study-lines"))
+    assert record.getMessage() == (
+        "study-lines block=3 lines=1 source_chars=15 line_chars=15 first_difference=3 "
+        "source_excerpt='今天是2026年10月16日。' line_excerpt='今天是二〇二六年10月16日。'"
+    )
+
+
 @pytest.mark.parametrize(
     ("reading", "rejected"),
     [
