@@ -759,6 +759,49 @@ def test_reading_lines_must_still_reconstruct_the_block():
         validate_chunk(result, blocks, "zh")
 
 
+def test_punctuation_the_model_adds_to_an_unpunctuated_transcript_is_accepted():
+    # Job #9: a Whisper transcript with spaces and no punctuation at all.
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [
+        SourceBlock(0, "大家好 欢迎来到聊聊东西 我心里嘀咕了一下"),
+        SourceBlock(1, "我们一起分工合作"),
+    ]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[0].source = "大家好，欢迎来到聊聊东西。我心里嘀咕了一下。"
+    result.passages[0].lines[0].source = "大家好，欢迎来到聊聊东西。我心里嘀咕了一下。"
+    result.vocabulary[0].example = "我心里嘀咕了一下。"
+    validate_chunk(result, blocks, "zh")
+    assert result.passages[0].source == blocks[0].text
+
+
+def test_a_changed_character_is_still_rejected_when_punctuation_differs():
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(0, "大家好 欢迎来到聊聊东西")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[0].source = "大家好，欢迎来到聊聊南北。"
+    with pytest.raises(UserError, match="complete transcript paragraphs"):
+        validate_chunk(result, blocks, "zh")
+
+
+def test_a_paragraph_mismatch_logs_where_it_diverges(caplog):
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(0, "大家好 欢迎来到聊聊东西 我是Candice")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[0].source = "大家好，欢迎来到聊聊东西，我是Candy。"
+    with pytest.raises(UserError, match="complete transcript paragraphs"):
+        validate_chunk(result, blocks, "zh")
+    record = next(
+        r for r in caplog.records if r.getMessage().startswith("study-coverage-divergence")
+    )
+    assert record.getMessage() == (
+        "study-coverage-divergence block=0 first_difference=17 "
+        "source_excerpt='大家好欢迎来到聊聊东西我是Candice' passage_excerpt='大家好欢迎来到聊聊东西我是Candy'"
+    )
+
+
 def test_a_reading_line_mismatch_logs_where_it_diverges(caplog):
     from podcast_bot.study.chunking import SourceBlock
 
@@ -769,8 +812,8 @@ def test_a_reading_line_mismatch_logs_where_it_diverges(caplog):
         validate_chunk(result, blocks, "zh")
     record = next(r for r in caplog.records if r.getMessage().startswith("study-lines"))
     assert record.getMessage() == (
-        "study-lines block=3 lines=1 source_chars=15 line_chars=15 first_difference=3 "
-        "source_excerpt='今天是2026年10月16日。' line_excerpt='今天是二〇二六年10月16日。'"
+        "study-lines block=3 lines=1 source_chars=14 line_chars=14 first_difference=3 "
+        "source_excerpt='今天是2026年10月16日' line_excerpt='今天是二〇二六年10月16日'"
     )
 
 

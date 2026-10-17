@@ -27,6 +27,19 @@ def normalized(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFC", text))
 
 
+def characters(text: str) -> str:
+    """Letters and digits only: the model may punctuate a transcript that has none."""
+    return "".join(c for c in unicodedata.normalize("NFC", text) if c.isalnum())
+
+
+def divergence(expected: str, received: str) -> tuple[int, str, str]:
+    at = next(
+        (i for i, (a, b) in enumerate(zip(expected, received, strict=False)) if a != b),
+        min(len(expected), len(received)),
+    )
+    return at, expected[max(0, at - 20) : at + 20], received[max(0, at - 20) : at + 20]
+
+
 def split_blocks(text: str, limit: int = 1200) -> list[SourceBlock]:
     """Prefer paragraph/sentence boundaries. Never truncate or lose source characters."""
     if not text.strip():
@@ -82,16 +95,29 @@ def validate_chunk(
     # source, retaining each passage's own translation and reading lines.
     remaining = defaultdict(deque)
     for passage in material.passages:
-        remaining[normalized(passage.source)].append(passage)
+        remaining[characters(passage.source)].append(passage)
     aligned = []
     for block in blocks:
-        key = normalized(block.text)
+        key = characters(block.text)
         if not remaining[key]:
             break
         # The canonical transcript owns spacing and NFC form; the model's copy does not.
         passage = remaining[key].popleft()
         aligned.append(passage.model_copy(update={"block_id": block.id, "source": block.text}))
     if len(aligned) != len(blocks) or any(remaining.values()):
+        if len(aligned) < len(blocks) and len(aligned) < len(material.passages):
+            at, expected, received = divergence(
+                characters(blocks[len(aligned)].text),
+                characters(material.passages[len(aligned)].source),
+            )
+            log.warning(
+                "study-coverage-divergence block=%d first_difference=%d "
+                "source_excerpt=%r passage_excerpt=%r",
+                blocks[len(aligned)].id,
+                at,
+                expected,
+                received,
+            )
         log.warning(
             "study-coverage expected_blocks=%d received_passages=%d matched_blocks=%d "
             "unmatched_block=%r unmatched_passages=%r",
@@ -107,13 +133,10 @@ def validate_chunk(
         )
     material.passages = aligned
     for passage, block in zip(material.passages, blocks, strict=True):
-        source = normalized(block.text)
-        joined = normalized("".join(x.source for x in passage.lines))
+        source = characters(block.text)
+        joined = characters("".join(x.source for x in passage.lines))
         if joined != source:
-            at = next(
-                (i for i, (a, b) in enumerate(zip(source, joined, strict=False)) if a != b),
-                min(len(source), len(joined)),
-            )
+            at, source_excerpt, line_excerpt = divergence(source, joined)
             log.warning(
                 "study-lines block=%d lines=%d source_chars=%d line_chars=%d "
                 "first_difference=%d source_excerpt=%r line_excerpt=%r",
@@ -122,8 +145,8 @@ def validate_chunk(
                 len(source),
                 len(joined),
                 at,
-                source[max(0, at - 20) : at + 20],
-                joined[max(0, at - 20) : at + 20],
+                source_excerpt,
+                line_excerpt,
             )
             raise UserError(
                 "Study output changed the source text. Canonical transcript preserved; use /retry."
@@ -167,24 +190,24 @@ def validate_chunk(
                 "A vocabulary meaning was not written in the configured native language. Use /retry."
             )
     validate_mosaic(material, blocks, target)
-    source = normalized("".join(b.text for b in blocks))
+    source = characters("".join(b.text for b in blocks))
     for item in [
         *material.vocabulary,
         *material.patterns,
         *material.pragmatics,
         *material.cultural_references,
     ]:
-        if normalized(item.example) not in source:
+        if characters(item.example) not in source:
             raise UserError(
                 "A study example was not found in the canonical transcript. Use /retry."
             )
     for item in material.vocabulary:
-        if normalized(item.term) not in source:
+        if characters(item.term) not in source:
             raise UserError(
                 "A vocabulary item was not found in the canonical transcript. Use /retry."
             )
     for issue in material.possible_asr_errors:
-        if normalized(issue.original) not in source:
+        if characters(issue.original) not in source:
             raise UserError("An ASR issue did not cite the canonical transcript. Use /retry.")
 
 
