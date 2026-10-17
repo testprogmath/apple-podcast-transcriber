@@ -224,6 +224,29 @@ def test_whitespace_preservation_and_full_coverage():
     assert [b.id for group in groups for b in group] == list(range(len(blocks)))
 
 
+def test_long_paragraphs_are_cut_at_sentence_ends_not_commas():
+    # Job #10: one 2,947-character paragraph with ASCII commas was cut after
+    # "敷眼10-15分钟," and the model finished that sentence from the next block.
+    sentence = "每天可以安排热毛巾敷眼10-15分钟,或者做一做眼保健操。"
+    text = sentence * 60
+    blocks = split_blocks(text)
+    assert "".join(b.text for b in blocks) == text
+    assert all(len(b.text) <= 1200 for b in blocks)
+    assert all(b.text.endswith("。") for b in blocks)
+
+
+def test_a_sentence_end_too_early_in_the_window_falls_back_to_a_comma():
+    text = "好。" + "很长的一句话," * 300
+    first = split_blocks(text)[0].text
+    assert len(first) > 400
+    assert first.endswith(",")
+
+
+def test_a_window_without_any_break_is_cut_at_the_limit():
+    blocks = split_blocks("字" * 2500)
+    assert [len(b.text) for b in blocks] == [1200, 1200, 100]
+
+
 @pytest.mark.parametrize("text", ["", " " * 10, "字" * 300001])
 def test_transcript_safety_limits(text):
     with pytest.raises(UserError):
@@ -734,6 +757,21 @@ def test_reading_lines_must_still_reconstruct_the_block():
     result.passages[0].lines[0].source = "你好吗。"
     with pytest.raises(UserError, match="changed the source text"):
         validate_chunk(result, blocks, "zh")
+
+
+def test_a_reading_line_mismatch_logs_where_it_diverges(caplog):
+    from podcast_bot.study.chunking import SourceBlock
+
+    blocks = [SourceBlock(3, "今天是2026年10月16日。")]
+    result = material_for([{"id": b.id, "text": b.text} for b in blocks])
+    result.passages[0].lines[0].source = "今天是二〇二六年10月16日。"
+    with pytest.raises(UserError, match="changed the source text"):
+        validate_chunk(result, blocks, "zh")
+    record = next(r for r in caplog.records if r.getMessage().startswith("study-lines"))
+    assert record.getMessage() == (
+        "study-lines block=3 lines=1 source_chars=15 line_chars=15 first_difference=3 "
+        "source_excerpt='今天是2026年10月16日。' line_excerpt='今天是二〇二六年10月16日。'"
+    )
 
 
 @pytest.mark.parametrize(

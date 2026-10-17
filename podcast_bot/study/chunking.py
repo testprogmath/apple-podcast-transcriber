@@ -13,6 +13,8 @@ log = logging.getLogger(__name__)
 # A tone digit belongs to a lowercase pinyin syllable (ni3, lü4). Acronyms the
 # episode itself says — HSK1, MP3 — end in an uppercase letter and are not pinyin.
 NUMBERED_PINYIN = re.compile(r"[a-zü][1-5](?:\b|$)")
+SENTENCE_END = re.compile(r'[。！？!?；;.][”’」』»"\']*\s*')
+SOFT_BREAK = re.compile(r"[,，、:]\s*|\s+")
 
 
 @dataclass(frozen=True)
@@ -35,10 +37,13 @@ def split_blocks(text: str, limit: int = 1200) -> list[SourceBlock]:
     for paragraph in re.split(r"\n\s*\n", text.strip()):
         remaining = paragraph.strip()
         while len(remaining) > limit:
-            candidates = list(
-                re.finditer(r'[。！？!?；;.!][”’」』»"\']*\s*|[,，、:]\s*|\s+', remaining[:limit])
-            )
-            cut = candidates[-1].end() if candidates else limit
+            # A block that stops mid-sentence invites the model to finish the sentence
+            # from the next block, which fails source validation. Commas and spaces are
+            # a fallback only when no sentence ends in a usefully large part of the window.
+            window = remaining[:limit]
+            ends = [m.end() for m in SENTENCE_END.finditer(window) if m.end() >= limit // 3]
+            soft = [m.end() for m in SOFT_BREAK.finditer(window)]
+            cut = (ends or soft or [limit])[-1]
             blocks.append(remaining[:cut])
             remaining = remaining[cut:]
         if remaining.strip():
@@ -102,7 +107,24 @@ def validate_chunk(
         )
     material.passages = aligned
     for passage, block in zip(material.passages, blocks, strict=True):
-        if normalized("".join(x.source for x in passage.lines)) != normalized(block.text):
+        source = normalized(block.text)
+        joined = normalized("".join(x.source for x in passage.lines))
+        if joined != source:
+            at = next(
+                (i for i, (a, b) in enumerate(zip(source, joined, strict=False)) if a != b),
+                min(len(source), len(joined)),
+            )
+            log.warning(
+                "study-lines block=%d lines=%d source_chars=%d line_chars=%d "
+                "first_difference=%d source_excerpt=%r line_excerpt=%r",
+                block.id,
+                len(passage.lines),
+                len(source),
+                len(joined),
+                at,
+                source[max(0, at - 20) : at + 20],
+                joined[max(0, at - 20) : at + 20],
+            )
             raise UserError(
                 "Study output changed the source text. Canonical transcript preserved; use /retry."
             )
