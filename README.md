@@ -21,6 +21,12 @@ It is built for one person, a Mandarin learner whose native language is Russian,
   </tr>
 </table>
 
+<p align="center">
+  <img src="docs/images/05-custom-expression.gif" width="320" alt="Selecting 就可以了 across three words, making it one expression, and the word card that opens for it">
+  <br>
+  <sub>Three automatic words, 就 · 可以 · 了, become one expression with its own pinyin and dictionary meaning.</sub>
+</p>
+
 Screenshots come from a local Reader with the real CC-CEDICT and 大БКРС dictionaries and an original sample text. The interface speaks Russian because its one user does.
 
 ## What it does
@@ -52,6 +58,8 @@ flowchart LR
 Python 3.12, SQLite, ffmpeg, the official OpenAI SDK, python-telegram-bot with long polling, jieba and pypinyin, CC-CEDICT, and a Mini App in plain JavaScript with no build step. One Docker container on one server. CI runs 1,044 Python tests and five frontend suites, then deploys `main`.
 
 ## Decisions worth reading
+
+Four problems found in production, and how each was traced, are written up in [docs/engineering-notes.md](docs/engineering-notes.md).
 
 **The transcript is the source of truth.** The study stage derives everything from the saved transcript and never edits it. Suspected speech-recognition errors appear as suggestions with a reason, never as silent replacements. Quotations and flashcard sentences are picked by segment ID from a deterministic catalogue of the transcript, so the model cannot paraphrase a quote. See [docs/study-pack.md](docs/study-pack.md).
 
@@ -116,3 +124,4 @@ Dictionary data keeps its own licences. CC-CEDICT and the Dutch Wiktionary extra
 | Installation and configuration | [docs/setup.md](docs/setup.md) |
 | Deployment, rollback and the release helper | [docs/deployment.md](docs/deployment.md) |
 | Development, CI and dependency updates | [docs/development.md](docs/development.md) |
+| Problems found in production and how they were traced | [docs/engineering-notes.md](docs/engineering-notes.md) |
