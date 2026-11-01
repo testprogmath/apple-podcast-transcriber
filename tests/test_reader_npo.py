@@ -437,3 +437,32 @@ async def test_telegram_npo_errors_and_authorization(config, store):
             == "NPO import: subtitle not found."
         )
     assert store.recent_reader_document(42) is None
+
+
+async def test_bv_product_import():
+    url = "https://npo.nl/start/afspelen/schwalbe_2"
+    page = '<meta property="og:title" content="De Zaanse zigzagger">{"productId":"BV_101414161"}'
+    async with client(page=page) as c:
+        document = await NpoSourceAdapter(c).import_document(42, url)
+    assert document.metadata()["product_id"] == "BV_101414161"
+    assert (
+        document.metadata()["subtitle_url"]
+        == "https://cdn.npoplayer.nl/subtitles/nl/BV_101414161.vtt"
+    )
+    assert document.language == "nl"
+    assert document.raw_text
+
+
+@pytest.mark.parametrize(
+    "product", ["BV_", "BV_abc", "BV_123x", "xBV_123", "BV_１２３", "BV_" + "1" * 21]
+)
+async def test_malformed_bv_products(product):
+    async with client(page=product) as c:
+        with pytest.raises(UserError, match="product id not found"):
+            await NpoSourceAdapter(c).resolve_product_id(c, URL)
+
+
+async def test_mixed_product_prefixes_are_ambiguous():
+    async with client(page="VPWON_1361725 BV_101414161") as c:
+        with pytest.raises(UserError, match="ambiguous product id"):
+            await NpoSourceAdapter(c).resolve_product_id(c, URL)

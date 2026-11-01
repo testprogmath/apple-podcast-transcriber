@@ -16,7 +16,7 @@ from ..storage import now
 from .documents import MAX_CHARACTERS, ReaderDocument, clean_title
 from .sentences import Sentence
 
-PRODUCT = re.compile(r"(?<![\w])VPWON_[0-9]{1,20}(?![\w])")
+PRODUCT = re.compile(r"(?<![\w])(?:VPWON|BV)_[0-9]{1,20}(?![\w])")
 # Exact descriptions only: parenthetical dialogue is not a sound label.
 NON_SPEECH = {
     "explosie",
