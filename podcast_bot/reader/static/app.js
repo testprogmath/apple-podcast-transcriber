@@ -20,7 +20,10 @@ const state = {
   audio: null,
   audioStatus: "",
   audioNotice: false,
+  readingReady: false,
+  scrollLock: null,
   translationViews: [],
+  sentenceTranslationEntries: new Map(),
   vocabularyPending: new Set(),
   hanlyUploading: false,
   selection: null,
@@ -117,9 +120,105 @@ function toggleSentence(id) {
   if (telegram && telegram.HapticFeedback) telegram.HapticFeedback.selectionChanged();
 }
 
+/** Local reading state is separate from saved sentences used by Review. */
+function readingKey(kind) { return `reader.${kind}.${documentId}`; }
+function readAnchor(kind) {
+  try {
+    const value = JSON.parse(localStorage.getItem(readingKey(kind)) || "null");
+    if (value?.start === true) return value;
+    if (Number.isInteger(value?.id) && typeof value.text === "string"
+      && Number.isFinite(value.offset) && value.offset >= 0 && value.offset <= 1) return value;
+  } catch (error) { /* Corrupt/blocked browser storage must not stop reading. */ }
+  return null;
+}
+function validAnchor(anchor) {
+  return anchor?.start === true || Boolean(anchor && state.sentences.some(s=>s.id === anchor.id && s.text === anchor.text));
+}
+function readingAnchor() {
+  if (!documentId || !state.readingReady || state.scrollLock || el("text").hidden) return null;
+  if ((window.scrollY || 0) <= 0) return {start:true};
+  const nodes = el("text").querySelectorAll(".sentence");
+  if (!nodes.length || !nodes[0].getBoundingClientRect) return null;
+  const line = Math.max(0, el("bar").getBoundingClientRect().bottom);
+  let low = 0, high = nodes.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (nodes[middle].getBoundingClientRect().bottom <= line) low = middle + 1;
+    else high = middle;
+  }
+  const node = nodes[low], rect = node.getBoundingClientRect();
+  const sentence = state.sentences.find(s=>String(s.id) === node.dataset.sentence);
+  if (!sentence) return null;
+  return {id:sentence.id,text:sentence.text,offset:Math.max(0,Math.min(1,(line-rect.top)/Math.max(1,rect.height)))};
+}
+function storeAnchor(kind, anchor) {
+  if (!anchor) return false;
+  try { localStorage.setItem(readingKey(kind), JSON.stringify(anchor)); return true; }
+  catch (error) { return false; }
+}
+function saveReadingPosition() { storeAnchor("position", readingAnchor()); }
+function restoreAnchor(anchor) {
+  if (!validAnchor(anchor)) return false;
+  if (anchor.start) { window.scrollTo?.({top:0,behavior:"instant"}); return true; }
+  const node = el("text").querySelector(`[data-sentence="${anchor.id}"]`);
+  if (!node?.getBoundingClientRect) return false;
+  const rect = node.getBoundingClientRect();
+  const line = Math.max(0, el("bar").getBoundingClientRect().bottom);
+  window.scrollTo?.({top:Math.max(0,(window.scrollY || 0)+rect.top-line+anchor.offset*rect.height),behavior:"instant"});
+  return true;
+}
+function renderBookmark() {
+  const russian = state.language === "ru";
+  const present = validAnchor(readAnchor("bookmark"));
+  el("reading-bookmark-label").textContent = (russian ? "Закладка" : "Bookmark") + (present ? " •" : "");
+  el("reading-bookmark-save").textContent = russian ? "Сохранить здесь" : "Save this place";
+  el("reading-bookmark-go").textContent = russian ? "Перейти к закладке" : "Go to bookmark";
+  el("reading-bookmark-delete").textContent = russian ? "Удалить закладку" : "Remove bookmark";
+  el("reading-bookmark-go").disabled = !present;
+  el("reading-bookmark-delete").disabled = !readAnchor("bookmark");
+}
+el("reading-bookmark-save").addEventListener("click", () => {
+  const saved = storeAnchor("bookmark", readingAnchor());
+  renderBookmark(); el("reading-bookmark").open = false;
+  toast(saved ? state.language === "ru" ? "Закладка сохранена" : "Bookmark saved"
+    : state.language === "ru" ? "Не удалось сохранить закладку в браузере" : "Cannot save bookmark in this browser", !saved);
+});
+el("reading-bookmark-go").addEventListener("click", () => {
+  el("reading-bookmark").open = false;
+  restoreAnchor(readAnchor("bookmark"));
+});
+el("reading-bookmark-delete").addEventListener("click", () => {
+  try { localStorage.removeItem(readingKey("bookmark")); } catch (error) { /* Storage unavailable. */ }
+  renderBookmark(); el("reading-bookmark").open = false;
+});
+let readingTimer;
+window.addEventListener?.("scroll", () => {
+  if (!state.readingReady || state.scrollLock) return;
+  clearTimeout(readingTimer); readingTimer = setTimeout(saveReadingPosition, 250);
+}, {passive:true});
+window.addEventListener?.("pagehide", saveReadingPosition);
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveReadingPosition(); });
+
+/** Fixed-body locking works in mobile WebViews; the sheet retains its own scroll. */
+function syncSheetScroll() {
+  const open = Boolean(state.lexeme || state.open);
+  if (open && state.scrollLock === null) {
+    saveReadingPosition();
+    state.scrollLock = {y:window.scrollY || 0};
+    document.body.style.setProperty("--reader-scroll-top", `${-state.scrollLock.y}px`);
+    document.body.classList.add("reader-sheet-open");
+  } else if (!open && state.scrollLock !== null) {
+    const {y} = state.scrollLock;
+    document.body.classList.remove("reader-sheet-open");
+    document.body.style.removeProperty("--reader-scroll-top");
+    state.scrollLock = null;
+    window.scrollTo?.({top:y,behavior:"instant"});
+  }
+}
+
 function applyPinyin(on) {
   state.pinyin = on;
-  el("text").classList.toggle("pinyin", on);
+  el("text").classList.toggle("pinyin", on && state.capabilities?.pinyin !== false);
   const toggle = el("pinyin-toggle");
   toggle.setAttribute("aria-pressed", on ? "true" : "false");
   toggle.textContent = on ? "拼音 ON" : "拼音 OFF";
@@ -127,12 +226,14 @@ function applyPinyin(on) {
 
 function applyLanguage(language) {
   state.language = language;
+  renderBookmark();
   const toggle = el("language-toggle");
   toggle.setAttribute("aria-pressed", language === "ru" ? "true" : "false");
   toggle.textContent = language.toUpperCase();
   if (state.lexeme) {
     renderLexemeBody(state.lexeme.glyph);
     if (state.capabilities?.internal_save) loadContextualMeaning();
+    loadInspectorSentenceTranslation();
   }
   state.translationViews.forEach((refresh) => refresh());
 }
@@ -223,7 +324,7 @@ function speakText(text, handlers = {}) {
   try {
     refreshVoices();
     utterance = new speech.Utterance(words);
-    utterance.lang = state.capabilities?.speech_language || "zh-CN";
+    utterance.lang = handlers.speechLanguage || state.capabilities?.speech_language || "zh-CN";
     const voice = utterance.lang === "nl-NL"
       ? speech.voices.find((v) => /^nl[-_]nl$/i.test(v.lang || ""))
         || speech.voices.find((v) => /^nl(?:[-_]|$)/i.test(v.lang || ""))
@@ -400,8 +501,9 @@ function closeLexeme() {
   el("lexeme").hidden = true;
   markInspecting(null);
   if (!state.open) el("scrim").hidden = true;
-  if (closeLexeme.origin && closeLexeme.origin.focus) closeLexeme.origin.focus();
+  if (closeLexeme.origin && closeLexeme.origin.focus) closeLexeme.origin.focus({preventScroll:true});
   closeLexeme.origin = null;
+  syncSheetScroll();
 }
 
 // Current Hanly selection > persisted learning/known > unknown (absence).
@@ -499,7 +601,123 @@ function renderContext(glyph, sentenceId) {
   }
 }
 
+/** Local evidence and contextual generation deliberately have independent requests/state. */
+function lexicalRequest(span, mode = "contextual", language = state.language) {
+  const controller = new AbortController();
+  let timer;
+  const deadline = new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(mode === "dictionary" ? "Dictionary unavailable." : "Meaning timed out. Please retry."));
+      controller.abort();
+    }, mode === "dictionary" ? 5000 : 20000);
+  });
+  const request = api(`/api/reader/${documentId}/lexical`, {
+    method: "POST", signal: controller.signal,
+    body: JSON.stringify({...spanRequest(span), target_language: language,
+      ...(mode === "dictionary" ? {mode} : {})}),
+  }).then((result) => {
+    if (mode === "dictionary") {
+      if (typeof result.dictionary?.available !== "boolean" || !Array.isArray(result.dictionary.candidates))
+        throw new Error("Dictionary unavailable.");
+    } else if (typeof result.meaning !== "string" || !result.meaning.trim()) {
+      throw new Error("Meaning unavailable. Please retry.");
+    }
+    return result;
+  });
+  return Promise.race([request, deadline]).finally(() => clearTimeout(timer));
+}
+
+function dictionarySense(sense, showArticle) {
+  const li = document.createElement("li");
+  const grammar = new Set(["neuter", "masculine", "feminine", "common-gender", "countable", "uncountable"]);
+  const labels = (sense.labels || []).filter(t => !grammar.has(t));
+  li.textContent = [showArticle && sense.articles?.length ? sense.articles.join(" / ") : "",
+    labels.length ? `(${labels.join(", ")})` : "", ...(sense.glosses || [])].filter(Boolean).join(" ");
+  return li;
+}
+
+function dictionaryCandidate(candidate, detailsTarget = null, showPrimaryGloss = true) {
+  const box = document.createElement("div");
+  box.className = "dictionary-candidate";
+  const articles = [...new Set(candidate.senses.flatMap(s => s.articles || []))];
+  const singleArticle = articles.length === 1 ? articles[0] + " " : "";
+  const heading = document.createElement("p");
+  heading.className = "dictionary-lemma";
+  heading.textContent = `${candidate.lemma !== state.lexeme.glyph ? "→ " : ""}${singleArticle}${candidate.lemma}`
+    + (candidate.plural.length ? ` · ${candidate.plural.join(", ")}` : "") + ` [${candidate.pos}]`;
+  box.appendChild(heading);
+  const primaryCount = showPrimaryGloss ? 2 : 0;
+  if (showPrimaryGloss) {
+    const senses = document.createElement("ul");
+    for (const sense of candidate.senses.slice(0, primaryCount)) senses.appendChild(dictionarySense(sense, articles.length > 1));
+    box.appendChild(senses);
+  }
+  if (candidate.senses.length > primaryCount || candidate.diminutive.length) {
+    const more = document.createElement("details"), summary = document.createElement("summary");
+    summary.textContent = "More senses and forms"; more.appendChild(summary);
+    const rest = document.createElement("ul");
+    for (const sense of candidate.senses.slice(primaryCount)) rest.appendChild(dictionarySense(sense, articles.length > 1));
+    more.appendChild(rest);
+    if (candidate.diminutive.length) {
+      const diminutive = document.createElement("p");
+      diminutive.textContent = `Diminutive: ${candidate.diminutive.join(", ")}`; more.appendChild(diminutive);
+    }
+    (detailsTarget || box).appendChild(more);
+  }
+  return box;
+}
+
+function renderDutchDictionary() {
+  const visible = state.capabilities?.local_dictionary === "dutch";
+  el("lexeme-dictionary").hidden = !visible;
+  const additional = el("lexeme-dictionary-more"); additional.textContent = "";
+  const sources = el("lexeme-dictionary-sources");
+  const links = el("lexeme-dictionary-links"); links.textContent = "";
+  additional.hidden = true; sources.hidden = true;
+  if (!visible) return;
+  const container = el("lexeme-dictionary-content"); container.textContent = "";
+  const result = state.lexeme?.dictionary;
+  el("lexeme-dictionary-label").textContent = result?.is_ambiguous
+    ? result.candidates.length > 1 ? `Dictionary · multiple analyses (${result.candidates.length})`
+      : "Dictionary · sense-dependent articles" : "Dictionary";
+  if (!result || !result.available || !result.candidates.length) {
+    container.textContent = !result ? "Loading dictionary…" : !result.available
+      ? "Dictionary unavailable. Contextual meaning remains available." : "No local dictionary entry. Contextual meaning may help.";
+    return;
+  }
+  const translated = Boolean(state.lexeme?.meanings?.[state.language]?.meaning?.trim());
+  const showPrimaryGloss = state.language === "en" || !translated;
+  for (const candidate of result.candidates.slice(0, 2)) container.appendChild(dictionaryCandidate(candidate, additional, showPrimaryGloss));
+  if (result.candidates.length > 2) {
+    const more = document.createElement("details"), summary = document.createElement("summary");
+    summary.textContent = `Other analyses (${result.candidates.length - 2})`; more.appendChild(summary);
+    for (const candidate of result.candidates.slice(2)) more.appendChild(dictionaryCandidate(candidate));
+    additional.appendChild(more);
+  }
+  additional.hidden = !additional.children.length;
+  sources.hidden = false;
+  for (const candidate of result.candidates) {
+    const source = document.createElement("a");
+    source.textContent = `${candidate.lemma} [${candidate.pos}] · Wiktionary`;
+    source.href = candidate.source_url; source.target = "_blank"; source.rel = "noopener noreferrer";
+    const line = document.createElement("p"); line.appendChild(source); links.appendChild(line);
+  }
+}
+
+async function loadDutchDictionary() {
+  const lexeme = state.lexeme;
+  if (!lexeme || state.capabilities?.local_dictionary !== "dutch") return;
+  try {
+    const result = await lexicalRequest({sentenceId:lexeme.sentenceId,start:lexeme.start,
+      end:lexeme.end,text:lexeme.glyph}, "dictionary");
+    lexeme.dictionary = result.dictionary;
+  } catch (error) { lexeme.dictionary = {available:false,candidates:[]}; }
+  if (state.lexeme === lexeme) renderDutchDictionary();
+}
+
 function renderLexemeBody(glyph) {
+  renderDutchDictionary();
+  renderInspectorSentenceTranslation();
   el("lexeme-retry").hidden = true;
   el("lexeme-note").textContent = "";
   el("lexeme-pinyin").hidden = !state.capabilities?.pinyin && Boolean(state.capabilities);
@@ -513,10 +731,13 @@ function renderLexemeBody(glyph) {
     item.textContent = entry?.meaning || "Loading meaning…";
     list.appendChild(item);
     el("lexeme-senses-label").hidden = false;
-    el("lexeme-senses-label").textContent = "Meaning in context";
-    el("lexeme-source").textContent = entry ? "Generated contextual meaning" : "";
-    el("lexeme-note").textContent = entry?.context_note || "";
-    el("lexeme-context-label").textContent = "In context";
+    el("lexeme-senses-label").textContent = state.capabilities?.local_dictionary === "dutch" && state.language === "ru"
+      ? "Значение в контексте" : "Meaning in context";
+    const dutch = state.capabilities?.local_dictionary === "dutch";
+    el("lexeme-source").textContent = !dutch && entry ? "Generated contextual meaning" : "";
+    el("lexeme-note").textContent = dutch ? "" : entry?.context_note || "";
+    el("lexeme-context-label").textContent = state.capabilities?.local_dictionary === "dutch"
+      ? state.language === "ru" ? "Пример" : "Example" : "In context";
     renderContext(glyph, state.lexeme.sentenceId);
     return;
   }
@@ -561,8 +782,48 @@ function openLexeme(token, sentenceId, node) {
   markInspecting(node);
   el("lexeme").hidden = false;
   el("scrim").hidden = false;
-  el("lexeme-action").focus();
+  syncSheetScroll();
+  el("lexeme-action").focus({preventScroll:true});
+  loadDutchDictionary();
   if (state.capabilities?.internal_save) loadContextualMeaning();
+  loadInspectorSentenceTranslation();
+}
+
+/** Shares the sentence control's cache/pending request, never the lexical provider. */
+function renderInspectorSentenceTranslation() {
+  const node = el("lexeme-sentence-translation");
+  const lexeme = state.lexeme;
+  const entry = state.sentenceTranslationEntries.get(lexeme?.sentenceId);
+  node.hidden = state.capabilities?.local_dictionary !== "dutch" || !lexeme || !entry;
+  if (node.hidden) { node.textContent = ""; return; }
+  const language = state.language;
+  node.setAttribute("lang", language);
+  node.textContent = entry.cache[language] || (lexeme.sentenceTranslationErrors?.[language]
+    ? language === "ru" ? "Перевод предложения недоступен." : "Sentence translation unavailable."
+    : language === "ru" ? "Перевод предложения…" : "Translating sentence…");
+}
+
+async function loadInspectorSentenceTranslation() {
+  const lexeme = state.lexeme;
+  if (!lexeme || state.capabilities?.local_dictionary !== "dutch") return;
+  const entry = state.sentenceTranslationEntries.get(lexeme.sentenceId);
+  if (!entry) return;
+  const language = state.language;
+  renderInspectorSentenceTranslation();
+  if (entry.cache[language] || lexeme.sentenceTranslationRequests?.[language]) return;
+  lexeme.sentenceTranslationRequests ||= {};
+  lexeme.sentenceTranslationErrors ||= {};
+  lexeme.sentenceTranslationRequests[language] = true;
+  delete lexeme.sentenceTranslationErrors[language];
+  renderInspectorSentenceTranslation();
+  try {
+    await entry.load(language);
+  } catch (error) {
+    lexeme.sentenceTranslationErrors[language] = true;
+  } finally {
+    delete lexeme.sentenceTranslationRequests[language];
+    if (state.lexeme === lexeme && state.language === language) renderInspectorSentenceTranslation();
+  }
 }
 
 /** Lookup is occurrence/context-owned: never put Dutch senses in the glyph glossary. */
@@ -574,10 +835,9 @@ async function loadContextualMeaning() {
   lexeme.requests ||= {};
   if (lexeme.meanings[language]) { renderLexemeBody(lexeme.glyph); return; }
   try {
-    lexeme.requests[language] ||= api(`/api/reader/${documentId}/lexical`, {
-      method: "POST", body: JSON.stringify({ ...spanRequest({sentenceId:lexeme.sentenceId,
-        start:lexeme.start,end:lexeme.end,text:lexeme.glyph}), target_language:language }),
-    }).finally(() => { delete lexeme.requests[language]; });
+    lexeme.requests[language] ||= lexicalRequest({sentenceId:lexeme.sentenceId,
+      start:lexeme.start,end:lexeme.end,text:lexeme.glyph}, "contextual", language)
+      .finally(() => { delete lexeme.requests[language]; });
     const result = await lexeme.requests[language];
     lexeme.meanings[language] = result;
     // A completed save wins over an older in-flight lookup reporting unsaved.
@@ -621,9 +881,7 @@ async function saveInspector() {
 async function saveSelectedExpression(span) {
   // Meaning is optional: provider failure must not prevent a private source-preserving save.
   try {
-    await api(`/api/reader/${documentId}/lexical`, {
-      method:"POST", body:JSON.stringify({...spanRequest(span),target_language:state.language}),
-    });
+    await lexicalRequest(span);
   } catch (error) { /* Save without meaning; a later inspector lookup can retry. */ }
   await saveInternal(span);
 }
@@ -654,6 +912,21 @@ function translationControl(sentence) {
   content.hidden = true;
   const cache = {};
   const pending = {};
+  function load(language) {
+    if (cache[language]) return Promise.resolve(cache[language]);
+    if (!pending[language]) {
+      pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
+        method: "POST", body: JSON.stringify({ language }),
+      }).then((result) => {
+        if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
+          throw new Error("Invalid translation");
+        }
+        cache[language] = result.translation;
+      }).finally(() => { delete pending[language]; });
+    }
+    return pending[language];
+  }
+  state.sentenceTranslationEntries.set(sentence.id, {cache, load});
   let visible = false;
   let revision = 0;
   box.addEventListener("click", (event) => event.stopPropagation());
@@ -676,17 +949,7 @@ function translationControl(sentence) {
       label("Translating…");
       action.setAttribute("aria-busy", "true");
       try {
-        if (!pending[language]) {
-          pending[language] = api(`/api/reader/${documentId}/sentences/${sentence.id}/translation`, {
-            method: "POST", body: JSON.stringify({ language }),
-          }).then((result) => {
-            if (result.sentence_id !== sentence.id || typeof result.translation !== "string" || !result.translation.trim()) {
-              throw new Error("Invalid translation");
-            }
-            cache[language] = result.translation;
-          }).finally(() => { delete pending[language]; });
-        }
-        await pending[language];
+        await load(language);
       } catch (error) {
         if (requestRevision !== revision) return;
         visible = false;
@@ -831,6 +1094,7 @@ function renderSentence(sentence) {
   const node = document.createElement("span");
   node.className = "sentence";
   node.dataset.sentence = String(sentence.id);
+  node.id = `s-${sentence.id}`;
   const source = document.createElement("span");
   source.className = "sentence-source";
   node.appendChild(source);
@@ -849,6 +1113,43 @@ function renderSentence(sentence) {
   });
   if (state.capabilities?.mosaic !== false) controls.appendChild(mark);
   if ((canSpeak && state.capabilities?.speech_language) || (window.Audio && state.audio && sentence.audio)) controls.appendChild(audioControl(sentence));
+  if (state.capabilities?.internal_save) {
+    node.classList.add("sentence-learnable");
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "sentence-save";
+    save.setAttribute("aria-label", "Save sentence");
+    save.setAttribute("aria-pressed", "false");
+    save.title = "Save sentence for Review";
+    const bookmark = document.createElementNS(SVG_NS, "svg");
+    bookmark.setAttribute("class", "sentence-save-icon");
+    bookmark.setAttribute("viewBox", "0 0 24 24");
+    bookmark.setAttribute("aria-hidden", "true");
+    bookmark.setAttribute("focusable", "false");
+    const outline = document.createElementNS(SVG_NS, "path");
+    outline.setAttribute("d", "M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4Z");
+    outline.setAttribute("stroke", "currentColor");
+    outline.setAttribute("stroke-width", "1.7");
+    outline.setAttribute("stroke-linejoin", "round");
+    bookmark.appendChild(outline);
+    save.appendChild(bookmark);
+    save.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (save.disabled) return;
+      save.disabled = true;
+      save.setAttribute("aria-busy", "true");
+      try {
+        await api(`/api/reader/${documentId}/saved-sentences`, {
+          method: "POST", body: JSON.stringify({sentence_id: sentence.id, target_language: state.language}),
+        });
+        save.setAttribute("aria-label", "Sentence saved");
+        save.setAttribute("aria-pressed", "true");
+        save.title = "Sentence saved for Review";
+      } catch (error) { save.disabled = false; toast(error.message, true); }
+      finally { save.setAttribute("aria-busy", "false"); }
+    });
+    controls.appendChild(save);
+  }
   node.appendChild(controls);
   if (state.sourceLanguage === "nl" || /[㐀-䶿一-鿿豈-﫿]/.test(sentence.text)) {
     const translation = translationControl(sentence);
@@ -1128,12 +1429,18 @@ function render(data) {
   main.setAttribute("aria-busy", "false");
   applyPinyin(state.pinyin);
   refreshCounters();
+  renderBookmark();
+  (window.requestAnimationFrame || (fn=>fn()))(() => {
+    restoreAnchor(readAnchor("position"));
+    state.readingReady = true;
+  });
 }
 
 function closeBasket() {
   state.open = null;
   el("basket").hidden = true;
   if (!state.lexeme) el("scrim").hidden = true;
+  syncSheetScroll();
 }
 
 function openBasket(kind) {
@@ -1197,7 +1504,7 @@ function openBasket(kind) {
   const available = state.available[kind];
   const note = hanly
     ? "Selected words will be added to this document's Hanly collection."
-    : "Selected sentences will be added to this document's Mandarin Mosaic pack.";
+    : "Selected sentences will be added to this document's Mandarin Mosaic pack with English translations. Missing translations will be generated before uploading.";
   el("basket-note").textContent = available
     ? note
     : state.reasons[kind] || "Not configured on the server.";
@@ -1206,6 +1513,7 @@ function openBasket(kind) {
   upload.disabled = entries.length === 0 || !available;
   el("basket").hidden = false;
   el("scrim").hidden = false;
+  syncSheetScroll();
 }
 
 function noteSummary(notes) {
@@ -1374,6 +1682,11 @@ if (documentId) {
 
 
 function showView(view) {
+  if (view !== "document") saveReadingPosition();
+  stopOriginal();
+  stopSpeaking();
+  el("review").hidden = view !== "review";
+  if (view !== "document") el("sentence-quality").hidden = true;
   for (const id of ["bar", "text", "attribution"]) el(id).hidden = view !== "document";
   el("library").hidden = view !== "library";
   el("new-document").hidden = view !== "create";
@@ -1513,4 +1826,160 @@ el("rename-save").addEventListener("click", async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+
+// Review uses the same authenticated API and speech channel as Reader.
+const reviewSession = {items: [], index: 0, epoch: 0, busy: false};
+function reviewButton(text, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = text;
+  button.addEventListener("click", action);
+  return button;
+}
+async function openReview() {
+  showView("review");
+  const epoch = ++reviewSession.epoch;
+  reviewSession.busy = false;
+  el("review-card").hidden = true;
+  el("review-start").hidden = true;
+  el("review-status").textContent = "Loading…";
+  try {
+    const data = await api("/api/reader/review");
+    if (epoch !== reviewSession.epoch) return;
+    el("review-status").textContent = data.due ? `${data.due} due` : "Nothing due right now.";
+    if (!data.due && data.next_due_at) el("review-status").textContent += ` Next: ${new Date(data.next_due_at).toLocaleString()}`;
+    el("review-start").textContent = "Start Review";
+    el("review-start").hidden = !data.due;
+  } catch (error) {
+    if (epoch !== reviewSession.epoch) return;
+    el("review-status").textContent = error.message;
+    el("review-start").hidden = false;
+    el("review-start").textContent = "Retry Review";
+  }
+}
+async function startReview() {
+  if (reviewSession.busy) return;
+  reviewSession.busy = true;
+  const epoch = ++reviewSession.epoch;
+  el("review-start").disabled = true;
+  try {
+    const data = await api("/api/reader/review", {method: "POST", body: JSON.stringify({listening: canSpeak})});
+    if (epoch !== reviewSession.epoch) return;
+    reviewSession.items = data.items;
+    reviewSession.index = 0;
+    el("review-start").hidden = true;
+    renderReviewCard();
+  } catch (error) {
+    if (epoch === reviewSession.epoch) el("review-status").textContent = error.message;
+  } finally {
+    if (epoch === reviewSession.epoch) reviewSession.busy = false;
+    el("review-start").disabled = false;
+  }
+}
+function reviewContext(card, blank = false) {
+  const context = document.createElement("p");
+  context.className = "review-context";
+  if (card.span) {
+    const chars = Array.from(card.text);
+    const [start, end] = card.span;
+    context.appendChild(document.createTextNode(chars.slice(0, start).join("")));
+    const target = document.createElement(blank ? "span" : "mark");
+    target.textContent = blank ? "_____" : chars.slice(start, end).join("");
+    context.appendChild(target);
+    context.appendChild(document.createTextNode(chars.slice(end).join("")));
+  } else context.textContent = card.text;
+  return context;
+}
+function renderReviewCard() {
+  stopSpeaking();
+  const box = el("review-card");
+  box.textContent = "";
+  const card = reviewSession.items[reviewSession.index];
+  box.hidden = !card;
+  if (!card) {
+    el("review-status").textContent = "Session complete. Your reviews are saved.";
+    el("review-start").hidden = false;
+    el("review-start").textContent = "Check due items";
+    return;
+  }
+  el("review-status").textContent = `${reviewSession.index + 1} / ${reviewSession.items.length}`;
+  const heading = document.createElement("h2");
+  heading.textContent = {recognition: "Recognition", cloze: "Cloze", listening: "Listening"}[card.exercise];
+  box.appendChild(heading);
+  if (card.exercise === "listening") {
+    box.appendChild(reviewButton("▶ Play sentence", () => {
+      speakText(card.text, {owner: "review", speechLanguage: card.speech_language});
+    }));
+  } else {
+    box.appendChild(reviewContext(card, card.exercise === "cloze"));
+    if (card.exercise === "recognition" && card.kind !== "sentence") {
+      const prompt = document.createElement("p");
+      prompt.textContent = `What does “${card.target}” mean here?`;
+      box.appendChild(prompt);
+    }
+  }
+  const epoch = reviewSession.epoch;
+  const reveal = reviewButton(card.exercise === "listening" ? "Show text" : card.kind === "sentence" ? "Show translation" : "Show answer", async () => {
+    if (reveal.disabled) return;
+    reveal.disabled = true;
+    try {
+      const answer = await api(`/api/reader/review/${card.id}/answer`, {method: "POST", body: "{}"});
+      if (epoch !== reviewSession.epoch) return;
+      reveal.hidden = true;
+      if (card.exercise !== "recognition") {
+        const old = box.querySelector(".review-context");
+        if (old) old.remove();
+        box.appendChild(reviewContext(card));
+      }
+      const meaning = document.createElement("p");
+      meaning.className = "review-meaning";
+      meaning.textContent = (card.target ? `${card.target} · ` : "") + answer.meaning;
+      box.appendChild(meaning);
+      const provenance = document.createElement("a");
+      provenance.href = `/reader/?doc=${encodeURIComponent(card.document_id)}#s-${card.sentence_id}`;
+      provenance.textContent = card.title;
+      box.appendChild(provenance);
+      const grades = document.createElement("div");
+      grades.className = "review-grades";
+      let pending = false;
+      let chosen = null;
+      for (const grade of ["Again", "Hard", "Good", "Easy"]) {
+        const button = reviewButton(grade, async () => {
+          if (pending || (chosen && chosen !== grade)) return;
+          chosen = grade;
+          pending = true;
+          for (const control of grades.children) control.disabled = true;
+          try {
+            await api(`/api/reader/review/${card.id}/grade`, {method: "POST", body: JSON.stringify({
+              grade: grade.toLowerCase(), exercise: card.exercise, interaction: card.interaction,
+            })});
+            if (epoch !== reviewSession.epoch) return;
+            reviewSession.index++;
+            renderReviewCard();
+          } catch (error) {
+            if (epoch !== reviewSession.epoch) return;
+            el("review-status").textContent = `${error.message} Retry ${grade}, or reopen Review.`;
+            button.disabled = false;
+          } finally { pending = false; }
+        });
+        grades.appendChild(button);
+      }
+      box.appendChild(grades);
+    } catch (error) {
+      if (epoch !== reviewSession.epoch) return;
+      reveal.disabled = false;
+      el("review-status").textContent = error.message;
+    }
+  });
+  box.appendChild(reveal);
+}
+el("review-open").addEventListener("click", openReview);
+el("review-start").addEventListener("click", startReview);
+el("review-back").addEventListener("click", () => {
+  reviewSession.epoch++;
+  reviewSession.busy = false;
+  loadLibrary();
 });

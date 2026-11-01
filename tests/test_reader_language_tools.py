@@ -10,7 +10,7 @@ from test_reader import reader as reader
 
 from podcast_bot.reader.documents import from_text
 from podcast_bot.reader.languages import dutch_tokens
-from podcast_bot.reader.lexical import ContextualLexical, LexicalResult
+from podcast_bot.reader.lexical import ContextualLexical, DutchTranslation, LexicalResult
 from podcast_bot.reader.translations import SentenceTranslations, TranslationResult
 from podcast_bot.storage import Storage
 
@@ -25,7 +25,7 @@ def dutch(reader):
     client = SimpleNamespace(
         request=AsyncMock(
             return_value=(
-                LexicalResult(meaning="освобождение", context_note="Здесь: освобождение страны."),
+                DutchTranslation(translation="освобождение"),
                 {},
             )
         )
@@ -62,6 +62,7 @@ async def test_language_capabilities_and_source_spans(dutch):
     assert status == 200
     assert result["capabilities"] == {
         "lexical_inspector": "contextual",
+        "local_dictionary": "dutch",
         "speech_language": "nl-NL",
         "pinyin": False,
         "hanly": False,
@@ -101,7 +102,7 @@ async def test_lookup_contract_cache_and_context(dutch):
     assert a == b and a[0] == 200
     assert d.client.request.await_count == 1
     schema, instructions, data, model, budget = d.client.request.call_args.args
-    assert schema is LexicalResult and "entire sentence" in instructions
+    assert schema is DutchTranslation and "entire sentence" in instructions
     assert data == {
         "selected_text": "bevrijding",
         "source_sentence": d.document.sentences()[0].text,
@@ -141,8 +142,8 @@ def test_model_schema_rejects_malformed(bad):
     "failure",
     [
         RuntimeError("private secret"),
-        LexicalResult(meaning="  "),
-        LexicalResult(meaning="English only"),
+        DutchTranslation(translation="  "),
+        DutchTranslation(translation="English only"),
     ],
 )
 async def test_lookup_failure_safe_and_retryable(dutch, failure):
@@ -159,7 +160,7 @@ async def test_lookup_failure_safe_and_retryable(dutch, failure):
         await call(dutch.reader, "POST", route(dutch, "saved-vocabulary"), request(dutch.document))
     )[0] == 200
     dutch.client.request.side_effect = None
-    dutch.client.request.return_value = (LexicalResult(meaning="освобождение"), {})
+    dutch.client.request.return_value = (DutchTranslation(translation="освобождение"), {})
     assert (await call(dutch.reader, "POST", route(dutch, "lexical"), request(dutch.document)))[
         0
     ] == 200
@@ -177,7 +178,7 @@ async def test_saved_word_provenance_idempotency_and_reopen(dutch):
     )
     assert item["source_sentence"] == d.document.sentences()[0].text
     assert item["text"] == item["normalized_text"] == "bevrijding"
-    assert item["meaning"] == "освобождение" and item["context_note"]
+    assert item["meaning"] == "освобождение" and item["context_note"] == ""
     assert item["created"] == b["item"]["created"]
     _, lookup = await call(d.reader, "POST", route(d, "lexical"), request(d.document))
     assert lookup["saved"]
@@ -351,7 +352,7 @@ async def test_target_specific_cache_and_saved_state(dutch):
     d = dutch
     await call(d.reader, "POST", route(d, "lexical"), request(d.document))
     d.client.request.return_value = (
-        LexicalResult(meaning="liberation", context_note="Liberation of the country."),
+        DutchTranslation(translation="liberation"),
         {},
     )
     english = request(d.document, target="en")
@@ -389,3 +390,82 @@ async def test_migration_preserves_existing_chinese_data(tmp_path):
     )
     assert migrated.saved_vocabulary(42, document.id) == []
     migrated.close()
+
+
+async def test_dictionary_mode_is_independent_and_does_not_enrich_saves(dutch, tmp_path):
+    from test_dutch_dictionary import artifact, entry, form
+
+    dictionary, *_ = artifact(
+        tmp_path, [entry("bevrijding", forms=[form("bevrijdingen", "plural")])]
+    )
+    dutch.reader.api.dutch_dictionary = dictionary
+    dutch.client.request.side_effect = RuntimeError("provider failed")
+    payload = {**request(dutch.document), "mode": "dictionary"}
+    try:
+        status, local = await call(dutch.reader, "POST", route(dutch, "lexical"), payload)
+        assert status == 200 and local["dictionary"]["candidates"][0]["plural"] == ["bevrijdingen"]
+        dutch.client.request.assert_not_called()
+        assert (await call(dutch.reader, "POST", route(dutch, "lexical"), request(dutch.document)))[
+            0
+        ] == 400
+        assert (await call(dutch.reader, "POST", route(dutch, "lexical"), payload))[1] == local
+        status, saved = await call(
+            dutch.reader, "POST", route(dutch, "saved-vocabulary"), request(dutch.document)
+        )
+        assert status == 200 and saved["item"]["meaning"] == ""
+    finally:
+        dictionary.close()
+
+
+async def test_dictionary_miss_and_unavailability_preserve_contextual_lookup(dutch, tmp_path):
+    from test_dutch_dictionary import artifact, entry
+
+    from podcast_bot.reader.dutch import DutchDictionary
+
+    dictionary, *_ = artifact(tmp_path, [entry("absent")])
+    try:
+        for local in (dictionary, DutchDictionary(tmp_path / "missing.sqlite3")):
+            dutch.reader.api.dutch_dictionary = local
+            _, result = await call(
+                dutch.reader,
+                "POST",
+                route(dutch, "lexical"),
+                {**request(dutch.document), "mode": "dictionary"},
+            )
+            assert not result["dictionary"]["candidates"]
+            status, contextual = await call(
+                dutch.reader, "POST", route(dutch, "lexical"), request(dutch.document)
+            )
+            assert status == 200 and contextual["meaning"] == "освобождение"
+    finally:
+        dictionary.close()
+
+
+@pytest.mark.parametrize(
+    "bad", [{"text": "forged"}, {"start": 0}, {"mode": []}, {"path": "/tmp/secret"}]
+)
+async def test_dictionary_mode_validates_span_and_does_not_accept_paths(dutch, bad):
+    status, _ = await call(
+        dutch.reader,
+        "POST",
+        route(dutch, "lexical"),
+        {**request(dutch.document), "mode": "dictionary", **bad},
+    )
+    assert status in {400, 409}
+    dutch.client.request.assert_not_called()
+
+
+async def test_dictionary_mode_remains_owner_scoped_and_chinese_unchanged(dutch):
+    foreign = replace(dutch.document, id="c" * 32, chat_id=99)
+    dutch.reader.store.save_reader_document(foreign)
+    payload = {**request(dutch.document), "mode": "dictionary"}
+    assert (await call(dutch.reader, "POST", f"/api/reader/{foreign.id}/lexical", payload))[
+        0
+    ] == 404
+    assert (await call(dutch.reader, "POST", route(dutch, "lexical"), payload, headers={}))[
+        0
+    ] == 401
+    chinese = replace(dutch.document, source_data=json.dumps({"language": "zh"}))
+    dutch.reader.store.save_reader_document(chinese)
+    assert (await call(dutch.reader, "POST", route(dutch, "lexical"), payload))[0] == 400
+    dutch.client.request.assert_not_called()

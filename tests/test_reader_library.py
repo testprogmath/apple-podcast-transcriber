@@ -205,7 +205,12 @@ async def test_study_parity_and_stable_integration_identity(reader, source):
     assert data["glossary"]["获得"]["p"]
     assert data["audio"] is None and data["audio_status"] == "text"
     client = SimpleNamespace(
-        request=AsyncMock(return_value=(TranslationResult(translation="Они получили награду."), {}))
+        request=AsyncMock(
+            side_effect=[
+                (TranslationResult(translation="Они получили награду."), {}),
+                (TranslationResult(translation="They received an award."), {}),
+            ]
+        )
     )
     reader.api.translations = SentenceTranslations(reader.store, client)
     assert (await call(reader, "POST", route + "/sentences/0/translation", {}))[0] == 200
@@ -222,7 +227,7 @@ async def test_study_parity_and_stable_integration_identity(reader, source):
     assert (await call(reader, "POST", route + "/sentences/0/translation", {}))[1][
         "source"
     ] == "generated"
-    client.request.assert_awaited_once()
+    assert client.request.await_count == 2
     assert reader.services.hanly.client.notes
 
 

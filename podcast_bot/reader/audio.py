@@ -49,18 +49,21 @@ def align(sentences, units, duration):
     for unit in units:
         start, end = float(unit["start"]), float(unit["end"])
         value = normalized(unit["text"])
+        # Whisper collapses some word timestamps to an instant and emits punctuation-only
+        # words; rejecting either discarded a whole episode's word timing for segments.
         if (
-            not value
-            or not math.isfinite(start)
+            not math.isfinite(start)
             or not math.isfinite(end)
-            or not 0 <= previous <= start < end <= duration
+            or not 0 <= previous <= start <= end <= duration
         ):
             return {}
+        previous = end
+        if not value:
+            continue
         starts[len(text)] = len(valid)
         text += value
         ends[len(text)] = len(valid)
         valid.append((start, end))
-        previous = end
     values = [normalized(s.text) for s in sentences]
     if "".join(values) != text:
         return {}
@@ -75,6 +78,8 @@ def align(sentences, units, duration):
         padded_end = min(
             duration, end + 0.2, valid[last + 1][0] if last + 1 < len(valid) else duration
         )
+        if padded_end <= padded_start:
+            continue  # An instant between touching neighbours has nothing to play.
         result[sentence.id] = {
             "source": "podcast",
             "start_ms": round(padded_start * 1000),

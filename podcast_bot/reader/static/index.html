@@ -18,8 +18,16 @@
   </div>
   <p id="library-status" role="status">Loading…</p>
   <button id="library-retry" type="button" class="secondary" hidden>Retry</button>
+  <button id="review-open" type="button" class="secondary">Review</button>
   <h2>Recent</h2>
   <div id="document-list"></div>
+</section>
+<section id="review" class="shelf" hidden>
+  <button id="review-back" type="button" class="secondary">← Library</button>
+  <h1>Review</h1>
+  <p id="review-status" role="status"></p>
+  <button id="review-start" type="button" class="primary">Start Review</button>
+  <article id="review-card" hidden></article>
 </section>
 <section id="new-document" class="shelf" hidden>
   <button id="create-back" type="button" class="secondary">← Reader</button>
@@ -35,6 +43,14 @@
 <header id="bar">
   <nav class="document-nav">
     <a href="/reader/" id="library-back">← Reader</a>
+    <details id="reading-bookmark">
+      <summary id="reading-bookmark-label">Закладка</summary>
+      <div class="reading-bookmark-menu">
+        <button id="reading-bookmark-save" type="button">Сохранить здесь</button>
+        <button id="reading-bookmark-go" type="button" disabled>Перейти к закладке</button>
+        <button id="reading-bookmark-delete" type="button" disabled>Удалить закладку</button>
+      </div>
+    </details>
     <button id="rename-document" type="button" class="toggle">Rename</button>
   </nav>
   <div id="rename-panel" hidden>
@@ -88,12 +104,25 @@
     </div>
     <button id="lexeme-close" type="button" class="icon" aria-label="Close">✕</button>
   </div>
+  <section id="lexeme-dictionary" hidden aria-label="Dutch dictionary">
+    <p class="label" id="lexeme-dictionary-label">Dictionary</p>
+    <div id="lexeme-dictionary-content" aria-live="polite"></div>
+  </section>
   <p class="label" id="lexeme-senses-label" hidden>Значение</p>
   <ul id="lexeme-senses"></ul>
   <p class="label" id="lexeme-context-label" hidden>В контексте</p>
   <p id="lexeme-context"></p>
+  <p id="lexeme-sentence-translation" lang="ru" aria-live="polite" hidden></p>
   <p id="lexeme-source"></p>
   <p id="lexeme-note"></p>
+  <div id="lexeme-dictionary-more" hidden></div>
+  <details id="lexeme-dictionary-sources" class="dictionary-credit" hidden>
+    <summary>Dictionary source: Wiktionary ⓘ</summary>
+    <div id="lexeme-dictionary-links"></div>
+    <p class="dictionary-credit">Wiktionary contributors · Kaikki/Wiktextract ·
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>
+      · raw snapshot 2026-10-03; compact projection</p>
+  </details>
   <button id="lexeme-retry" type="button" class="secondary" hidden>Retry meaning</button>
   <p id="lexeme-state" role="status" hidden></p>
   <div id="lexeme-actions">

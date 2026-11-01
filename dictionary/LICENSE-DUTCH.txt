@@ -1,0 +1,19 @@
+Dutch dictionary text/morphology: Wiktionary contributors; extracted by Wiktextract, provided by Kaikki.
+Licensed CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/
+Source pages and contributor histories: https://en.wiktionary.org/wiki/{URL-encoded source title}
+Each lexical candidate links its source page. Preserve applicable additional attribution notices.
+No endorsement is implied. Dictionary licensing is separate from application code.
+Distribute adapted dictionary data with attribution, license notice and change indication.
+source: English Wiktionary via Kaikki/Wiktextract (raw)
+source_url: https://kaikki.org/dictionary/raw-wiktextract-data.jsonl.gz
+dump_date: 2026-09-02
+extraction_date: 2026-10-03
+compressed_sha256: 3dac8a09e57827bef493e2e6b552fe917bf3b1fc55dee05c4e4a3702aff5dbdb
+subset_sha256: e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8
+wiktextract_revision: 1a05e46f9efbccda6a2b2f8e21b30a9c0c46513a
+wikitextprocessor_revision: e3d6d4edb77618f4d6680edc66e3f774bea59820
+input_kind: subset
+input_sha256: e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8
+transformation: Dutch-only lexical senses, labels, explicit forms and references; no media, quotations, categories or raw JSON
+schema_version: 1
+builder_version: 1

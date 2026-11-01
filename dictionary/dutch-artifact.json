@@ -1,0 +1,40 @@
+{
+  "artifact": "dutch.sqlite3",
+  "attribution": "Wiktionary contributors; extracted by Wiktextract, provided by Kaikki",
+  "builder_version": "1",
+  "bytes": 46010368,
+  "content_version": "enwiktionary-20260902-20261003-r1",
+  "counts": {
+    "entries": 146492,
+    "forms": 451347,
+    "glosses": 88655,
+    "processed_records": 146492,
+    "relations": 102474,
+    "senses": 88140,
+    "surfaces": 200974
+  },
+  "language": "nl",
+  "license": "CC BY-SA 4.0",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "manifest_version": 1,
+  "notice": "LICENSE-DUTCH.txt",
+  "notice_bytes": 1282,
+  "notice_sha256": "d488404c6eccf14f9b8ebb86e7f5c1acd0a67183a25c0bd196d530f247c44f21",
+  "release_revision": "r1",
+  "schema_version": "1",
+  "sha256": "d698f7098b5b44a7e32dbc0f01959899fe0467c6082ebb60b568fd3d8ff7248b",
+  "source_metadata": {
+    "compressed_sha256": "3dac8a09e57827bef493e2e6b552fe917bf3b1fc55dee05c4e4a3702aff5dbdb",
+    "dump_date": "2026-09-02",
+    "extraction_date": "2026-10-03",
+    "input_kind": "subset",
+    "input_sha256": "e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8",
+    "source": "English Wiktionary via Kaikki/Wiktextract (raw)",
+    "source_url": "https://kaikki.org/dictionary/raw-wiktextract-data.jsonl.gz",
+    "subset_sha256": "e63cb76e7cac43b8fa03d886bb0cda388f5ec8354e9f9c4854c2f46a7b4d9ff8",
+    "transformation": "Dutch-only lexical senses, labels, explicit forms and references; no media, quotations, categories or raw JSON",
+    "wikitextprocessor_revision": "e3d6d4edb77618f4d6680edc66e3f774bea59820",
+    "wiktextract_revision": "1a05e46f9efbccda6a2b2f8e21b30a9c0c46513a"
+  },
+  "version": "dutch-dictionary-enwiktionary-20260902-20261003-r1-s1-b1"
+}
